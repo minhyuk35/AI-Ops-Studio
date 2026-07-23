@@ -5,6 +5,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
+
+DEFAULT_ORG_ID = "org_demo"
 
 
 def utc_now() -> str:
@@ -165,6 +168,27 @@ CREATE TABLE IF NOT EXISTS claims (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS commerce_events (
+    id TEXT PRIMARY KEY,
+    external_event_id TEXT NOT NULL UNIQUE,
+    event_type TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    order_id TEXT,
+    product_id TEXT,
+    variant_id TEXT,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    amount INTEGER NOT NULL DEFAULT 0,
+    discount INTEGER NOT NULL DEFAULT 0,
+    shipping_fee INTEGER NOT NULL DEFAULT 0,
+    refund_amount INTEGER NOT NULL DEFAULT 0,
+    occurred_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_commerce_events_order ON commerce_events(order_id);
+CREATE INDEX IF NOT EXISTS idx_commerce_events_type_time
+    ON commerce_events(event_type, occurred_at);
 """
 
 
@@ -499,3 +523,54 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, object] | None:
 
 def json_value(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)
+
+
+def record_event(
+    connection: sqlite3.Connection,
+    *,
+    event_type: str,
+    external_event_id: str,
+    order_id: str | None = None,
+    product_id: str | None = None,
+    variant_id: str | None = None,
+    quantity: int = 0,
+    amount: int = 0,
+    discount: int = 0,
+    shipping_fee: int = 0,
+    refund_amount: int = 0,
+    occurred_at: str | None = None,
+    org_id: str = DEFAULT_ORG_ID,
+) -> None:
+    """Append one row to the commerce event ledger.
+
+    ``external_event_id`` is the dedupe key: retried requests (e.g. a client
+    resubmitting a cancel call) must not double-count revenue or refunds, so
+    inserts are idempotent via INSERT OR IGNORE on that unique column.
+    """
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO commerce_events(
+            id, external_event_id, event_type, org_id, order_id, product_id, variant_id,
+            quantity, amount, discount, shipping_fee, refund_amount, occurred_at, created_at
+        ) VALUES(
+            :id, :external_event_id, :event_type, :org_id, :order_id, :product_id, :variant_id,
+            :quantity, :amount, :discount, :shipping_fee, :refund_amount, :occurred_at, :created_at
+        )
+        """,
+        {
+            "id": f"evt_{uuid4().hex[:16]}",
+            "external_event_id": external_event_id,
+            "event_type": event_type,
+            "org_id": org_id,
+            "order_id": order_id,
+            "product_id": product_id,
+            "variant_id": variant_id,
+            "quantity": quantity,
+            "amount": amount,
+            "discount": discount,
+            "shipping_fee": shipping_fee,
+            "refund_amount": refund_amount,
+            "occurred_at": occurred_at or utc_now(),
+            "created_at": utc_now(),
+        },
+    )

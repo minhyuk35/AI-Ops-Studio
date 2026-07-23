@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
-from app.db import connect, initialize_database, row_to_dict, transaction, utc_now
+from app.db import connect, initialize_database, record_event, row_to_dict, transaction, utc_now
 
 FREE_SHIPPING_THRESHOLD = 100_000
 STANDARD_SHIPPING_FEE = 3_000
@@ -439,6 +439,28 @@ async def create_order(payload: CheckoutRequest) -> dict[str, object]:
             (f"ship_{uuid4().hex[:10]}", order_id, None, None, "PREPARING", eta, None, now),
         )
         connection.execute("DELETE FROM cart_items WHERE cart_id = ?", (payload.cart_id,))
+        record_event(
+            connection,
+            event_type="ORDER_CREATED",
+            external_event_id=f"{order_id}:ORDER_CREATED",
+            order_id=order_id,
+            quantity=sum(int(item["quantity"]) for item in cart["items"]),
+            amount=int(cart["total"]),
+            discount=int(cart["discount"]),
+            shipping_fee=int(cart["shipping_fee"]),
+            occurred_at=now,
+        )
+        for item in cart["items"]:
+            record_event(
+                connection,
+                event_type="STOCK_CHANGED",
+                external_event_id=f"{order_id}:{item['variant_id']}:STOCK_CHANGED:ORDER_CREATED",
+                order_id=order_id,
+                product_id=item["product_id"],
+                variant_id=item["variant_id"],
+                quantity=-int(item["quantity"]),
+                occurred_at=now,
+            )
         return order_payload(connection, order_id)
 
 
@@ -483,6 +505,14 @@ async def confirm_payment(payload: PaymentConfirm) -> dict[str, object]:
             """,
             (now, payload.order_id),
         )
+        record_event(
+            connection,
+            event_type="PAYMENT_CONFIRMED",
+            external_event_id=f"{payload.order_id}:PAYMENT_CONFIRMED",
+            order_id=payload.order_id,
+            amount=payload.amount,
+            occurred_at=now,
+        )
         return {"payment": payment, "order": order_payload(connection, payload.order_id)}
 
 
@@ -526,12 +556,22 @@ async def cancel_order(order_id: str, payload: OrderAction) -> dict[str, object]
         items = connection.execute(
             "SELECT * FROM order_items WHERE order_id = ?", (order_id,)
         ).fetchall()
+        now = utc_now()
         for item in items:
             connection.execute(
                 "UPDATE variants SET stock = stock + ? WHERE id = ?",
                 (item["quantity"], item["variant_id"]),
             )
-        now = utc_now()
+            record_event(
+                connection,
+                event_type="STOCK_CHANGED",
+                external_event_id=f"{order_id}:{item['variant_id']}:STOCK_CHANGED:ORDER_CANCELLED",
+                order_id=order_id,
+                product_id=item["product_id"],
+                variant_id=item["variant_id"],
+                quantity=int(item["quantity"]),
+                occurred_at=now,
+            )
         connection.execute(
             """
             UPDATE orders SET status = 'CANCELLED', payment_status = 'REFUNDED', updated_at = ?
@@ -560,6 +600,22 @@ async def cancel_order(order_id: str, payload: OrderAction) -> dict[str, object]
                    :return_fee,:created_at,:updated_at)
             """,
             claim,
+        )
+        record_event(
+            connection,
+            event_type="ORDER_CANCELLED",
+            external_event_id=f"{order_id}:ORDER_CANCELLED",
+            order_id=order_id,
+            amount=order["total"],
+            occurred_at=now,
+        )
+        record_event(
+            connection,
+            event_type="REFUND_COMPLETED",
+            external_event_id=f"{order_id}:REFUND_COMPLETED:CANCEL",
+            order_id=order_id,
+            refund_amount=claim["refund_amount"],
+            occurred_at=now,
         )
         return order_payload(connection, order_id)
 
@@ -600,7 +656,44 @@ async def request_return(order_id: str, payload: OrderAction) -> dict[str, objec
             "UPDATE orders SET status = 'RETURN_REQUESTED', updated_at = ? WHERE id = ?",
             (now, order_id),
         )
+        # Only the request is recorded here. REFUND_COMPLETED is emitted separately
+        # once a return actually finishes (pickup/inspection/refund), which this
+        # demo API does not yet implement — see docs/ai-ops-studio-master-prd.html.
+        record_event(
+            connection,
+            event_type="RETURN_REQUESTED",
+            external_event_id=f"{order_id}:RETURN_REQUESTED",
+            order_id=order_id,
+            refund_amount=int(claim["refund_amount"]),
+            occurred_at=now,
+        )
         return {"claim": claim, "order": order_payload(connection, order_id)}
+
+
+@app.get("/events")
+async def list_events(
+    order_id: str | None = None,
+    event_type: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[dict[str, object]]:
+    clauses: list[str] = []
+    parameters: list[object] = []
+    if order_id:
+        clauses.append("order_id = ?")
+        parameters.append(order_id)
+    if event_type:
+        clauses.append("event_type = ?")
+        parameters.append(event_type)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with closing(connect()) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT * FROM commerce_events {where}
+            ORDER BY occurred_at DESC, rowid DESC LIMIT ?
+            """,
+            [*parameters, limit],
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 @app.get("/policies/commerce")
