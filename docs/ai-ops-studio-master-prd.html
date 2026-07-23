@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AI Ops Studio 커머스 자동화 비서와 Demo Store 통합 Master PRD">
+  <title>AI Ops Studio · Commerce AI Master PRD</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --surface-2: #eef1f5;
+      --text: #172033;
+      --muted: #637083;
+      --line: #dce1e8;
+      --brand: #3157d5;
+      --brand-soft: #e9eeff;
+      --brand-2: #147d70;
+      --brand-2-soft: #e5f5f1;
+      --warn: #9a5b00;
+      --warn-soft: #fff3d9;
+      --danger: #b63838;
+      --danger-soft: #ffeded;
+      --shadow: 0 12px 40px rgba(23, 32, 51, .08);
+      --radius: 18px;
+    }
+
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0f1420;
+      --surface: #171e2c;
+      --surface-2: #20293a;
+      --text: #eef2f8;
+      --muted: #a7b2c3;
+      --line: #303b4f;
+      --brand: #8ea7ff;
+      --brand-soft: #26345f;
+      --brand-2: #75d7c8;
+      --brand-2-soft: #193d3a;
+      --warn: #f2be62;
+      --warn-soft: #49371c;
+      --danger: #ff9797;
+      --danger-soft: #4b2529;
+      --shadow: 0 12px 40px rgba(0, 0, 0, .25);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+    body {
+      margin: 0;
+      font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    a { color: inherit; }
+    button { font: inherit; }
+    .shell { max-width: 1480px; margin: 0 auto; padding: 0 28px 80px; }
+    .topbar {
+      position: sticky; top: 0; z-index: 30;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 18px; min-height: 64px; padding: 10px 28px;
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      border-bottom: 1px solid var(--line); backdrop-filter: blur(14px);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; letter-spacing: -.02em; }
+    .brand-mark { width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: var(--shadow); }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .pill, .theme-button {
+      border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px;
+      background: var(--surface); color: var(--muted); font-size: 13px;
+    }
+    .theme-button { cursor: pointer; color: var(--text); }
+    .hero {
+      margin: 34px 0 26px; padding: 44px;
+      background: linear-gradient(135deg, var(--brand-soft), var(--surface) 48%, var(--brand-2-soft));
+      border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow);
+    }
+    .eyebrow { color: var(--brand); font-size: 13px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1, h2, h3, h4 { line-height: 1.28; letter-spacing: -.025em; margin: 0; }
+    h1 { margin-top: 10px; max-width: 900px; font-size: clamp(34px, 5vw, 64px); }
+    h2 { font-size: clamp(25px, 3vw, 36px); }
+    h3 { font-size: 20px; }
+    h4 { font-size: 16px; }
+    .hero p { max-width: 860px; margin: 18px 0 0; color: var(--muted); font-size: 18px; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+    .decision {
+      display: grid; grid-template-columns: 160px 1fr; gap: 22px;
+      margin-top: 32px; padding-top: 26px; border-top: 1px solid var(--line);
+    }
+    .decision strong { color: var(--brand-2); }
+    .layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 28px; align-items: start; }
+    .toc {
+      position: sticky; top: 86px; padding: 18px;
+      background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .toc-title { margin-bottom: 10px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .1em; }
+    .toc a { display: block; padding: 8px 10px; border-radius: 10px; color: var(--muted); text-decoration: none; font-size: 14px; }
+    .toc a:hover, .toc a.active { background: var(--brand-soft); color: var(--brand); }
+    main { min-width: 0; }
+    section { margin-bottom: 26px; padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+    section > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    section > header p { margin: 8px 0 0; color: var(--muted); }
+    .section-no { color: var(--brand); font-weight: 800; font-size: 13px; }
+    .grid { display: grid; gap: 16px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card { padding: 20px; background: var(--surface-2); border-radius: 14px; }
+    .card h3, .card h4 { margin-bottom: 8px; }
+    .card p { margin: 0; color: var(--muted); }
+    .card ul { margin-bottom: 0; }
+    .metric { font-size: 26px; font-weight: 800; color: var(--brand); }
+    .tag { display: inline-block; margin: 3px 4px 3px 0; padding: 4px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-size: 12px; font-weight: 700; }
+    .tag.green { background: var(--brand-2-soft); color: var(--brand-2); }
+    .tag.warn { background: var(--warn-soft); color: var(--warn); }
+    .callout { padding: 18px 20px; border-left: 4px solid var(--brand); background: var(--brand-soft); border-radius: 0 12px 12px 0; }
+    .callout strong { display: block; margin-bottom: 3px; }
+    .callout p { margin: 0; color: var(--muted); }
+    .plan-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .plan { position: relative; display: flex; flex-direction: column; min-height: 100%; padding: 22px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 16px; }
+    .plan.featured { border: 2px solid var(--brand); background: linear-gradient(180deg, var(--brand-soft), var(--surface-2)); }
+    .plan-name { color: var(--brand); font-size: 13px; font-weight: 800; letter-spacing: .1em; }
+    .plan-price { margin: 10px 0 4px; font-size: 28px; font-weight: 800; letter-spacing: -.04em; }
+    .plan-price small { color: var(--muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+    .plan-copy { min-height: 52px; color: var(--muted); }
+    .plan ul { flex: 1; margin: 18px 0 0; padding-left: 20px; }
+    .plan li { margin: 7px 0; }
+    .plan-badge { position: absolute; top: 16px; right: 16px; padding: 4px 8px; border-radius: 999px; background: var(--brand); color: var(--surface); font-size: 11px; font-weight: 800; }
+    .assistant-loop { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .assistant-step { position: relative; padding: 16px; background: var(--surface-2); border-radius: 12px; }
+    .assistant-step:not(:last-child)::after { content: "→"; position: absolute; top: 50%; right: -10px; z-index: 2; color: var(--brand); font-weight: 800; transform: translate(50%, -50%); }
+    .assistant-step strong { display: block; margin-bottom: 5px; }
+    .assistant-step span { color: var(--muted); font-size: 13px; }
+    .report-preview { display: grid; gap: 10px; }
+    .report-line { display: grid; grid-template-columns: 140px 1fr auto; gap: 12px; align-items: center; }
+    .report-line span { color: var(--muted); font-size: 13px; }
+    .report-track { height: 10px; overflow: hidden; background: var(--line); border-radius: 999px; }
+    .report-track i { display: block; height: 100%; background: var(--brand); border-radius: inherit; }
+    .report-track i.negative { background: var(--danger); }
+    .report-track i.secondary { background: var(--brand-2); }
+    .discord-card { display: grid; grid-template-columns: 72px 1fr; gap: 16px; align-items: start; }
+    .discord-mark { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 18px; background: var(--brand-soft); color: var(--brand); font-weight: 800; }
+    ul, ol { padding-left: 22px; }
+    li + li { margin-top: 6px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+    table { width: 100%; border-collapse: collapse; min-width: 680px; }
+    th, td { padding: 13px 15px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--surface-2); color: var(--muted); font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    code { padding: 2px 6px; border-radius: 6px; background: var(--surface-2); color: var(--brand); }
+    pre { margin: 0; padding: 18px; overflow: auto; border-radius: 14px; background: #111827; color: #dce7ff; line-height: 1.55; }
+    .diagram { overflow-x: auto; padding: 14px 0 2px; }
+    .diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
+    .diagram .box { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.5; }
+    .diagram .box-brand { fill: var(--brand-soft); stroke: var(--brand); stroke-width: 1.5; }
+    .diagram .box-green { fill: var(--brand-2-soft); stroke: var(--brand-2); stroke-width: 1.5; }
+    .diagram .box-warn { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1.5; }
+    .diagram .label { fill: var(--text); font: 600 14px Pretendard, sans-serif; text-anchor: middle; dominant-baseline: middle; }
+    .diagram .small { fill: var(--muted); font: 500 12px Pretendard, sans-serif; text-anchor: middle; dominant-baseline: middle; }
+    .diagram .line { stroke: var(--muted); stroke-width: 1.8; fill: none; marker-end: url(#arrow); }
+    .diagram .line-green { stroke: var(--brand-2); stroke-width: 2; fill: none; marker-end: url(#arrowGreen); }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px 18px; margin-top: 10px; color: var(--muted); font-size: 13px; }
+    .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--line); }
+    .legend .main::before { background: var(--brand-soft); border-color: var(--brand); }
+    .legend .demo::before { background: var(--brand-2-soft); border-color: var(--brand-2); }
+    .legend .external::before { background: var(--warn-soft); border-color: var(--warn); }
+    .flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch; gap: 26px; counter-reset: flow; }
+    .flow-item { position: relative; padding: 18px; background: var(--surface-2); border-radius: 14px; }
+    .flow-item::before { counter-increment: flow; content: counter(flow); display: grid; place-items: center; width: 26px; height: 26px; margin-bottom: 10px; border-radius: 50%; background: var(--brand); color: white; font-size: 12px; font-weight: 800; }
+    .flow-item:not(:last-child)::after { content: "→"; position: absolute; right: -20px; top: 46%; color: var(--muted); font-weight: 800; }
+    .phase { display: grid; grid-template-columns: 92px 1fr 140px; gap: 16px; align-items: start; padding: 16px 0; border-bottom: 1px solid var(--line); }
+    .phase:last-child { border-bottom: 0; }
+    .phase-name { font-weight: 800; color: var(--brand); }
+    .phase-time { color: var(--muted); text-align: right; }
+    .req-id { white-space: nowrap; font-weight: 800; color: var(--brand); }
+    .priority { white-space: nowrap; font-size: 12px; font-weight: 800; }
+    .p0 { color: var(--danger); }
+    .p1 { color: var(--warn); }
+    .p2 { color: var(--brand-2); }
+    footer { padding: 24px 0; text-align: center; color: var(--muted); font-size: 13px; }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc { position: static; display: flex; gap: 4px; overflow-x: auto; }
+      .toc-title { display: none; }
+      .toc a { white-space: nowrap; }
+      .grid.three, .plan-grid { grid-template-columns: 1fr 1fr; }
+      .flow { grid-template-columns: 1fr 1fr; }
+      .flow-item::after { display: none; }
+    }
+
+    @media (max-width: 680px) {
+      .shell { padding: 0 14px 56px; }
+      .topbar { padding: 10px 14px; }
+      .pill { display: none; }
+      .hero { padding: 28px 22px; }
+      .decision { grid-template-columns: 1fr; gap: 8px; }
+      section { padding: 24px 18px; }
+      .grid.two, .grid.three, .flow, .plan-grid, .assistant-loop { grid-template-columns: 1fr; }
+      .assistant-step:not(:last-child)::after { content: "↓"; top: auto; right: 50%; bottom: -10px; transform: translate(50%, 50%); }
+      .report-line { grid-template-columns: 110px 1fr; }
+      .report-line strong { grid-column: 2; }
+      .phase { grid-template-columns: 1fr; gap: 6px; }
+      .phase-time { text-align: left; }
+    }
+
+    @media print {
+      .topbar, .toc, .theme-button { display: none !important; }
+      body { background: white; }
+      .shell { max-width: none; padding: 0; }
+      .hero, section { box-shadow: none; break-inside: avoid; }
+      .layout { display: block; }
+      section { page-break-inside: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>AI Ops Studio</div>
+    <div class="top-actions">
+      <span class="pill">Commerce AI Master PRD · v1.1</span>
+      <button class="theme-button" id="themeToggle" type="button" aria-label="색상 모드 전환">다크 모드</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <article class="hero">
+      <div class="eyebrow">Product Requirements Document</div>
+      <h1>문의 자동화에서 매출·수익을 설명하는 커머스 AI 비서로</h1>
+      <p>AI Ops Studio는 쇼핑몰의 문의, 주문, 판매, 환불 이벤트를 모아 반복 업무를 자동화하고 운영자가 바로 행동할 수 있는 월별 경영 브리핑을 제공하는 B2B SaaS다. Demo Store는 실제 연동 전 제품 가치를 증명하는 데이터 원천이다.</p>
+      <div class="hero-meta">
+        <span class="tag">React · TypeScript</span>
+        <span class="tag">FastAPI · Python</span>
+        <span class="tag">WebSocket</span>
+        <span class="tag green">LLM · RAG</span>
+        <span class="tag green">B2B SaaS</span>
+        <span class="tag green">Commerce Intelligence</span>
+        <span class="tag">Discord Webhook</span>
+        <span class="tag warn">Portfolio MVP</span>
+      </div>
+      <div class="decision">
+        <strong>문서 통합 결정</strong>
+        <div>AI는 판매·환불 이벤트마다 호출하지 않는다. 이벤트를 정확히 누적·집계한 뒤 정해진 시점에 집계 데이터만 AI에 전달해 분석 비용과 환각 위험을 낮춘다. 초기 알림 채널은 구현이 단순하고 데모가 명확한 Discord Webhook으로 고정한다.</div>
+      </div>
+    </article>
+
+    <div class="layout">
+      <nav class="toc" aria-label="문서 목차">
+        <div class="toc-title">CONTENTS</div>
+        <a href="#summary">제품 정의</a>
+        <a href="#personas">사용자</a>
+        <a href="#journey">핵심 시나리오</a>
+        <a href="#architecture">통합 구조</a>
+        <a href="#ops-prd">AI Ops PRD</a>
+        <a href="#store-prd">Demo Store PRD</a>
+        <a href="#integration">데이터 연동</a>
+        <a href="#data">데이터 모델</a>
+        <a href="#assistant">AI 매출 비서</a>
+        <a href="#plans">요금제</a>
+        <a href="#discord">Discord 알림</a>
+        <a href="#security">보안</a>
+        <a href="#roadmap">로드맵</a>
+        <a href="#acceptance">출시 기준</a>
+      </nav>
+
+      <main>
+        <section id="summary">
+          <header>
+            <div><span class="section-no">01</span><h2>제품 정의</h2><p>무엇을 만들고, 무엇은 만들지 않는지 고정한다.</p></div>
+          </header>
+          <div class="callout">
+            <strong>한 줄 정의</strong>
+            <p>쇼핑몰의 고객지원과 운영 데이터를 자동 수집·집계하고, AI가 “무슨 일이 있었고 무엇을 해야 하는지” 설명하는 커머스 운영 비서형 B2B SaaS.</p>
+          </div>
+          <div class="grid three" style="margin-top:16px">
+            <div class="card"><div class="metric">60%+</div><h3>자동 해결률</h3><p>지원 범위에 속하는 반복 문의 기준</p></div>
+            <div class="card"><div class="metric">D+1</div><h3>운영 브리핑</h3><p>전일 매출·환불·상품 이상 징후 요약</p></div>
+            <div class="card"><div class="metric">1회</div><h3>월간 경영 리포트</h3><p>전월 비교와 순이익·광고비 분석</p></div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="card">
+              <h3>제품 목표</h3>
+              <ul>
+                <li>배송·취소·환불 반복 문의를 자동 처리한다.</li>
+                <li>판매·환불 이벤트를 누적해 매출과 환불률을 자동 집계한다.</li>
+                <li>인기·부진·고환불 상품과 전월 대비 변화를 AI가 설명한다.</li>
+                <li>광고비·원가·수수료를 반영한 추정 순이익을 계산한다.</li>
+                <li>낮은 신뢰도와 위험 문의는 안전하게 상담원에게 이관한다.</li>
+                <li>중요 운영 요약과 이상 징후를 Discord로 전달한다.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>MVP 비목표</h3>
+              <ul>
+                <li>실제 PG 정산과 세무·회계 확정 수치 제공</li>
+                <li>모든 쇼핑몰 플랫폼 범용 연동</li>
+                <li>전화·음성 상담 및 자체 LLM 학습</li>
+                <li>완전한 노코드 워크플로 엔진</li>
+                <li>판매·환불 이벤트마다 LLM을 호출하는 실시간 분석</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="personas">
+          <header>
+            <div><span class="section-no">02</span><h2>사용자와 권한</h2><p>도입 사용자와 최종 문의자를 분리한다.</p></div>
+          </header>
+          <div class="grid three">
+            <div class="card"><span class="tag">OWNER / ADMIN</span><h3>쇼핑몰 운영자</h3><p>쇼핑몰 연결, 정책 등록, 자동화 범위와 멤버 권한을 관리한다.</p></div>
+            <div class="card"><span class="tag green">AGENT</span><h3>상담원</h3><p>AI가 이관한 문의를 검토하고 수정 답변을 전송한다.</p></div>
+            <div class="card"><span class="tag warn">CUSTOMER</span><h3>구매 고객</h3><p>쇼핑몰 안에서 자신의 주문을 선택하고 배송·취소·환불을 문의한다.</p></div>
+          </div>
+          <div class="table-wrap" style="margin-top:16px">
+            <table>
+              <thead><tr><th>역할</th><th>조회</th><th>처리</th><th>설정</th><th>위험 작업</th></tr></thead>
+              <tbody>
+                <tr><td>OWNER</td><td>전체</td><td>가능</td><td>조직·연동·정책</td><td>승인 및 실행</td></tr>
+                <tr><td>ADMIN</td><td>전체</td><td>가능</td><td>멤버·자동화</td><td>정책 범위 내 승인</td></tr>
+                <tr><td>AGENT</td><td>담당 문의</td><td>답변·상태 변경</td><td>불가</td><td>승인 요청</td></tr>
+                <tr><td>VIEWER</td><td>대시보드·로그</td><td>불가</td><td>불가</td><td>불가</td></tr>
+                <tr><td>CUSTOMER</td><td>본인 주문</td><td>문의·재문의</td><td>불가</td><td>요청만 가능</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="journey">
+          <header>
+            <div><span class="section-no">03</span><h2>대표 데모 시나리오</h2><p>고객지원 자동화와 운영 비서 가치를 한 영상에서 연결한다.</p></div>
+          </header>
+          <h3 style="margin-bottom:12px">시나리오 A · 고객지원 자동화</h3>
+          <div class="flow">
+            <div class="flow-item"><h4>주문 선택</h4><p>고객이 배송 중인 주문을 선택한다.</p></div>
+            <div class="flow-item"><h4>문의 입력</h4><p>“언제 도착하나요?”를 입력한다.</p></div>
+            <div class="flow-item"><h4>데이터 조회</h4><p>주문·배송 API와 정책을 조회한다.</p></div>
+            <div class="flow-item"><h4>AI 판단</h4><p>근거 기반 답변과 신뢰도를 생성한다.</p></div>
+            <div class="flow-item"><h4>운영 추적</h4><p>대시보드와 실행 로그에 즉시 반영한다.</p></div>
+          </div>
+          <div class="grid two" style="margin-top:20px">
+            <div class="callout"><strong>성공 분기</strong><p>배송 조회 성공 + 정책 존재 + 신뢰도 충족 → 고객에게 자동 답변</p></div>
+            <div class="callout" style="border-left-color:var(--warn);background:var(--warn-soft)"><strong>안전 분기</strong><p>API 실패·분쟁·고액 환불·낮은 신뢰도 → 상담원에게 근거와 함께 이관</p></div>
+          </div>
+          <h3 style="margin:28px 0 12px">시나리오 B · 월간 커머스 브리핑</h3>
+          <div class="assistant-loop">
+            <div class="assistant-step"><strong>이벤트 누적</strong><span>판매·취소·환불·광고비</span></div>
+            <div class="assistant-step"><strong>숫자 집계</strong><span>매출·순이익·환불률</span></div>
+            <div class="assistant-step"><strong>전월 비교</strong><span>증감률·상품 순위·이상치</span></div>
+            <div class="assistant-step"><strong>AI 해석</strong><span>원인 후보·우선 행동 제안</span></div>
+            <div class="assistant-step"><strong>전달</strong><span>Ops Console + Discord</span></div>
+          </div>
+          <div class="callout" style="margin-top:20px">
+            <strong>AI 비서 예시</strong>
+            <p>“7월 매출은 전월 대비 12.4% 증가했지만 광고비가 31% 늘어 추정 순이익률은 3.2%p 하락했습니다. Minimal Leather Sneakers는 판매 1위이며, Canvas Daily Bag은 환불률 8.7%로 가장 높아 상세 설명과 사이즈 안내를 점검해야 합니다.”</p>
+          </div>
+        </section>
+
+        <section id="architecture">
+          <header>
+            <div><span class="section-no">04</span><h2>통합 시스템 구조</h2><p>Demo Store는 데이터를 만들고, AI Ops Studio는 그 데이터를 처리·운영한다.</p></div>
+          </header>
+          <div class="diagram" role="img" aria-label="Demo Store와 AI Ops Studio 통합 아키텍처">
+            <svg viewBox="0 0 1060 500">
+              <defs>
+                <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--muted)"/></marker>
+                <marker id="arrowGreen" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--brand-2)"/></marker>
+              </defs>
+              <rect x="20" y="52" width="260" height="380" rx="22" class="box-green"/>
+              <text x="150" y="78" class="label">Demo Store</text>
+              <rect x="48" y="105" width="204" height="60" rx="12" class="box"/><text x="150" y="128" class="label">Storefront</text><text x="150" y="149" class="small">상품 · 주문 · 문의 위젯</text>
+              <rect x="48" y="195" width="204" height="60" rx="12" class="box"/><text x="150" y="218" class="label">Mock Commerce API</text><text x="150" y="239" class="small">주문 · 배송 · 취소 · 환불</text>
+              <rect x="48" y="285" width="204" height="60" rx="12" class="box"/><text x="150" y="308" class="label">Seed Data</text><text x="150" y="329" class="small">상태별 주문 · 고객 · 상품</text>
+              <rect x="48" y="375" width="204" height="34" rx="10" class="box"/><text x="150" y="393" class="small">Webhook Publisher</text>
+
+              <rect x="340" y="20" width="440" height="442" rx="22" class="box-brand"/>
+              <text x="560" y="48" class="label">AI Ops Studio</text>
+              <rect x="372" y="78" width="160" height="56" rx="12" class="box"/><text x="452" y="101" class="label">Ops Console</text><text x="452" y="121" class="small">문의 · 매출 · 리포트</text>
+              <rect x="588" y="78" width="160" height="56" rx="12" class="box"/><text x="668" y="101" class="label">API Gateway</text><text x="668" y="121" class="small">Auth · RBAC</text>
+              <rect x="372" y="174" width="160" height="62" rx="12" class="box"/><text x="452" y="198" class="label">Inquiry Service</text><text x="452" y="220" class="small">수집 · 상태 · 배정</text>
+              <rect x="588" y="174" width="160" height="62" rx="12" class="box"/><text x="668" y="198" class="label">AI Orchestrator</text><text x="668" y="220" class="small">분류 · RAG · 생성</text>
+              <rect x="372" y="276" width="160" height="62" rx="12" class="box"/><text x="452" y="300" class="label">Worker + Queue</text><text x="452" y="322" class="small">재시도 · 실패 큐</text>
+              <rect x="588" y="276" width="160" height="62" rx="12" class="box"/><text x="668" y="300" class="label">Analytics Aggregator</text><text x="668" y="322" class="small">집계 · 비교 · 순위</text>
+              <rect x="372" y="378" width="376" height="54" rx="12" class="box"/><text x="560" y="399" class="label">SQLite → PostgreSQL · Redis</text><text x="560" y="419" class="small">이벤트 · 일별 지표 · 정책 · 리포트</text>
+
+              <rect x="840" y="92" width="190" height="280" rx="22" class="box-warn"/>
+              <text x="935" y="120" class="label">External</text>
+              <rect x="865" y="150" width="140" height="50" rx="12" class="box"/><text x="935" y="176" class="label">LLM API</text>
+              <rect x="865" y="226" width="140" height="50" rx="12" class="box"/><text x="935" y="252" class="label">Discord Webhook</text>
+              <rect x="865" y="302" width="140" height="50" rx="12" class="box"/><text x="935" y="328" class="label">Ad Cost Input</text>
+
+              <path d="M252 135 C300 135, 310 106, 372 106" class="line-green"/>
+              <path d="M252 225 C310 225, 312 205, 372 205" class="line-green"/>
+              <path d="M252 392 C310 392, 310 307, 372 307" class="line-green"/>
+              <path d="M532 106 L588 106" class="line"/>
+              <path d="M668 134 L668 174" class="line"/>
+              <path d="M588 205 L532 205" class="line"/>
+              <path d="M452 236 L452 276" class="line"/>
+              <path d="M532 307 L588 307" class="line"/>
+              <path d="M560 338 L560 378" class="line"/>
+              <path d="M748 205 C806 205, 810 175, 865 175" class="line"/>
+              <path d="M748 307 C806 307, 810 251, 865 251" class="line"/>
+              <path d="M748 307 C814 307, 816 327, 865 327" class="line"/>
+            </svg>
+          </div>
+          <div class="legend"><span class="main">주 제품</span><span class="demo">검증용 데모 앱</span><span class="external">외부 서비스</span></div>
+        </section>
+
+        <section id="ops-prd">
+          <header>
+            <div><span class="section-no">05</span><h2>AI Ops Studio PRD</h2><p>운영자가 실제로 사용한다고 가정한 핵심 요구사항.</p></div>
+          </header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>영역</th><th>요구사항</th><th>완료 조건</th><th>우선순위</th></tr></thead>
+              <tbody>
+                <tr><td class="req-id">OPS-01</td><td>조직·권한</td><td>조직 생성, 멤버 초대, OWNER/ADMIN/AGENT/VIEWER 권한</td><td>UI와 API 모두 권한 없는 접근을 차단한다.</td><td class="priority p0">P0</td></tr>
+                <tr><td class="req-id">OPS-02</td><td>문의 관리</td><td>필터, 검색, 담당자 배정, 상태 변경, 내부 메모</td><td>모든 변경이 타임라인과 감사 로그에 남는다.</td><td class="priority p0">P0</td></tr>
+                <tr><td class="req-id">OPS-03</td><td>AI 처리</td><td>의도 분류 → 주문 조회 → 정책 검색 → 답변 생성 → 검증</td><td>각 단계의 입력, 출력, 지연시간, 버전을 조회할 수 있다.</td><td class="priority p0">P0</td></tr>
+                <tr><td class="req-id">OPS-04</td><td>안전 이관</td><td>낮은 신뢰도, 고액 환불, 분쟁, 외부 API 실패 이관</td><td>이관 사유와 AI 추천 답변이 상담원에게 표시된다.</td><td class="priority p0">P0</td></tr>
+                <tr><td class="req-id">OPS-05</td><td>실시간</td><td>신규 문의와 상태 변경을 WebSocket으로 반영</td><td>3초 이내 반영하며 재연결 시 누락 이벤트를 복구한다.</td><td class="priority p0">P0</td></tr>
+                <tr><td class="req-id">OPS-06</td><td>대시보드</td><td>자동 해결률, 이관률, p95 처리시간, 실패율 시각화</td><td>기간·유형 필터와 원본 문의 드릴다운을 제공한다.</td><td class="priority p1">P1</td></tr>
+                <tr><td class="req-id">OPS-07</td><td>실패 처리</td><td>지수 백오프, 최대 재시도, 실패 큐, 수동 재실행</td><td>중복 실행 없이 동일 작업을 안전하게 재처리한다.</td><td class="priority p1">P1</td></tr>
+                <tr><td class="req-id">OPS-08</td><td>정책 문서</td><td>FAQ·환불 정책 업로드 및 검색 인덱싱</td><td>답변에 사용된 정책 문서와 구간을 표시한다.</td><td class="priority p1">P1</td></tr>
+                <tr><td class="req-id">OPS-09</td><td>워크플로</td><td>제한형 노드 편집, 검증, 테스트, 버전 게시</td><td>처리에 사용한 게시 버전을 실행 기록에 보존한다.</td><td class="priority p2">P2</td></tr>
+                <tr><td class="req-id">OPS-10</td><td>커머스 이벤트</td><td>판매·취소·환불 이벤트를 멱등하게 누적</td><td>중복 이벤트 없이 일별·월별 집계 원본을 재현한다.</td><td class="priority p0">P0</td></tr>
+                <tr><td class="req-id">OPS-11</td><td>매출 분석</td><td>총매출, 실매출, 객단가, 상품 판매 순위, 전월 대비 계산</td><td>모든 AI 설명에 계산된 원본 수치와 기간을 표시한다.</td><td class="priority p0">P0</td></tr>
+                <tr><td class="req-id">OPS-12</td><td>수익 분석</td><td>원가·광고비·PG/플랫폼 수수료를 반영한 추정 순이익</td><td>입력되지 않은 비용은 누락으로 표시하고 확정 이익으로 표현하지 않는다.</td><td class="priority p1">P1</td></tr>
+                <tr><td class="req-id">OPS-13</td><td>환불 분석</td><td>환불액·환불률·상품별 환불 순위와 사유 분포</td><td>판매량이 적은 상품의 비율 왜곡을 최소 판매 건수와 함께 표시한다.</td><td class="priority p1">P1</td></tr>
+                <tr><td class="req-id">OPS-14</td><td>AI 리포트</td><td>집계 JSON을 기반으로 일간 브리핑과 월간 리포트 생성</td><td>AI 호출 실패 시에도 숫자 대시보드는 정상 제공한다.</td><td class="priority p1">P1</td></tr>
+                <tr><td class="req-id">OPS-15</td><td>플랜</td><td>Basic·Pro·Business 기능 게이트와 사용량 제한</td><td>서버 API와 UI 모두 조직의 구독 플랜을 검증한다.</td><td class="priority p1">P1</td></tr>
+                <tr><td class="req-id">OPS-16</td><td>알림</td><td>Discord Webhook으로 중요 이벤트와 정기 리포트 전달</td><td>Webhook URL을 암호화하고 실패 전송을 재시도한다.</td><td class="priority p1">P1</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3 style="margin:26px 0 12px">문의 상태 머신</h3>
+          <div class="diagram" role="img" aria-label="문의 처리 상태 전이">
+            <svg viewBox="0 0 1030 220">
+              <defs><marker id="arrow2" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--muted)"/></marker></defs>
+              <g fill="none" stroke="var(--muted)" stroke-width="1.8" marker-end="url(#arrow2)">
+                <path d="M180 110 L250 110"/><path d="M430 90 C480 44, 530 44, 580 90"/><path d="M430 130 C480 176, 530 176, 580 130"/><path d="M750 130 L820 130"/>
+              </g>
+              <rect x="20" y="75" width="160" height="70" rx="15" class="box"/><text x="100" y="103" class="label">RECEIVED</text><text x="100" y="127" class="small">문의 접수</text>
+              <rect x="250" y="75" width="180" height="70" rx="15" class="box-brand"/><text x="340" y="103" class="label">AI_PROCESSING</text><text x="340" y="127" class="small">자동 처리</text>
+              <rect x="580" y="20" width="170" height="70" rx="15" class="box-green"/><text x="665" y="48" class="label">AUTO_RESOLVED</text><text x="665" y="72" class="small">자동 답변 완료</text>
+              <rect x="580" y="130" width="170" height="70" rx="15" class="box-warn"/><text x="665" y="158" class="label">ESCALATED</text><text x="665" y="182" class="small">상담원 이관</text>
+              <rect x="820" y="95" width="180" height="70" rx="15" class="box"/><text x="910" y="123" class="label">RESOLVED</text><text x="910" y="147" class="small">상담 완료</text>
+              <text x="505" y="34" class="small">신뢰도 충족</text><text x="505" y="195" class="small">위험·실패·낮은 신뢰도</text>
+            </svg>
+          </div>
+        </section>
+
+        <section id="store-prd">
+          <header>
+            <div><span class="section-no">06</span><h2>Demo Store PRD</h2><p>쇼핑몰 자체가 목적이 아니라 연동과 문의 자동화를 증명하는 테스트베드다.</p></div>
+          </header>
+          <div class="callout">
+            <strong>범위 원칙</strong>
+            <p>현재 구현된 패션 쇼핑몰의 상품·장바구니·결제·주문·환불 흐름을 분석 데이터의 기준으로 사용한다. 외부 쇼핑몰 범용 연동보다 하나의 완결된 데이터 흐름을 먼저 증명한다.</p>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="card">
+              <h3>포함</h3>
+              <ul>
+                <li>상품 목록·상세</li>
+                <li>상품 옵션·재고와 장바구니</li>
+                <li>테스트 결제와 주문 생성</li>
+                <li>내 주문 목록·상세·배송 상태</li>
+                <li>주문과 연결된 문의 위젯</li>
+                <li>취소·반품·환불 요청 API</li>
+                <li>판매·환불 분석 이벤트 생성</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>제외</h3>
+              <ul>
+                <li>실제 결제와 정산</li>
+                <li>실제 택배사 및 PG 연동</li>
+                <li>상품 리뷰 작성과 개인화 추천</li>
+                <li>판매자 상품 등록·재고 관리 화면</li>
+                <li>외부 광고 플랫폼 자동 비용 수집</li>
+              </ul>
+            </div>
+          </div>
+          <h3 style="margin:26px 0 12px">화면 구조</h3>
+          <div class="grid three">
+            <div class="card"><h4><code>/products</code></h4><p>상품 목록과 상세 이동. 제품 설명보다 시드 데이터 확인이 목적.</p></div>
+            <div class="card"><h4><code>/orders</code></h4><p>상태별 주문 목록. 문의할 주문을 선택한다.</p></div>
+            <div class="card"><h4><code>/orders/:id</code></h4><p>주문·배송 상세와 문의 위젯 진입점.</p></div>
+          </div>
+          <h3 style="margin:26px 0 12px">Mock Commerce API</h3>
+          <pre><code>GET  /api/products
+GET  /api/customers/me
+GET  /api/orders
+GET  /api/orders/:id
+GET  /api/orders/:id/shipment
+POST /api/orders/:id/cancel
+POST /api/orders/:id/refund
+POST /api/webhooks/test</code></pre>
+          <h3 style="margin:26px 0 12px">필수 시드 데이터</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>주문 상태</th><th>대표 문의</th><th>기대 처리</th></tr></thead>
+              <tbody>
+                <tr><td>배송 준비</td><td>지금 취소할 수 있나요?</td><td>정책 충족 시 취소 절차 안내</td></tr>
+                <tr><td>배송 중</td><td>언제 도착하나요?</td><td>배송 데이터 기반 자동 답변</td></tr>
+                <tr><td>배송 완료</td><td>교환하고 싶어요.</td><td>수령일과 정책을 확인해 안내</td></tr>
+                <tr><td>환불 기한 초과</td><td>환불해 주세요.</td><td>예외 사유로 상담원 이관</td></tr>
+                <tr><td>외부 API 오류</td><td>주문 상태를 확인해 주세요.</td><td>재시도 후 실패 큐와 이관 생성</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="integration">
+          <header>
+            <div><span class="section-no">07</span><h2>데이터 획득과 연동 계약</h2><p>고객에게 쇼핑몰 정보를 입력받지 않고 운영자가 최초 1회 연결한다.</p></div>
+          </header>
+          <div class="grid two">
+            <div class="card">
+              <h3>운영자에게 요구</h3>
+              <ol>
+                <li>쇼핑몰 주소와 플랫폼 유형</li>
+                <li>상품·주문·배송 조회 권한</li>
+                <li>취소·환불 등 쓰기 권한의 별도 승인</li>
+                <li>FAQ·배송·교환·환불 정책</li>
+                <li>상품 원가, 월별 광고비, 플랫폼·PG 수수료율</li>
+                <li>자동 답변과 상담원 이관 기준</li>
+                <li>Discord 채널 Webhook URL과 알림 기준</li>
+              </ol>
+            </div>
+            <div class="card">
+              <h3>구매 고객에게 요구</h3>
+              <ol>
+                <li>문의 내용</li>
+                <li>로그인 상태에서는 대상 주문 선택</li>
+                <li>비로그인 상태에서는 주문번호</li>
+                <li>이메일 또는 휴대전화 인증</li>
+              </ol>
+              <p>비밀번호, 전체 카드번호, API Key, 주민등록번호는 요구하지 않는다.</p>
+            </div>
+          </div>
+          <h3 style="margin:26px 0 12px">정보별 원천</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>정보</th><th>원천</th><th>방식</th><th>갱신</th></tr></thead>
+              <tbody>
+                <tr><td>상품·주문·배송</td><td>Commerce API</td><td>서버 간 인증 API</td><td>조회 시점 + Webhook</td></tr>
+                <tr><td>판매·취소·환불</td><td>Demo Store Event</td><td>멱등 이벤트 적재</td><td>상태 변경 시</td></tr>
+                <tr><td>원가·광고비·수수료</td><td>운영자</td><td>월별 직접 입력·CSV</td><td>월 1회 + 수정 시</td></tr>
+                <tr><td>정책·FAQ</td><td>운영자</td><td>문서 업로드·직접 입력</td><td>게시 버전 관리</td></tr>
+                <tr><td>고객 문의</td><td>문의 위젯</td><td>서명된 고객 토큰</td><td>실시간</td></tr>
+                <tr><td>운영 알림</td><td>AI Ops Studio</td><td>Discord Webhook</td><td>이벤트·일간·월간</td></tr>
+                <tr><td>운영 이벤트</td><td>AI Ops Studio</td><td>내부 이벤트 로그</td><td>실시간</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout" style="margin-top:16px;border-left-color:var(--danger);background:var(--danger-soft)">
+            <strong>연동 원칙</strong>
+            <p>무단 웹 크롤링을 기본 방식으로 사용하지 않는다. MVP는 현재 Demo Store API와 이벤트만 사용한다. 실제 고객 확장 시 공식 API → 자체 연동 API → CSV → 수동 입력 순으로 지원한다.</p>
+          </div>
+        </section>
+
+        <section id="data">
+          <header>
+            <div><span class="section-no">08</span><h2>핵심 데이터 모델</h2><p>조직 격리와 AI 실행 재현성을 중심으로 설계한다.</p></div>
+          </header>
+          <div class="diagram" role="img" aria-label="핵심 엔티티 관계">
+            <svg viewBox="0 0 1080 480">
+              <defs><marker id="arrow3" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--muted)"/></marker></defs>
+              <g fill="none" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arrow3)">
+                <path d="M210 82 L310 82"/><path d="M210 105 C255 150, 270 190, 310 220"/><path d="M210 120 C250 260, 270 340, 310 385"/>
+                <path d="M485 220 L585 220"/><path d="M760 220 L860 220"/><path d="M672 255 L672 330"/>
+                <path d="M485 385 L585 385"/><path d="M760 385 L860 385"/>
+              </g>
+              <rect x="30" y="45" width="180" height="90" rx="15" class="box-brand"/><text x="120" y="77" class="label">ORGANIZATION</text><text x="120" y="103" class="small">tenant boundary</text>
+              <rect x="310" y="45" width="175" height="75" rx="15" class="box"/><text x="397" y="73" class="label">MEMBERSHIP</text><text x="397" y="98" class="small">user · role</text>
+              <rect x="310" y="180" width="175" height="80" rx="15" class="box-green"/><text x="397" y="208" class="label">INQUIRY</text><text x="397" y="234" class="small">status · category</text>
+              <rect x="585" y="180" width="175" height="80" rx="15" class="box-brand"/><text x="672" y="208" class="label">AI_EXECUTION</text><text x="672" y="234" class="small">model · confidence</text>
+              <rect x="860" y="180" width="190" height="80" rx="15" class="box"/><text x="955" y="208" class="label">EXECUTION_STEP</text><text x="955" y="234" class="small">input · output · latency</text>
+              <rect x="585" y="330" width="175" height="80" rx="15" class="box"/><text x="672" y="358" class="label">WORKFLOW_VERSION</text><text x="672" y="384" class="small">published definition</text>
+              <rect x="310" y="345" width="175" height="80" rx="15" class="box"/><text x="397" y="373" class="label">INTEGRATION</text><text x="397" y="399" class="small">encrypted secret</text>
+              <rect x="860" y="345" width="190" height="80" rx="15" class="box"/><text x="955" y="373" class="label">KNOWLEDGE_DOC</text><text x="955" y="399" class="small">version · chunks</text>
+            </svg>
+          </div>
+          <div class="grid two">
+            <div class="card"><h3>재현성 필드</h3><p><code>model</code>, <code>prompt_version</code>, <code>workflow_version</code>, <code>knowledge_version</code>, <code>input_snapshot</code></p></div>
+            <div class="card"><h3>멱등성 필드</h3><p><code>external_event_id</code>, <code>idempotency_key</code>, <code>attempt_count</code>, <code>processed_at</code></p></div>
+          </div>
+          <h3 style="margin:26px 0 12px">커머스 분석 엔티티</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>엔티티</th><th>핵심 필드</th><th>책임</th></tr></thead>
+              <tbody>
+                <tr><td><code>COMMERCE_EVENT</code></td><td>event_type, order_id, product_id, quantity, amount, occurred_at</td><td>판매·취소·환불 원본 이벤트 보존</td></tr>
+                <tr><td><code>DAILY_METRIC</code></td><td>date, revenue, refund_amount, orders, units</td><td>AI 없이 계산 가능한 일별 확정 집계</td></tr>
+                <tr><td><code>PRODUCT_METRIC</code></td><td>period, sold_units, revenue, refund_units, refund_rate</td><td>인기·부진·고환불 상품 순위</td></tr>
+                <tr><td><code>COST_INPUT</code></td><td>period, cogs, ad_spend, pg_fee, platform_fee</td><td>운영자가 입력한 비용과 출처 기록</td></tr>
+                <tr><td><code>AI_REPORT</code></td><td>period, input_snapshot, summary, insights, model, prompt_version</td><td>집계 수치 기반 해석과 리포트 재현</td></tr>
+                <tr><td><code>SUBSCRIPTION</code></td><td>plan, status, limits, billing_cycle</td><td>Basic·Pro·Business 기능 제한</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="assistant">
+          <header>
+            <div><span class="section-no">09</span><h2>AI 매출·수익 비서</h2><p>숫자는 코드가 계산하고 AI는 변화와 우선순위를 설명한다.</p></div>
+          </header>
+          <div class="assistant-loop">
+            <div class="assistant-step"><strong>Capture</strong><span>판매·환불 이벤트 저장</span></div>
+            <div class="assistant-step"><strong>Aggregate</strong><span>일·월·상품별 집계</span></div>
+            <div class="assistant-step"><strong>Compare</strong><span>전월·목표·상품 비교</span></div>
+            <div class="assistant-step"><strong>Explain</strong><span>AI 원인 후보와 제안</span></div>
+            <div class="assistant-step"><strong>Deliver</strong><span>대시보드·Discord·HTML</span></div>
+          </div>
+          <div class="grid two" style="margin-top:20px">
+            <div class="card">
+              <h3>코드가 결정하는 숫자</h3>
+              <ul>
+                <li><strong>총매출</strong> = 결제 완료 주문 금액 합계</li>
+                <li><strong>실매출</strong> = 총매출 − 취소액 − 환불액</li>
+                <li><strong>환불률</strong> = 환불 완료 건수 ÷ 결제 완료 건수</li>
+                <li><strong>추정 순이익</strong> = 실매출 − 원가 − 광고비 − PG/플랫폼 수수료</li>
+                <li><strong>상품 순위</strong> = 판매 수량·매출·환불률별 정렬</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>AI가 설명하는 내용</h3>
+              <ul>
+                <li>전월 대비 매출·순이익·광고비 변화 요약</li>
+                <li>인기 상품과 가장 적게 팔린 상품 식별</li>
+                <li>환불이 많은 상품과 주요 사유 후보</li>
+                <li>비용 증가와 이익률 하락의 연관성 설명</li>
+                <li>다음 달 확인할 운영 액션 3개 제안</li>
+              </ul>
+            </div>
+          </div>
+          <h3 style="margin:26px 0 12px">Business 플랜 월간 리포트 예시</h3>
+          <div class="card report-preview" aria-label="월간 커머스 지표 예시">
+            <div class="report-line"><span>실매출</span><div class="report-track"><i style="width:82%"></i></div><strong>₩18.4M · +12.4%</strong></div>
+            <div class="report-line"><span>추정 순이익</span><div class="report-track"><i class="secondary" style="width:54%"></i></div><strong>₩4.1M · +2.1%</strong></div>
+            <div class="report-line"><span>광고비</span><div class="report-track"><i class="negative" style="width:71%"></i></div><strong>₩3.2M · +31.0%</strong></div>
+            <div class="report-line"><span>환불률</span><div class="report-track"><i class="negative" style="width:28%"></i></div><strong>4.8% · +0.9%p</strong></div>
+          </div>
+          <div class="callout" style="margin-top:16px">
+            <strong>정확성 원칙</strong>
+            <p>LLM이 금액을 계산하지 않는다. 서버가 생성한 집계 JSON과 비교 결과를 프롬프트에 한 번에 전달한다. 비용 입력이 빠졌으면 “순이익 미확정”으로 표시하며, AI 문장은 관찰된 상관관계를 원인으로 단정하지 않는다.</p>
+          </div>
+        </section>
+
+        <section id="plans">
+          <header>
+            <div><span class="section-no">10</span><h2>구독 플랜과 사업 모델</h2><p>문의 자동화에서 시작해 운영 분석으로 자연스럽게 업셀한다.</p></div>
+          </header>
+          <div class="plan-grid">
+            <article class="plan">
+              <div class="plan-name">BASIC</div>
+              <div class="plan-price">월 2~5만원 <small>/ 쇼핑몰</small></div>
+              <p class="plan-copy">반복 문의를 줄이고 싶은 소형 쇼핑몰의 첫 자동화 플랜.</p>
+              <ul>
+                <li>AI 문의 자동 응답</li>
+                <li>FAQ 학습</li>
+                <li>배송 조회</li>
+                <li>상담 내용 요약</li>
+              </ul>
+            </article>
+            <article class="plan featured">
+              <span class="plan-badge">CORE</span>
+              <div class="plan-name">PRO</div>
+              <div class="plan-price">월 10~20만원 <small>/ 쇼핑몰</small></div>
+              <p class="plan-copy">상담과 주문 후 업무를 함께 자동화하는 성장 쇼핑몰용 플랜.</p>
+              <ul>
+                <li>Basic 전체 기능</li>
+                <li>주문 조회</li>
+                <li>환불·교환 접수 자동화</li>
+                <li>재고 문의 자동 처리</li>
+                <li>상담 통계</li>
+              </ul>
+            </article>
+            <article class="plan">
+              <div class="plan-name">BUSINESS</div>
+              <div class="plan-price">월 30만원 이상 <small>/ 조직</small></div>
+              <p class="plan-copy">고객지원 데이터를 경영 의사결정까지 연결하는 운영 비서 플랜.</p>
+              <ul>
+                <li>Pro 전체 기능</li>
+                <li>매출 자동 분석</li>
+                <li>광고비·수수료 포함 순이익 계산</li>
+                <li>환불률과 인기·부진 상품 분석</li>
+                <li>월별 리포트 자동 생성</li>
+                <li>“이번 달 광고비가 많이 증가했습니다” 같은 AI 인사이트</li>
+              </ul>
+            </article>
+          </div>
+          <div class="grid three" style="margin-top:16px">
+            <div class="card"><h3>획득</h3><p>Demo Store와 공개 리포트 예시로 자동화 효과를 먼저 체험시킨다.</p></div>
+            <div class="card"><h3>확장</h3><p>문의량·주문량·리포트 사용량과 고급 자동화로 플랜을 확장한다.</p></div>
+            <div class="card"><h3>유지</h3><p>매월 누적되는 비교 데이터와 운영 리포트가 지속 사용 가치를 만든다.</p></div>
+          </div>
+          <div class="callout" style="margin-top:16px">
+            <strong>가격 검증 필요</strong>
+            <p>표시 가격은 초기 가설이다. 쇼핑몰 규모, 월 문의량, 월 주문량, 절감 상담시간을 기준으로 5~10곳의 인터뷰와 파일럿 후 확정한다.</p>
+          </div>
+        </section>
+
+        <section id="discord">
+          <header>
+            <div><span class="section-no">11</span><h2>초기 알림 채널 · Discord Webhook</h2><p>봇보다 작은 범위로 시작해 배포와 운영 난도를 낮춘다.</p></div>
+          </header>
+          <div class="card discord-card">
+            <div class="discord-mark">WEB<br>HOOK</div>
+            <div>
+              <h3>Discord Webhook을 선택한 이유</h3>
+              <p>서버에서 채널 URL로 메시지를 보내는 단방향 구조라 별도 봇 프로세스, Gateway 연결, 명령어 권한 관리가 필요 없다. 판매·환불 알림과 일간·월간 리포트 전달이라는 MVP 목적에 충분하다.</p>
+            </div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="card">
+              <h3>보내는 메시지</h3>
+              <ul>
+                <li>고액 환불 또는 환불률 임계치 초과</li>
+                <li>재고 부족·품절 상품 알림</li>
+                <li>전일 매출·주문·환불 요약</li>
+                <li>월간 Business 리포트 링크와 핵심 인사이트</li>
+                <li>외부 API·AI 리포트 생성 실패</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>보내지 않는 정보</h3>
+              <ul>
+                <li>고객 전화번호·주소·이메일 원문</li>
+                <li>카드·결제 인증 정보</li>
+                <li>Gemini·Langfuse API Key</li>
+                <li>전체 주문 원문과 내부 프롬프트</li>
+                <li>Webhook URL 자체</li>
+              </ul>
+            </div>
+          </div>
+          <div class="table-wrap" style="margin-top:16px">
+            <table>
+              <thead><tr><th>단계</th><th>구현</th><th>확장 조건</th></tr></thead>
+              <tbody>
+                <tr><td>MVP</td><td>Discord Webhook 단방향 알림</td><td>정기 리포트와 중요 이벤트 전달</td></tr>
+                <tr><td>Phase 2</td><td>Discord Bot 명령어</td><td><code>/이번달매출</code>, <code>/환불상위</code> 같은 대화형 조회 수요 발생</td></tr>
+                <tr><td>확장</td><td>Slack App</td><td>기업 고객이 Slack 권한·스레드·승인 워크플로를 요구할 때</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="security">
+          <header>
+            <div><span class="section-no">12</span><h2>보안·개인정보·운영 품질</h2><p>자동화 성공률보다 잘못된 실행을 막는 것이 우선이다.</p></div>
+          </header>
+          <div class="grid three">
+            <div class="card"><h3>최소 권한</h3><p>조회 권한과 취소·환불 쓰기 권한을 분리하고, 고위험 작업은 명시적 승인을 거친다.</p></div>
+            <div class="card"><h3>데이터 보호</h3><p>API Key와 Discord Webhook URL 암호화, 로그 마스킹, 조직별 데이터 격리, LLM 전송 전 민감정보 제거를 적용한다.</p></div>
+            <div class="card"><h3>실패 안전성</h3><p>Timeout, 지수 백오프, 실패 큐, 멱등성 키, 감사 로그로 중복·유실·무한 재시도를 방지한다.</p></div>
+          </div>
+          <div class="callout" style="margin-top:16px;border-left-color:var(--warn);background:var(--warn-soft)">
+            <strong>재무 수치 고지</strong>
+            <p>순이익은 운영자가 입력한 원가·광고비·수수료를 기반으로 한 운영용 추정치다. 세금, 인건비, 물류비 등 누락 비용을 표시하며 회계·세무 확정 자료로 제공하지 않는다.</p>
+          </div>
+          <div class="table-wrap" style="margin-top:16px">
+            <table>
+              <thead><tr><th>품질 지표</th><th>MVP 목표</th><th>측정 위치</th></tr></thead>
+              <tbody>
+                <tr><td>일반 API p95</td><td>500ms 이하</td><td>OpenTelemetry</td></tr>
+                <tr><td>AI 파이프라인 p95</td><td>10초 이하</td><td>AI 실행 단계 로그</td></tr>
+                <tr><td>실시간 반영</td><td>3초 이하</td><td>서버 이벤트 → UI 측정</td></tr>
+                <tr><td>핵심 도메인 테스트</td><td>80% 이상</td><td>CI 리포트</td></tr>
+                <tr><td>중복 Webhook 처리</td><td>0건</td><td>멱등성 통합 테스트</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="roadmap">
+          <header>
+            <div><span class="section-no">13</span><h2>개발 로드맵</h2><p>현재 Demo Store를 기준으로 자동화 → 집계 → AI 분석 → 알림 순서로 확장한다.</p></div>
+          </header>
+          <div class="phase"><div class="phase-name">완료</div><div><strong>Demo Store + 문의 자동화</strong><br><span style="color:var(--muted)">패션 상품·주문·결제·환불, Gemini 응답, Langfuse, Ops Console</span></div><div class="phase-time">현재</div></div>
+          <div class="phase"><div class="phase-name">Phase 1</div><div><strong>Commerce Event Ledger</strong><br><span style="color:var(--muted)">판매·취소·환불 이벤트, 멱등성, 일별·상품별 집계</span></div><div class="phase-time">3~4일</div></div>
+          <div class="phase"><div class="phase-name">Phase 2</div><div><strong>Business Dashboard</strong><br><span style="color:var(--muted)">전월 비교, 상품 순위, 환불률, 비용 입력, 추정 순이익</span></div><div class="phase-time">4~6일</div></div>
+          <div class="phase"><div class="phase-name">Phase 3</div><div><strong>AI Commerce Report</strong><br><span style="color:var(--muted)">집계 스냅샷, Gemini 분석, Langfuse 프롬프트 버전, HTML 리포트</span></div><div class="phase-time">3~5일</div></div>
+          <div class="phase"><div class="phase-name">Phase 4</div><div><strong>Discord Webhook</strong><br><span style="color:var(--muted)">중요 이벤트, 일간 브리핑, 월간 리포트, 재시도</span></div><div class="phase-time">2~3일</div></div>
+          <div class="phase"><div class="phase-name">Phase 5</div><div><strong>Subscription Plans</strong><br><span style="color:var(--muted)">기능 게이트, 사용량 제한, 요금제 화면과 업그레이드 동선</span></div><div class="phase-time">3~4일</div></div>
+          <div class="phase"><div class="phase-name">Phase 6</div><div><strong>실제 쇼핑몰 어댑터</strong><br><span style="color:var(--muted)">공식 API 수요가 확인된 플랫폼부터 한 곳씩 연결</span></div><div class="phase-time">검증 후</div></div>
+          <h3 style="margin:26px 0 12px">권장 모노레포</h3>
+          <pre><code>ai-ops-studio/
+├── apps/
+│   ├── demo-store/
+│   └── ops-console/
+├── services/
+│   ├── core-api/
+│   ├── ai-worker/
+│   └── mock-commerce-api/
+├── packages/
+│   ├── ui/
+│   ├── shared-types/
+│   └── api-client/
+├── infrastructure/
+└── docs/</code></pre>
+        </section>
+
+        <section id="acceptance">
+          <header>
+            <div><span class="section-no">14</span><h2>MVP 출시 기준</h2><p>고객지원과 경영 비서 가치가 함께 증명돼야 완료로 본다.</p></div>
+          </header>
+          <div class="grid two">
+            <div class="card">
+              <h3>제품 완료 조건</h3>
+              <ul>
+                <li>배송·취소·환불 대표 시나리오가 동작한다.</li>
+                <li>AI가 답변하거나 명확한 이유로 상담원에게 이관한다.</li>
+                <li>처리 과정이 실시간 대시보드와 실행 로그에 반영된다.</li>
+                <li>실패한 외부 작업을 확인하고 안전하게 재실행한다.</li>
+                <li>판매·환불 이벤트로 전월 비교와 상품 순위를 계산한다.</li>
+                <li>광고비·수수료 입력 시 추정 순이익을 재계산한다.</li>
+                <li>AI 월간 리포트와 Discord 요약이 같은 집계 수치를 사용한다.</li>
+                <li>Basic·Pro·Business 기능 접근이 서버에서 제한된다.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>포트폴리오 완료 조건</h3>
+              <ul>
+                <li>공개 데모와 역할별 테스트 계정이 있다.</li>
+                <li>3분 내외 핵심 시나리오 영상이 있다.</li>
+                <li>아키텍처와 기술 결정 기록이 있다.</li>
+                <li>성능 개선 전후 수치와 테스트 결과가 있다.</li>
+                <li>API 장애·중복 Webhook 시연이 가능하다.</li>
+                <li>월별 매출·환불·순이익 분석 데모를 1분 내 설명할 수 있다.</li>
+                <li>요금제와 업셀 구조가 제품 화면에 드러난다.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="callout" style="margin-top:16px">
+            <strong>최종 제품 메시지</strong>
+            <p>“AI 챗봇을 만들었다”가 아니라 “고객지원과 커머스 데이터를 연결해 반복 업무를 자동화하고, 운영자가 매출·수익·환불 변화를 이해하도록 돕는 B2B SaaS를 만들었다”를 증명한다.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+    <footer>AI Ops Studio · Commerce AI Master PRD v1.1 · 2026-07-23</footer>
+  </div>
+
+  <script>
+    const root = document.documentElement;
+    const toggle = document.getElementById('themeToggle');
+    const storedTheme = localStorage.getItem('prd-theme');
+    if (storedTheme === 'dark') {
+      root.dataset.theme = 'dark';
+      toggle.textContent = '라이트 모드';
+    }
+    toggle.addEventListener('click', () => {
+      const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      localStorage.setItem('prd-theme', next);
+      toggle.textContent = next === 'dark' ? '라이트 모드' : '다크 모드';
+    });
+
+    const navLinks = [...document.querySelectorAll('.toc a')];
+    const sections = navLinks.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      navLinks.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${visible.target.id}`));
+    }, { rootMargin: '-15% 0px -70% 0px', threshold: [0, .2, .6] });
+    sections.forEach(section => observer.observe(section));
+  </script>
+</body>
+</html>

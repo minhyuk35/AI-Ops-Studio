@@ -16,7 +16,14 @@ packages/
 docs/
   demo-store-prd.md    쇼핑몰 상세 PRD
   langfuse-tracing.md  트레이싱 구조와 검증법
+  ai-ops-studio-master-prd.html
+                       커머스 AI 비서·요금제 통합 Master PRD
 ```
+
+`docs/ai-ops-studio-master-prd.html`은 현재 구현과 다음 개발 단계를 함께 정리한
+정적 기획 문서입니다. 브라우저에서 직접 열면 문의 자동화, 매출·환불·순이익 분석,
+Basic/Pro/Business 요금제, Discord Webhook 알림 설계를 한 번에 볼 수 있습니다.
+문서의 로드맵 기능은 구현 완료 항목과 구분되어 있습니다.
 
 ## 구현 범위
 
