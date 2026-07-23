@@ -17,8 +17,8 @@ Stable observation names are intentional because dashboards and evaluators may d
 - Root input/output: customer question and final answer
 - Context: `user_id`, `session_id`, environment, feature/channel tags
 - Metadata: request ID, organization ID, order ID
-- Generation: Gemini model, linked Langfuse prompt version, interaction ID
-- Usage: exclusive input, cached input, output, reasoning, tool-use and total tokens
+- Generation: OpenRouter가 실제 사용한 모델, 연결된 Langfuse prompt name/version
+- Usage/cost: OpenRouter가 모든 응답에 자동 포함하는 usage accounting을 Langfuse OpenAI wrapper로 수집
 - Privacy: emails, Korean mobile numbers and card-like numbers are masked before export
 
 ## Live verification
@@ -36,3 +36,6 @@ Then open the Japan project in Langfuse and inspect the trace named
 `answer-customer-inquiry`. Confirm the observation hierarchy, token usage,
 prompt version link, session, environment and masking.
 
+프롬프트의 `config.model`을 바꾼 새 버전에 `production` 라벨을 지정하면 재빌드 없이
+모델을 전환할 수 있습니다. 기본 캐시 TTL은 300초이므로 즉시 검증할 때는
+`LANGFUSE_PROMPT_CACHE_TTL_SECONDS=0`을 임시로 사용하거나 TTL 만료를 기다립니다.

@@ -3,7 +3,7 @@
 ```text
 Demo Store ──HTTP──> Mock Commerce API
     │                     │
-    └── inquiry ──> Core API ──> Gemini API
+    └── inquiry ──> Core API ──> OpenRouter
                        │             │
                        ├──> Langfuse prompt + trace
                        ├──> PostgreSQL / pgvector
@@ -25,7 +25,7 @@ Demo Store ──HTTP──> Mock Commerce API
 2. Mock Commerce API에서 주문 스냅샷 조회
 3. 관련 정책 검색
 4. Langfuse에서 production prompt 조회, 실패 시 fallback 사용
-5. Gemini 호출을 Langfuse generation observation으로 기록
+5. Langfuse prompt config의 모델로 OpenRouter를 호출하고 generation으로 기록
 6. 신뢰도/위험 규칙에 따라 자동 답변 또는 상담원 이관
 
 ## Langfuse trace shape
@@ -38,5 +38,5 @@ answer-customer-inquiry (span; one customer turn)
 
 - Root input/output: 고객 질문과 최종 답변만 기록
 - Context: `user_id`, `session_id`, environment, channel tags
-- Generation: Gemini model, prompt version link, token usage, interaction ID
+- Generation: OpenRouter model, prompt version link, token usage and cost
 - Privacy: export 직전에 이메일, 한국 휴대전화 번호, 카드번호 마스킹

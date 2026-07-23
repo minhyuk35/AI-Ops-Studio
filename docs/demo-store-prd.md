@@ -4,7 +4,7 @@
 > 작성일: 2026-07-22  
 > 제품 범위: 고객용 쇼핑몰(Demo Store)  
 > 제품 유형: 패션·리빙 라이프스타일 셀렉트숍  
-> 연계 제품: AI Ops Studio 운영자 콘솔, Gemini 고객지원, Langfuse Observability
+> 연계 제품: AI Ops Studio 운영자 콘솔, OpenRouter 고객지원, Langfuse Observability
 
 ---
 
@@ -580,7 +580,7 @@ READY → AUTHENTICATED → PAID
 - 허용 데이터: 고객 본인의 주문, 공개 상품 정보, 승인된 정책 문서.
 - 금지 행동: 임의 환불 승인, 임의 보상 확정, 타 고객 주문 조회, 확인되지 않은 배송일 생성.
 - 답변에 사용한 주문 상태와 정책 버전을 서버 로그에 기록한다.
-- 개인정보는 Gemini 및 Langfuse 전송 전에 최소화·마스킹한다.
+- 개인정보는 OpenRouter 및 Langfuse 전송 전에 최소화·마스킹한다.
 
 #### STORE-CS-004 상담원 이관 — P0
 
@@ -835,7 +835,7 @@ PII는 분석 이벤트에 포함하지 않는다.
 - HTTPS만 사용하고 보안 쿠키에 Secure, HttpOnly, SameSite를 설정한다.
 - 인증·결제·쿠폰·재고는 서버를 신뢰 기준으로 삼는다.
 - CSRF, XSS, SQL Injection, IDOR를 테스트한다.
-- 결제 Secret과 Gemini/Langfuse Secret은 서버 환경변수에만 저장한다.
+- 결제 Secret과 OpenRouter/Langfuse Secret은 서버 환경변수에만 저장한다.
 - 로그인, 결제, 쿠폰, 문의 API에 rate limit을 적용한다.
 - 로그에 비밀번호, 결제 인증정보, 전체 주소·전화번호를 남기지 않는다.
 
@@ -1010,4 +1010,3 @@ PII는 분석 이벤트에 포함하지 않는다.
 - 모바일·데스크톱 주요 뷰포트에서 사용할 수 있다.
 - WCAG 2.2 AA 핵심 항목과 Core Web Vitals 목표를 검증한다.
 - 법적 고지와 개인정보 흐름에 대한 출시 전 검토가 완료된다.
-

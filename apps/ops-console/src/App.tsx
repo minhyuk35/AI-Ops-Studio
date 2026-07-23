@@ -219,7 +219,7 @@ function Dashboard({
       />
       <section className="stats">
         <article><span>전체 문의</span><strong>{stats.total}</strong><small>실제 저장 데이터</small></article>
-        <article><span>AI 자동 해결</span><strong>{stats.auto}</strong><small className="positive">Gemini 응답 완료</small></article>
+        <article><span>AI 자동 해결</span><strong>{stats.auto}</strong><small className="positive">OpenRouter 응답 완료</small></article>
         <article><span>상담원 이관</span><strong>{stats.escalated}</strong><small>검토가 필요한 문의</small></article>
         <article><span>실패 작업</span><strong>{stats.failed}</strong><small>{stats.failed ? "재시도 필요" : "모두 정상"}</small></article>
       </section>

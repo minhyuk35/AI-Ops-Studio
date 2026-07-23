@@ -4,8 +4,8 @@ import pytest
 from app.api.routes.ai import get_ai_service
 from app.config import Settings
 from app.main import app
-from app.services.gemini import GeminiSupportService
 from app.services.inquiry_store import inquiry_store
+from app.services.openrouter import OpenRouterSupportService
 from app.services.prompts import PromptRepository
 from httpx import ASGITransport, AsyncClient
 
@@ -25,11 +25,11 @@ async def test_ai_reply_without_api_key_falls_back_to_human(tmp_path: Path) -> N
     inquiry_store.initialize()
     settings = Settings(
         _env_file=None,
-        gemini_api_key="",
+        openrouter_api_key="",
         langfuse_public_key="",
         langfuse_secret_key="",
     )
-    service = GeminiSupportService(settings, PromptRepository(settings))
+    service = OpenRouterSupportService(settings, PromptRepository(settings))
     app.dependency_overrides[get_ai_service] = lambda: service
 
     try:

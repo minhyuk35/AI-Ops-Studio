@@ -17,16 +17,23 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:5173,http://localhost:5174"
 
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_default_model: str = "~google/gemini-flash-latest"
+    openrouter_http_referer: str = "http://localhost:5173"
+    openrouter_app_title: str = "AI Ops Studio"
+    openrouter_timeout_seconds: float = Field(default=30, ge=1, le=120)
 
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_base_url: str = "https://cloud.langfuse.com"
-    langfuse_prompt_name: str = "customer-support-answer"
     langfuse_prompt_label: str = "production"
     langfuse_prompt_cache_ttl_seconds: int = Field(default=300, ge=0)
     langfuse_sample_rate: float = Field(default=1.0, ge=0.0, le=1.0)
+    langfuse_support_prompt_name: str = "customer-support-answer"
+    langfuse_triage_prompt_name: str = "support-triage"
+    langfuse_commerce_insight_prompt_name: str = "commerce-insight"
+    langfuse_monthly_report_prompt_name: str = "commerce-monthly-report"
 
     database_url: str = "postgresql+asyncpg://aiops:aiops@localhost:5432/aiops"
     redis_url: str = "redis://localhost:6379/0"

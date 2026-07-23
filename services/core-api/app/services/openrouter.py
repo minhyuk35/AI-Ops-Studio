@@ -2,8 +2,8 @@ import json
 from contextlib import nullcontext
 from typing import Any
 
-from google import genai
 from langfuse import propagate_attributes
+from langfuse.openai import OpenAI
 
 from app.config import Settings
 from app.schemas.ai import AIReplyRequest, AIReplyResponse
@@ -12,12 +12,23 @@ from app.services.prompts import CompiledPrompt, PromptRepository
 HUMAN_HANDOFF_KEYWORDS = ("분쟁", "소송", "신고", "고액 환불", "개인정보 유출")
 
 
-class GeminiSupportService:
+class OpenRouterSupportService:
     def __init__(self, settings: Settings, prompts: PromptRepository) -> None:
         self.settings = settings
         self.prompts = prompts
+        headers = {
+            "HTTP-Referer": settings.openrouter_http_referer,
+            "X-OpenRouter-Title": settings.openrouter_app_title,
+        }
         self.client = (
-            genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
+            OpenAI(
+                api_key=settings.openrouter_api_key,
+                base_url=settings.openrouter_base_url,
+                default_headers=headers,
+                timeout=settings.openrouter_timeout_seconds,
+            )
+            if settings.openrouter_api_key
+            else None
         )
 
     def generate_reply(self, request: AIReplyRequest) -> AIReplyResponse:
@@ -56,6 +67,7 @@ class GeminiSupportService:
                     root_span.update(
                         output=response.answer,
                         metadata={
+                            "model": response.model,
                             "requires_human": response.requires_human,
                             "prompt_source": response.prompt_source,
                             "prompt_version": response.prompt_version,
@@ -70,17 +82,20 @@ class GeminiSupportService:
 
         if self.client is None:
             return AIReplyResponse(
-                answer=("GEMINI_API_KEY가 설정되지 않았습니다. 현재 문의는 상담원에게 이관합니다."),
-                model=self.settings.gemini_model,
+                answer=(
+                    "OPENROUTER_API_KEY가 설정되지 않았습니다. "
+                    "현재 문의는 상담원에게 이관합니다."
+                ),
+                model=compiled.model,
                 prompt_source=compiled.source,
                 prompt_version=compiled.version,
                 requires_human=True,
             )
 
-        answer = self._generate_with_gemini(request, compiled)
+        answer, resolved_model = self._generate_with_openrouter(request, compiled)
         return AIReplyResponse(
             answer=answer,
-            model=self.settings.gemini_model,
+            model=resolved_model,
             prompt_source=compiled.source,
             prompt_version=compiled.version,
             requires_human=requires_human,
@@ -98,7 +113,7 @@ class GeminiSupportService:
             prompt_context = langfuse.start_as_current_observation(
                 as_type="retriever",
                 name="retrieve-support-prompt",
-                input={"prompt_name": self.settings.langfuse_prompt_name},
+                input={"prompt_name": self.settings.langfuse_support_prompt_name},
             )
 
         with prompt_context as prompt_span:
@@ -110,69 +125,37 @@ class GeminiSupportService:
             if prompt_span is not None:
                 prompt_span.update(
                     output={
+                        "name": compiled.name,
                         "source": compiled.source,
                         "version": compiled.version,
+                        "model": compiled.model,
                     }
                 )
             return compiled
 
-    def _generate_with_gemini(
+    def _generate_with_openrouter(
         self,
         request: AIReplyRequest,
         compiled: CompiledPrompt,
-    ) -> str:
-        langfuse = self.prompts.langfuse
-        generation_context: Any = nullcontext()
-        if langfuse is not None:
-            generation_context = langfuse.start_as_current_observation(
-                as_type="generation",
-                name="generate-support-reply",
-                model=self.settings.gemini_model,
-                input=[{"role": "user", "content": compiled.text}],
-                prompt=compiled.langfuse_prompt,
-                metadata={
-                    "prompt_source": compiled.source,
-                    "request_id": request.request_id,
-                },
-            )
+    ) -> tuple[str, str]:
+        extra: dict[str, Any] = {
+            "name": "generate-support-reply",
+            "metadata": {
+                "feature": "customer-support",
+                "prompt_name": compiled.name,
+                "prompt_source": compiled.source,
+                "request_id": request.request_id,
+            },
+        }
+        if compiled.langfuse_prompt is not None:
+            extra["langfuse_prompt"] = compiled.langfuse_prompt
 
-        with generation_context as generation:
-            interaction = self.client.interactions.create(
-                model=self.settings.gemini_model,
-                input=compiled.text,
-            )
-            answer = interaction.output_text or "답변을 생성하지 못했습니다."
-            if generation is not None:
-                generation.update(
-                    output=[{"role": "assistant", "content": answer}],
-                    usage_details=self._usage_details(interaction.usage),
-                    metadata={"interaction_id": interaction.id},
-                )
-            return answer
-
-    @staticmethod
-    def _usage_details(usage: Any) -> dict[str, int] | None:
-        if usage is None:
-            return None
-
-        cached = int(usage.total_cached_tokens or 0)
-        input_total = int(usage.total_input_tokens or 0)
-        output = int(usage.total_output_tokens or 0)
-        thought = int(usage.total_thought_tokens or 0)
-        tool_use = int(usage.total_tool_use_tokens or 0)
-        total = int(usage.total_tokens or 0)
-
-        details: dict[str, int] = {}
-        if input_total:
-            details["input"] = max(input_total - cached, 0)
-        if cached:
-            details["input_cached_tokens"] = cached
-        if output:
-            details["output"] = output
-        if thought:
-            details["output_reasoning_tokens"] = thought
-        if tool_use:
-            details["input_tool_use_tokens"] = tool_use
-        if total:
-            details["total"] = total
-        return details or None
+        completion = self.client.chat.completions.create(
+            model=compiled.model,
+            messages=[{"role": "user", "content": compiled.text}],
+            extra_body=compiled.routing_parameters or None,
+            **compiled.completion_parameters,
+            **extra,
+        )
+        answer = completion.choices[0].message.content or "답변을 생성하지 못했습니다."
+        return answer, completion.model or compiled.model

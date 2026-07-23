@@ -6,23 +6,23 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
 from app.schemas.ai import AIReplyRequest, AIReplyResponse
-from app.services.gemini import GeminiSupportService
 from app.services.inquiry_store import inquiry_store
+from app.services.openrouter import OpenRouterSupportService
 from app.services.prompts import PromptRepository
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
 @lru_cache
-def get_ai_service() -> GeminiSupportService:
+def get_ai_service() -> OpenRouterSupportService:
     settings = get_settings()
-    return GeminiSupportService(settings, PromptRepository(settings))
+    return OpenRouterSupportService(settings, PromptRepository(settings))
 
 
 @router.post("/reply", response_model=AIReplyResponse)
 async def create_reply(
     payload: AIReplyRequest,
-    service: Annotated[GeminiSupportService, Depends(get_ai_service)],
+    service: Annotated[OpenRouterSupportService, Depends(get_ai_service)],
 ) -> AIReplyResponse:
     response = await run_in_threadpool(service.generate_reply, payload)
     inquiry_id, conversation_id = await run_in_threadpool(

@@ -113,7 +113,8 @@ class OpsStore:
                 "ACTIVE",
                 3,
                 json.dumps(
-                    ["문의 분류", "주문 조회", "정책 검증", "Gemini 답변"], ensure_ascii=False
+                    ["문의 분류", "주문 조회", "정책 검증", "OpenRouter 답변"],
+                    ensure_ascii=False,
                 ),
                 128,
                 2,
@@ -192,11 +193,11 @@ class OpsStore:
         integrations = [
             (
                 "int_gemini",
-                "Gemini API",
-                "Google",
+                "OpenRouter API",
+                "OpenRouter",
                 "AI 모델",
                 "CONNECTED",
-                "gemini-3.5-flash · API key configured",
+                "Model selected by Langfuse prompt config",
                 now,
                 now,
             ),
@@ -222,8 +223,8 @@ class OpsStore:
             ),
             (
                 "int_slack",
-                "Slack 알림",
-                "Slack",
+                "Discord Webhook",
+                "Discord",
                 "상담원 알림",
                 "DISCONNECTED",
                 "Webhook not configured",
@@ -253,7 +254,7 @@ class OpsStore:
                 "wf_sensitive",
                 None,
                 "INTEGRATION_OFFLINE",
-                "Slack 알림 연동이 설정되지 않았습니다.",
+                "Discord Webhook이 설정되지 않았습니다.",
                 json.dumps({"integration_id": "int_slack"}, ensure_ascii=False),
                 0,
                 "PENDING",
@@ -263,6 +264,37 @@ class OpsStore:
         ]
         connection.executemany(
             "INSERT OR IGNORE INTO failed_jobs VALUES(?,?,?,?,?,?,?,?,?,?)", jobs
+        )
+        connection.execute(
+            """
+            UPDATE integrations
+            SET name = 'OpenRouter API',
+                provider = 'OpenRouter',
+                config_summary = 'Model selected by Langfuse prompt config',
+                updated_at = ?
+            WHERE id = 'int_gemini'
+            """,
+            (now,),
+        )
+        connection.execute(
+            """
+            UPDATE integrations
+            SET name = 'Discord Webhook',
+                provider = 'Discord',
+                config_summary = 'Webhook not configured',
+                updated_at = ?
+            WHERE id = 'int_slack'
+            """,
+            (now,),
+        )
+        connection.execute(
+            """
+            UPDATE failed_jobs
+            SET error_message = 'Discord Webhook이 설정되지 않았습니다.',
+                updated_at = ?
+            WHERE id = 'job_agent_alert'
+            """,
+            (now,),
         )
         connection.execute(
             "INSERT OR IGNORE INTO audit_logs VALUES(?,?,?,?,?,?,?)",

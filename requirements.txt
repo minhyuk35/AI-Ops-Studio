@@ -8,8 +8,8 @@ python-multipart>=0.0.20,<1
 httpx>=0.28,<1
 
 # AI and prompt observability
-google-genai>=2.13,<3
 langfuse>=4,<5
+openai>=1.109,<2
 
 # Data and infrastructure
 sqlalchemy[asyncio]>=2.0,<3

@@ -26,7 +26,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    description="AI Ops Studio inquiry and Gemini orchestration API",
+    description="AI Ops Studio inquiry and OpenRouter orchestration API",
     lifespan=lifespan,
 )
 app.add_middleware(

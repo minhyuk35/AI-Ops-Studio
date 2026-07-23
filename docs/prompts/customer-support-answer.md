@@ -26,8 +26,17 @@ Langfuse prompt type: `text`
 
 ```json
 {
+  "gateway": "openrouter",
+  "model": "~google/gemini-flash-latest",
   "temperature": 0.2,
-  "model": "gemini-3.5-flash"
+  "max_tokens": 700,
+  "provider": {
+    "allow_fallbacks": true,
+    "data_collection": "deny"
+  }
 }
 ```
 
+`model`과 생성 파라미터는 프롬프트 버전과 함께 배포됩니다. 새 버전을 만든 뒤
+`production` 라벨을 옮기면 애플리케이션 재빌드 없이 모델이 변경됩니다.
+단, 애플리케이션의 프롬프트 캐시 TTL(기본 300초) 동안은 이전 설정이 사용될 수 있습니다.

@@ -1,16 +1,16 @@
-"""Create one real Gemini/Langfuse trace after credentials are configured."""
+"""Create one real OpenRouter/Langfuse trace after credentials are configured."""
 
 from app.config import get_settings
 from app.schemas.ai import AIReplyRequest
-from app.services.gemini import GeminiSupportService
+from app.services.openrouter import OpenRouterSupportService
 from app.services.prompts import PromptRepository
 
 
 def main() -> None:
     settings = get_settings()
     missing = []
-    if not settings.gemini_api_key:
-        missing.append("GEMINI_API_KEY")
+    if not settings.openrouter_api_key:
+        missing.append("OPENROUTER_API_KEY")
     if not settings.langfuse_public_key:
         missing.append("LANGFUSE_PUBLIC_KEY")
     if not settings.langfuse_secret_key:
@@ -19,7 +19,7 @@ def main() -> None:
         raise SystemExit("Set these values in .env first: " + ", ".join(missing))
 
     prompts = PromptRepository(settings)
-    service = GeminiSupportService(settings, prompts)
+    service = OpenRouterSupportService(settings, prompts)
     response = service.generate_reply(
         AIReplyRequest(
             question="배송 중인 후드티는 언제 도착하나요?",
