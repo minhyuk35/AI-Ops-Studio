@@ -5,6 +5,8 @@ import type {
   KnowledgeDocument,
   OpsIntegration,
   OpsWorkflow,
+  ProductMetric,
+  RevenueSummary,
 } from "@ai-ops/shared-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
@@ -19,6 +21,8 @@ import {
   getInquiries,
   getInquiry,
   getIntegrations,
+  getRevenueProducts,
+  getRevenueSummary,
   getWorkflows,
   retryFailedJob,
   updateDocument,
@@ -33,11 +37,13 @@ type Page =
   | "knowledge"
   | "integrations"
   | "failed"
-  | "audit";
+  | "audit"
+  | "revenue";
 
 const navigation: { id: Page; label: string }[] = [
   { id: "dashboard", label: "대시보드" },
   { id: "inquiries", label: "문의" },
+  { id: "revenue", label: "매출 분석" },
   { id: "workflows", label: "워크플로" },
   { id: "knowledge", label: "지식 문서" },
   { id: "integrations", label: "연동" },
@@ -59,10 +65,13 @@ const statusLabel: Record<string, string> = {
   RESOLVED: "해결",
 };
 
+const currentPeriod = () => new Date().toISOString().slice(0, 7);
+
 export function App() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState<Page>("dashboard");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [period, setPeriod] = useState(currentPeriod);
   const inquiries = useQuery({
     queryKey: ["inquiries"],
     queryFn: getInquiries,
@@ -76,6 +85,16 @@ export function App() {
   });
   const failedJobs = useQuery({ queryKey: ["failed-jobs"], queryFn: getFailedJobs });
   const auditLogs = useQuery({ queryKey: ["audit-logs"], queryFn: getAuditLogs });
+  const revenueSummary = useQuery({
+    queryKey: ["revenue-summary", period],
+    queryFn: () => getRevenueSummary(period),
+    enabled: page === "revenue",
+  });
+  const revenueProducts = useQuery({
+    queryKey: ["revenue-products", period],
+    queryFn: () => getRevenueProducts(period),
+    enabled: page === "revenue",
+  });
   const detail = useQuery({
     queryKey: ["inquiry", selectedId],
     queryFn: () => getInquiry(selectedId!),
@@ -119,6 +138,15 @@ export function App() {
         <IntegrationsPage
           integrations={integrations.data ?? []}
           loading={integrations.isLoading}
+        />
+      )}
+      {page === "revenue" && (
+        <RevenuePage
+          summary={revenueSummary.data}
+          products={revenueProducts.data ?? []}
+          loading={revenueSummary.isLoading || revenueProducts.isLoading}
+          period={period}
+          onPeriodChange={setPeriod}
         />
       )}
       {page === "failed" && (
@@ -249,6 +277,117 @@ function Dashboard({
         </article>
       </section>
     </main>
+  );
+}
+
+const wonFormatter = new Intl.NumberFormat("ko-KR");
+const formatWon = (value: number) => `₩${wonFormatter.format(value)}`;
+const formatPct = (value: number | null | undefined) =>
+  value === null || value === undefined ? "—" : `${value > 0 ? "+" : ""}${value}%`;
+
+function RevenuePage({
+  summary,
+  products,
+  loading,
+  period,
+  onPeriodChange,
+}: {
+  summary?: RevenueSummary;
+  products: ProductMetric[];
+  loading: boolean;
+  period: string;
+  onPeriodChange: (period: string) => void;
+}) {
+  const [sort, setSort] = useState<"revenue" | "units_sold" | "refund_rate">("revenue");
+  const sorted = useMemo(() => {
+    const withData = [...products];
+    withData.sort((a, b) => {
+      if (sort === "refund_rate") return (b.refund_rate ?? -1) - (a.refund_rate ?? -1);
+      return b[sort] - a[sort];
+    });
+    return withData;
+  }, [products, sort]);
+
+  return (
+    <main>
+      <PageHeader
+        eyebrow="COMMERCE"
+        title="매출 분석"
+        description="코드가 계산한 매출·상품·환불 지표입니다. AI는 이 숫자를 나중에 해석만 합니다."
+        action={
+          <input
+            className="period-input"
+            aria-label="분석 기간"
+            type="month"
+            value={period}
+            onChange={(event) => onPeriodChange(event.target.value)}
+          />
+        }
+      />
+      {loading && <p className="empty">매출 데이터를 불러오는 중…</p>}
+      {summary && (
+        <section className="stats revenue">
+          <RevenueStat label="총결제액" value={summary.gross_revenue} change={summary.change.gross_revenue_pct} />
+          <RevenueStat label="취소·환불액" value={summary.refund_amount} />
+          <RevenueStat label="순매출" value={summary.net_revenue} change={summary.change.net_revenue_pct} />
+          <RevenueStat label="주문 수" value={summary.order_count} change={summary.change.order_count_pct} unit="건" />
+          <RevenueStat label="객단가" value={summary.average_order_value} change={summary.change.average_order_value_pct} />
+        </section>
+      )}
+      <section className="panel table-panel revenue-table">
+        <div className="panel-heading">
+          <div><small>PRODUCTS</small><h2>상품별 판매·환불</h2></div>
+          <select aria-label="정렬 기준" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}>
+            <option value="revenue">매출순</option>
+            <option value="units_sold">판매량순(인기)</option>
+            <option value="refund_rate">환불률순</option>
+          </select>
+        </div>
+        <div className="data-table">
+          <div className="data-row data-head">
+            <span>상품</span><span>판매수량</span><span>매출</span><span>환불수량</span><span>환불액</span><span>환불률</span>
+          </div>
+          {sorted.map((product) => (
+            <div className="data-row" key={product.product_id}>
+              <span>{product.product_name}</span>
+              <span>{product.units_sold}개</span>
+              <span>{formatWon(product.revenue)}</span>
+              <span>{product.refund_units}개</span>
+              <span>{formatWon(product.refund_amount)}</span>
+              <span className={product.refund_rate !== null && product.refund_rate >= 0.2 ? "refund-high" : ""}>
+                {product.refund_rate === null ? "—" : `${Math.round(product.refund_rate * 100)}%`}
+                {product.units_sold > 0 && product.units_sold < 3 && <small> · 표본 적음</small>}
+              </span>
+            </div>
+          ))}
+          {!loading && !sorted.length && <p className="empty">이 기간에는 상품 데이터가 없습니다.</p>}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function RevenueStat({
+  label,
+  value,
+  change,
+  unit,
+}: {
+  label: string;
+  value: number;
+  change?: number | null;
+  unit?: string;
+}) {
+  return (
+    <article>
+      <span>{label}</span>
+      <strong>{unit ? `${value}${unit}` : formatWon(value)}</strong>
+      {change !== undefined && (
+        <small className={change === null ? "" : change >= 0 ? "positive" : "negative"}>
+          전월 대비 {formatPct(change)}
+        </small>
+      )}
+    </article>
   );
 }
 

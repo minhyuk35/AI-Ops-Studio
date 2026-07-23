@@ -1,43 +1,11 @@
 """Commerce Event Ledger tests for the mock-commerce-api service.
 
-services/core-api and services/mock-commerce-api both expose a top-level
-``app`` package. pytest's shared ``pythonpath`` setting can only bind one of
-them to the ``app`` name per process, so this module loads mock-commerce-api's
-``app`` package on demand and restores whatever was previously bound
-afterwards, keeping this file order-independent from the core-api tests.
+See conftest.py's ``commerce_app`` fixture docstring for why this module
+loads mock-commerce-api's ``app`` package the way it does.
 """
-
-import importlib
-import sys
-from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-
-COMMERCE_ROOT = Path(__file__).resolve().parents[1] / "services" / "mock-commerce-api"
-
-
-@pytest.fixture
-def commerce_app(tmp_path, monkeypatch):
-    monkeypatch.setenv("COMMERCE_DB_PATH", str(tmp_path / "commerce.db"))
-    saved_modules = {
-        name: module
-        for name, module in sys.modules.items()
-        if name == "app" or name.startswith("app.")
-    }
-    for name in saved_modules:
-        del sys.modules[name]
-    monkeypatch.syspath_prepend(str(COMMERCE_ROOT))
-    try:
-        db = importlib.import_module("app.db")
-        main = importlib.import_module("app.main")
-        db.initialize_database()
-        yield db, main
-    finally:
-        for name in list(sys.modules):
-            if name == "app" or name.startswith("app."):
-                del sys.modules[name]
-        sys.modules.update(saved_modules)
 
 
 async def _client(main):
@@ -56,7 +24,7 @@ CHECKOUT_FIELDS = {
 
 @pytest.mark.asyncio
 async def test_order_lifecycle_records_commerce_events(commerce_app) -> None:
-    _db, main = commerce_app
+    _db, main, _analytics = commerce_app
     async with await _client(main) as client:
         cart_id = "cart_test_lifecycle"
         add_response = await client.post(
@@ -124,7 +92,7 @@ async def test_order_lifecycle_records_commerce_events(commerce_app) -> None:
 
 @pytest.mark.asyncio
 async def test_return_request_records_event_without_refund_completed(commerce_app) -> None:
-    _db, main = commerce_app
+    _db, main, _analytics = commerce_app
     async with await _client(main) as client:
         # ord_1003 ships DELIVERED with a single unit of var_003_260 (total 89000).
         response = await client.post(
@@ -146,7 +114,7 @@ async def test_return_request_records_event_without_refund_completed(commerce_ap
 
 
 def test_record_event_is_idempotent_on_external_event_id(commerce_app) -> None:
-    db, _main = commerce_app
+    db, _main, _analytics = commerce_app
     with db.transaction() as connection:
         for _ in range(2):
             db.record_event(

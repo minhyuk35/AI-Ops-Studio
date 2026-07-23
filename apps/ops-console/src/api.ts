@@ -5,6 +5,8 @@ import type {
   KnowledgeDocument,
   OpsIntegration,
   OpsWorkflow,
+  ProductMetric,
+  RevenueSummary,
 } from "@ai-ops/shared-types";
 
 const coreBaseUrl = import.meta.env.VITE_CORE_API_URL ?? "http://localhost:8000";
@@ -63,3 +65,8 @@ export const retryFailedJob = (id: string) =>
   request<FailedJob>(`/ops/failed-jobs/${id}/retry`, json("POST"));
 
 export const getAuditLogs = () => request<AuditLog[]>("/ops/audit-logs");
+
+export const getRevenueSummary = (period: string) =>
+  request<RevenueSummary>(`/revenue/summary?period=${period}`);
+export const getRevenueProducts = (period: string) =>
+  request<ProductMetric[]>(`/revenue/products?period=${period}`);

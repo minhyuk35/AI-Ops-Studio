@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://aiops:aiops@localhost:5432/aiops"
     redis_url: str = "redis://localhost:6379/0"
     mock_commerce_api_url: str = "http://localhost:8001"
+    mock_commerce_timeout_seconds: float = Field(default=10, ge=1, le=60)
 
     @property
     def cors_origin_list(self) -> list[str]:

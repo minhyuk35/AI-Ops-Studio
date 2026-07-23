@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import ai, health, inquiries, ops
+from app.api.routes import ai, health, inquiries, ops, revenue
 from app.config import get_settings
 from app.services.inquiry_store import inquiry_store
 
@@ -47,3 +47,4 @@ app.include_router(health.router)
 app.include_router(ai.router, prefix=settings.api_v1_prefix)
 app.include_router(inquiries.router, prefix=settings.api_v1_prefix)
 app.include_router(ops.router, prefix=settings.api_v1_prefix)
+app.include_router(revenue.router, prefix=settings.api_v1_prefix)

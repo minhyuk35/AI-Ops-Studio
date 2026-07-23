@@ -7,6 +7,12 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
+from app.analytics import (
+    PERIOD_PATTERN,
+    current_period,
+    product_breakdown,
+    revenue_summary_with_comparison,
+)
 from app.db import connect, initialize_database, record_event, row_to_dict, transaction, utc_now
 
 FREE_SHIPPING_THRESHOLD = 100_000
@@ -694,6 +700,22 @@ async def list_events(
             [*parameters, limit],
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+@app.get("/analytics/summary")
+async def analytics_summary(
+    period: str = Query(default_factory=current_period, pattern=PERIOD_PATTERN.pattern),
+) -> dict[str, object]:
+    with closing(connect()) as connection:
+        return revenue_summary_with_comparison(connection, period)
+
+
+@app.get("/analytics/products")
+async def analytics_products(
+    period: str = Query(default_factory=current_period, pattern=PERIOD_PATTERN.pattern),
+) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        return product_breakdown(connection, period)
 
 
 @app.get("/policies/commerce")

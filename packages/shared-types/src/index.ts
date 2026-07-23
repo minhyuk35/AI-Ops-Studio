@@ -233,3 +233,32 @@ export interface AuditLog {
   detail: string;
   created_at: string;
 }
+
+export interface RevenuePeriodMetrics {
+  period: string;
+  gross_revenue: number;
+  refund_amount: number;
+  net_revenue: number;
+  order_count: number;
+  average_order_value: number;
+}
+
+export interface RevenueSummary extends RevenuePeriodMetrics {
+  previous_period: RevenuePeriodMetrics;
+  change: {
+    gross_revenue_pct: number | null;
+    net_revenue_pct: number | null;
+    order_count_pct: number | null;
+    average_order_value_pct: number | null;
+  };
+}
+
+export interface ProductMetric {
+  product_id: string;
+  product_name: string;
+  units_sold: number;
+  revenue: number;
+  refund_units: number;
+  refund_amount: number;
+  refund_rate: number | null;
+}
