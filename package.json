@@ -4,8 +4,14 @@
   "private": true,
   "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "dev": "pnpm --parallel --filter @ai-ops/demo-store --filter @ai-ops/ops-console dev",
+    "dev": "concurrently -n commerce,core,web -c cyan,green,magenta -k \"pnpm dev:commerce\" \"pnpm dev:core\" \"pnpm dev:web\"",
+    "dev:commerce": ".venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir services/mock-commerce-api --reload --port 8001",
+    "dev:core": ".venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir services/core-api --reload --port 8000",
+    "dev:web": "pnpm --parallel --filter @ai-ops/demo-store --filter @ai-ops/ops-console dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

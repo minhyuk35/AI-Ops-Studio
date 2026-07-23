@@ -60,31 +60,24 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 3. 각 서버 실행
-
-PowerShell 창을 세 개 열어 각각 실행합니다. Uvicorn 명령은 실행 중인 서버를 점유하므로 한 창에 연달아 입력하지 않습니다.
+### 3. 서버 실행
 
 ```powershell
-# 창 1: AI/문의 API
-cd "D:\Github\AI-Ops-Studio"
-.\.venv\Scripts\Activate.ps1
-python -m uvicorn app.main:app --app-dir services/core-api --reload --port 8000
-```
-
-```powershell
-# 창 2: 쇼핑몰 API
-cd "D:\Github\AI-Ops-Studio"
-.\.venv\Scripts\Activate.ps1
-python -m uvicorn app.main:app --app-dir services/mock-commerce-api --reload --port 8001
-```
-
-```powershell
-# 창 3: 고객 쇼핑몰 + 운영자 화면
 cd "D:\Github\AI-Ops-Studio"
 corepack enable
 corepack prepare pnpm@10.14.0 --activate
 pnpm install
 pnpm dev
+```
+
+`pnpm dev` 한 번으로 AI/문의 API(8000), 쇼핑몰 API(8001), 고객 쇼핑몰(5174), Ops Console(5173)이 `concurrently`로 한 창에서 함께 실행되며 `commerce`/`core`/`web` 라벨로 로그가 구분됩니다. `Ctrl+C` 한 번으로 넷 다 같이 종료됩니다. Python 서버는 저장소 루트의 `.venv`를 직접 호출하므로("2. Python 설치"에서 만든 가상환경) 별도 활성화가 필요 없습니다.
+
+각 서버를 따로 확인하거나 로그를 분리하고 싶다면 개별 스크립트도 그대로 사용할 수 있습니다.
+
+```powershell
+pnpm dev:core       # AI/문의 API만
+pnpm dev:commerce   # 쇼핑몰 API만
+pnpm dev:web        # 고객 쇼핑몰 + Ops Console만
 ```
 
 접속 주소:
