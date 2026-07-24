@@ -174,6 +174,45 @@ def product_breakdown(connection: sqlite3.Connection, period: str) -> list[dict[
     return result
 
 
+def seller_revenue_summary(
+    connection: sqlite3.Connection, org_id: str, period: str
+) -> dict[str, object]:
+    """한 판매자(org)의 한 달치 총결제액·환불액·순매출·주문수.
+
+    revenue_summary()는 플랫폼 전체 합계라 판매자 개인의 Discord ``/수익``
+    명령에는 쓸 수 없다. 여기서는 commerce_events를 org_id로 걸러 같은 계산을
+    판매자 단위로 수행한다. 계산 근거는 이벤트 발생 시점(occurred_at)이다.
+    """
+    start, end = _month_bounds(period)
+    row = connection.execute(
+        """
+        SELECT
+            COALESCE(SUM(CASE WHEN event_type = 'PAYMENT_CONFIRMED' THEN amount END), 0)
+                AS gross_revenue,
+            COALESCE(SUM(CASE WHEN event_type = 'REFUND_COMPLETED' THEN refund_amount END), 0)
+                AS refund_amount,
+            COUNT(DISTINCT CASE WHEN event_type = 'PAYMENT_CONFIRMED' THEN order_id END)
+                AS order_count
+        FROM commerce_events
+        WHERE org_id = ? AND occurred_at >= ? AND occurred_at < ?
+        """,
+        (org_id, start, end),
+    ).fetchone()
+    gross_revenue = int(row["gross_revenue"])
+    refund_amount = int(row["refund_amount"])
+    order_count = int(row["order_count"])
+    net_revenue = gross_revenue - refund_amount
+    return {
+        "period": period,
+        "org_id": org_id,
+        "gross_revenue": gross_revenue,
+        "refund_amount": refund_amount,
+        "net_revenue": net_revenue,
+        "order_count": order_count,
+        "average_order_value": net_revenue // order_count if order_count else 0,
+    }
+
+
 def seller_daily_snapshot(
     connection: sqlite3.Connection, org_id: str, date: str
 ) -> dict[str, object]:

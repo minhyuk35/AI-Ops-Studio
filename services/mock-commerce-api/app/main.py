@@ -1,3 +1,5 @@
+import os
+import secrets
 from contextlib import asynccontextmanager, closing
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -7,6 +9,7 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
+from app import discord_spec
 from app.analytics import (
     DATE_PATTERN,
     PERIOD_PATTERN,
@@ -17,6 +20,7 @@ from app.analytics import (
     revenue_summary_with_comparison,
     seller_daily_snapshot,
     seller_market_share,
+    seller_revenue_summary,
     today,
 )
 from app.auth import (
@@ -56,9 +60,31 @@ app = FastAPI(
     description="Persistent demo commerce service for AI Ops Studio",
     lifespan=lifespan,
 )
+
+
+def _cors_origins() -> list[str]:
+    """Allowed browser origins.
+
+    Same-origin Vercel deploys (frontend + /api/commerce on one domain) don't
+    need CORS at all, but a split deployment or a preview domain does. Read a
+    comma-separated COMMERCE_CORS_ORIGINS override; otherwise fall back to the
+    local dev ports plus the known production domain so the deployed site
+    isn't silently blocked.
+    """
+    configured = os.getenv("COMMERCE_CORS_ORIGINS", "")
+    if configured.strip():
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "https://ai-ops-studio-demo-store.vercel.app",
+    ]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=_cors_origins(),
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -144,6 +170,23 @@ class GoogleAuthRequest(BaseModel):
     as_seller: bool = False
     shop_name: str | None = Field(default=None, max_length=80)
     shop_category: str | None = Field(default=None, max_length=40)
+
+
+class DiscordLinkRequest(BaseModel):
+    guild_id: str = Field(min_length=1, max_length=32)
+    code: str = Field(min_length=4, max_length=32)
+
+
+class DiscordChannelUpsert(BaseModel):
+    channel_key: str = Field(min_length=1, max_length=40)
+    channel_id: str = Field(min_length=1, max_length=32)
+    channel_name: str = Field(default="", max_length=100)
+    webhook_url: str = Field(default="", max_length=300)
+
+
+class DiscordChannelsRequest(BaseModel):
+    guild_id: str = Field(min_length=1, max_length=32)
+    channels: list[DiscordChannelUpsert] = Field(min_length=1, max_length=20)
 
 
 def fetch_product(connection, identifier: str) -> dict[str, object]:
@@ -330,6 +373,22 @@ def require_admin(connection, authorization: str | None) -> dict[str, object]:
     if not customer.get("is_admin"):
         raise HTTPException(status_code=403, detail="총관리자만 이용할 수 있습니다.")
     return customer
+
+
+def require_internal_token(x_internal_token: str | None) -> None:
+    """Shared-secret gate for the Discord bot's /internal/discord/* calls.
+
+    The bot (a separate process, often on the seller's own machine) sends
+    DISCORD_BOT_SHARED_SECRET as the X-Internal-Token header. If the server
+    has no secret configured, every internal call is refused — a closed
+    default, same posture as the cron endpoints. secrets.compare_digest keeps
+    the check constant-time.
+    """
+    expected = os.getenv("DISCORD_BOT_SHARED_SECRET", "")
+    if not expected or not x_internal_token or not secrets.compare_digest(
+        x_internal_token, expected
+    ):
+        raise HTTPException(status_code=401, detail="내부 인증에 실패했습니다.")
 
 
 @app.get("/")
@@ -1254,6 +1313,198 @@ async def internal_order_org(order_id: str) -> dict[str, object]:
         if order is None:
             raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
         return {"order_id": order_id, "org_id": infer_order_org_id(connection, order_id)}
+
+
+# ─────────────────────────── Discord 봇 연동 ───────────────────────────
+# 판매자가 자기 Discord 서버에 봇을 초대해 쓰는 흐름을 위한 엔드포인트들.
+#   1) 판매자 콘솔에서 POST /sellers/me/discord/link-code 로 1회용 코드 발급
+#   2) 봇 초대 후 서버에서 /연동 <코드>  → 봇이 POST /internal/discord/link
+#   3) 서버에서 /생성            → 봇이 GET /internal/discord/org 로 플랜별
+#      채널 스펙을 받아 채널·웹훅을 만들고 PUT /internal/discord/channels 로 저장
+#   4) 슬래시 명령(/수익 등)     → 봇이 GET /internal/discord/metrics 로 숫자 조회
+# 내부(/internal/discord/*) 엔드포인트는 require_internal_token 으로 보호한다.
+
+
+def _org_by_guild(connection, guild_id: str) -> dict[str, object] | None:
+    row = connection.execute(
+        "SELECT * FROM organizations WHERE discord_guild_id = ?", (guild_id,)
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def _discord_channels_payload(connection, org_id: str) -> list[dict[str, object]]:
+    rows = connection.execute(
+        "SELECT channel_key, channel_id, channel_name, webhook_url "
+        "FROM discord_channels WHERE org_id = ? ORDER BY created_at",
+        (org_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _discord_status_payload(connection, org: dict[str, object]) -> dict[str, object]:
+    plan = discord_spec.normalize_plan(str(org.get("plan") or "FREE"))
+    return {
+        "linked": bool(org.get("discord_guild_id")),
+        "guild_id": org.get("discord_guild_id"),
+        "linked_at": org.get("discord_linked_at"),
+        "plan": plan,
+        "plan_channels": discord_spec.channels_for_plan(plan),
+        "channels": _discord_channels_payload(connection, str(org["id"])),
+    }
+
+
+@app.post("/sellers/me/discord/link-code", status_code=201)
+async def create_discord_link_code(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Issue (or reissue) a one-time code the seller types into `/연동` in Discord."""
+    with transaction() as connection:
+        org = require_seller_org(connection, authorization)
+        code = secrets.token_hex(4).upper()  # 8-char, e.g. "3F9A1C77"
+        connection.execute(
+            "UPDATE organizations SET discord_link_code = ? WHERE id = ?", (code, org["id"])
+        )
+        refreshed = connection.execute(
+            "SELECT * FROM organizations WHERE id = ?", (org["id"],)
+        ).fetchone()
+        payload = _discord_status_payload(connection, dict(refreshed))
+        payload["link_code"] = code
+        return payload
+
+
+@app.get("/sellers/me/discord")
+async def get_discord_status(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    with closing(connect()) as connection:
+        org = require_seller_org(connection, authorization)
+        return _discord_status_payload(connection, org)
+
+
+@app.post("/internal/discord/link")
+async def internal_discord_link(
+    payload: DiscordLinkRequest,
+    x_internal_token: str | None = Header(default=None),
+) -> dict[str, object]:
+    require_internal_token(x_internal_token)
+    with transaction() as connection:
+        org = connection.execute(
+            "SELECT * FROM organizations WHERE discord_link_code = ? AND discord_link_code != ''",
+            (payload.code.upper(),),
+        ).fetchone()
+        if org is None:
+            raise HTTPException(status_code=404, detail="유효하지 않은 연동 코드입니다.")
+        existing = _org_by_guild(connection, payload.guild_id)
+        if existing is not None and existing["id"] != org["id"]:
+            raise HTTPException(
+                status_code=409, detail="이 디스코드 서버는 이미 다른 상점에 연동돼 있습니다."
+            )
+        connection.execute(
+            """
+            UPDATE organizations
+            SET discord_guild_id = ?, discord_linked_at = ?, discord_link_code = ''
+            WHERE id = ?
+            """,
+            (payload.guild_id, utc_now(), org["id"]),
+        )
+        refreshed = connection.execute(
+            "SELECT * FROM organizations WHERE id = ?", (org["id"],)
+        ).fetchone()
+        return _discord_status_payload(connection, dict(refreshed))
+
+
+@app.get("/internal/discord/org")
+async def internal_discord_org(
+    guild_id: str = Query(min_length=1, max_length=32),
+    x_internal_token: str | None = Header(default=None),
+) -> dict[str, object]:
+    require_internal_token(x_internal_token)
+    with closing(connect()) as connection:
+        org = _org_by_guild(connection, guild_id)
+        if org is None:
+            raise HTTPException(status_code=404, detail="연동되지 않은 서버입니다.")
+        payload = _discord_status_payload(connection, org)
+        payload["org_id"] = org["id"]
+        payload["org_name"] = org["name"]
+        payload["category_name"] = discord_spec.CATEGORY_NAME
+        return payload
+
+
+@app.put("/internal/discord/channels")
+async def internal_discord_channels(
+    payload: DiscordChannelsRequest,
+    x_internal_token: str | None = Header(default=None),
+) -> dict[str, object]:
+    require_internal_token(x_internal_token)
+    with transaction() as connection:
+        org = _org_by_guild(connection, payload.guild_id)
+        if org is None:
+            raise HTTPException(status_code=404, detail="연동되지 않은 서버입니다.")
+        # /생성은 채널을 지우고 다시 만드므로, 기존 매핑을 비우고 새로 채운다.
+        connection.execute("DELETE FROM discord_channels WHERE org_id = ?", (org["id"],))
+        now = utc_now()
+        for channel in payload.channels:
+            connection.execute(
+                """
+                INSERT INTO discord_channels(
+                    id, org_id, channel_key, channel_id, channel_name, webhook_url, created_at
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    f"dch_{uuid4().hex[:12]}",
+                    org["id"],
+                    channel.channel_key,
+                    channel.channel_id,
+                    channel.channel_name,
+                    channel.webhook_url,
+                    now,
+                ),
+            )
+        return _discord_status_payload(connection, org)
+
+
+@app.get("/internal/discord/metrics")
+async def internal_discord_metrics(
+    guild_id: str = Query(min_length=1, max_length=32),
+    kind: Literal["daily", "views", "revenue", "stock"] = "daily",
+    period: str = Query(default_factory=current_period, pattern=PERIOD_PATTERN.pattern),
+    date: str = Query(default_factory=today, pattern=DATE_PATTERN.pattern),
+    x_internal_token: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Code-computed numbers for the bot's slash commands (never an AI guess)."""
+    require_internal_token(x_internal_token)
+    with closing(connect()) as connection:
+        org = _org_by_guild(connection, guild_id)
+        if org is None:
+            raise HTTPException(status_code=404, detail="연동되지 않은 서버입니다.")
+        org_id = str(org["id"])
+        if kind == "revenue":
+            return seller_revenue_summary(connection, org_id, period)
+        if not is_valid_date(date):
+            raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다.")
+        snapshot = seller_daily_snapshot(connection, org_id, date)
+        if kind == "daily":
+            return snapshot
+        if kind == "views":
+            products = [p for p in snapshot["products"] if int(p["views"]) > 0]
+            products.sort(key=lambda p: int(p["views"]), reverse=True)
+            return {
+                "date": date,
+                "org_id": org_id,
+                "org_name": snapshot["org_name"],
+                "total_views": sum(int(p["views"]) for p in snapshot["products"]),
+                "top_products": products[:10],
+            }
+        # kind == "stock"
+        highlights = snapshot["highlights"]
+        return {
+            "date": date,
+            "org_id": org_id,
+            "org_name": snapshot["org_name"],
+            "out_of_stock": highlights["out_of_stock"],
+            "low_stock": highlights["low_stock"],
+            "products": snapshot["products"],
+        }
 
 
 @app.get("/policies/commerce")

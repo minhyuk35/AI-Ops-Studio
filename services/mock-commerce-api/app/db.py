@@ -215,6 +215,19 @@ CREATE TABLE IF NOT EXISTS commerce_events (
 CREATE INDEX IF NOT EXISTS idx_commerce_events_order ON commerce_events(order_id);
 CREATE INDEX IF NOT EXISTS idx_commerce_events_type_time
     ON commerce_events(event_type, occurred_at);
+
+CREATE TABLE IF NOT EXISTS discord_channels (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL REFERENCES organizations(id),
+    channel_key TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    channel_name TEXT NOT NULL DEFAULT '',
+    webhook_url TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE(org_id, channel_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discord_channels_org ON discord_channels(org_id);
 """
 
 
@@ -378,7 +391,13 @@ def initialize_database() -> None:
         }
         _ensure_columns(connection, "customers", customer_columns)  # type: ignore[arg-type]
         _ensure_columns(connection, "products", {"org_id": "TEXT"})  # type: ignore[arg-type]
-        organization_columns = {"plan": "TEXT NOT NULL DEFAULT 'FREE'"}
+        organization_columns = {
+            "plan": "TEXT NOT NULL DEFAULT 'FREE'",
+            # Discord 봇 연동: 판매자 서버(guild) ↔ 조직 바인딩과 1회용 링크 코드.
+            "discord_guild_id": "TEXT",
+            "discord_link_code": "TEXT",
+            "discord_linked_at": "TEXT",
+        }
         _ensure_columns(connection, "organizations", organization_columns)  # type: ignore[arg-type]
         connection.execute(
             """
