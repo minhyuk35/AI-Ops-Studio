@@ -42,7 +42,10 @@ class Settings(BaseSettings):
     platform_traffic_report_hour_utc: int = Field(default=1, ge=0, le=23)
     monthly_report_day_utc: int = Field(default=1, ge=1, le=28)
 
-    database_url: str = "postgresql+asyncpg://aiops:aiops@localhost:5432/aiops"
+    # Unused by any current store (InquiryStore/OpsStore read DATABASE_URL
+    # directly via os.getenv, see app/services/db_compat.py) -- kept only so
+    # this field doesn't silently diverge from .env.example's default.
+    database_url: str = ""
     redis_url: str = "redis://localhost:6379/0"
     mock_commerce_api_url: str = "http://localhost:8001"
     mock_commerce_timeout_seconds: float = Field(default=10, ge=1, le=60)

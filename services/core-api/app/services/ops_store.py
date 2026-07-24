@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.services.db_compat import Connection, PostgresConnection, database_url, is_postgres
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -21,7 +23,11 @@ class OpsStore:
             self.path = Path.cwd() / self.path
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self) -> Connection:
+        if is_postgres():
+            url = database_url()
+            assert url is not None
+            return PostgresConnection(url)
         connection = sqlite3.connect(self.path, timeout=30)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -29,10 +35,11 @@ class OpsStore:
         return connection
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
+    def transaction(self) -> Iterator[Connection]:
         connection = self.connect()
         try:
-            connection.execute("BEGIN IMMEDIATE")
+            if not is_postgres():
+                connection.execute("BEGIN IMMEDIATE")
             yield connection
             connection.commit()
         except Exception:
@@ -102,7 +109,7 @@ class OpsStore:
             )
             self._seed(connection)
 
-    def _seed(self, connection: sqlite3.Connection) -> None:
+    def _seed(self, connection: Connection) -> None:
         now = utc_now()
         workflows = [
             (
@@ -346,7 +353,7 @@ class OpsStore:
 
     def _audit(
         self,
-        connection: sqlite3.Connection,
+        connection: Connection,
         action: str,
         target_type: str,
         target_id: str,

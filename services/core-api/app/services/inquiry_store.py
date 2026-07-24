@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.schemas.ai import AIReplyRequest, AIReplyResponse
+from app.services.db_compat import Connection, PostgresConnection, database_url, is_postgres
 
 
 def utc_now() -> str:
@@ -20,7 +21,11 @@ class InquiryStore:
             self.path = Path.cwd() / self.path
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self) -> Connection:
+        if is_postgres():
+            url = database_url()
+            assert url is not None
+            return PostgresConnection(url)
         connection = sqlite3.connect(self.path, timeout=30)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")

@@ -221,7 +221,7 @@
   <header class="topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true"></span>AI Ops Studio</div>
     <div class="top-actions">
-      <span class="pill">Commerce AI Master PRD · v1.5</span>
+      <span class="pill">Commerce AI Master PRD · v1.6</span>
       <button class="theme-button" id="themeToggle" type="button" aria-label="색상 모드 전환">다크 모드</button>
     </div>
   </header>
@@ -1374,23 +1374,25 @@ share_pct = platform_contribution / total_platform_revenue × 100</code></pre>
           <header>
             <div><span class="section-no">14</span><h2>개발 로드맵</h2><p>현재 Demo Store를 기준으로 자동화 → 집계 → AI 분석 → 알림 순서로 확장한다.</p></div>
           </header>
-          <div class="phase"><div class="phase-name">완료</div><div><strong>Demo Store + 문의 자동화</strong><br><span style="color:var(--muted)">패션 상품·주문·결제·환불, OpenRouter 응답, Langfuse runtime config, Ops Console</span></div><div class="phase-time">현재</div></div>
-          <div class="phase"><div class="phase-name">완료</div><div><strong>Commerce Event Ledger + 코드 기반 매출 분석</strong><br><span style="color:var(--muted)">판매·취소·환불 이벤트 원장(멱등), 매출·상품·환불 요약 API, Ops Console 매출 분석 화면</span></div><div class="phase-time">현재</div></div>
-          <div class="phase"><div class="phase-name">Phase 1</div><div><strong>마켓플레이스 셀러 온보딩</strong><br><span style="color:var(--muted)">로그인·인증, 소비자/판매자 회원가입 분리, 프로필 판매자 활성화, GUEST/CONSUMER/SELLER/ADMIN RBAC, 판매자 온보딩 폼</span></div><div class="phase-time">4~6일</div></div>
-          <div class="phase"><div class="phase-name">Phase 2</div><div><strong>원가·광고비·수수료 → 추정 순이익</strong><br><span style="color:var(--muted)">판매자별 원가·광고비·플랫폼 수수료율 입력 화면, 서버 고정 계산식으로 순이익 재계산</span></div><div class="phase-time">3~4일</div></div>
-          <div class="phase"><div class="phase-name">Phase 3</div><div><strong>AI Commerce Report</strong><br><span style="color:var(--muted)">집계 스냅샷, OpenRouter 분석, Langfuse 프롬프트 버전·config, HTML 리포트</span></div><div class="phase-time">3~5일</div></div>
-          <div class="phase"><div class="phase-name">Phase 4</div><div><strong>Discord Webhook</strong><br><span style="color:var(--muted)">중요 이벤트, 일간 브리핑, 월간 리포트, 재시도</span></div><div class="phase-time">2~3일</div></div>
-          <div class="phase"><div class="phase-name">Phase 5</div><div><strong>Subscription Plans</strong><br><span style="color:var(--muted)">무료 입점 플랜과 수수료 정산, Basic·Pro·Business 기능 게이트, 사용량 제한, 업그레이드 동선</span></div><div class="phase-time">3~4일</div></div>
-          <div class="phase"><div class="phase-name">Phase 6</div><div><strong>실제 쇼핑몰 어댑터</strong><br><span style="color:var(--muted)">공식 API 수요가 확인된 플랫폼부터 한 곳씩 연결</span></div><div class="phase-time">검증 후</div></div>
-          <h3 style="margin:26px 0 12px">권장 모노레포</h3>
+          <div class="phase"><div class="phase-name">완료</div><div><strong>Demo Store + 문의 자동화</strong><br><span style="color:var(--muted)">패션 상품·주문·결제·환불, OpenRouter 응답, Langfuse runtime config</span></div><div class="phase-time">현재</div></div>
+          <div class="phase"><div class="phase-name">완료</div><div><strong>Commerce Event Ledger + 코드 기반 매출 분석</strong><br><span style="color:var(--muted)">판매·취소·환불 이벤트 원장(멱등), 매출·상품·환불 요약 API</span></div><div class="phase-time">현재</div></div>
+          <div class="phase"><div class="phase-name">완료</div><div><strong>마켓플레이스 셀러 온보딩</strong><br><span style="color:var(--muted)">로그인·인증, 소비자/판매자 회원가입 분리, GUEST/CONSUMER/SELLER/ADMIN RBAC, 판매자 온보딩</span></div><div class="phase-time">현재</div></div>
+          <div class="phase"><div class="phase-name">완료</div><div><strong>AI Commerce Report — 7개 페르소나</strong><br><span style="color:var(--muted)">문의 답변·분류, 커머스 인사이트·월간 리포트, 판매자별 일일 리포트, 관리자 전용 플랫폼 트래픽·매출 점유율. 자세한 내용은 <code>docs/langfuse-personas.md</code></span></div><div class="phase-time">현재</div></div>
+          <div class="phase"><div class="phase-name">완료</div><div><strong>Discord Webhook 이중 채널</strong><br><span style="color:var(--muted)">판매자 채널(민감 문의 이관, 일일 리포트) / 관리자 채널(플랫폼 트래픽, 매출 점유율)을 물리적으로 분리</span></div><div class="phase-time">현재</div></div>
+          <div class="phase"><div class="phase-name">완료</div><div><strong>Subscription Plans + 판매자 매출 점유율</strong><br><span style="color:var(--muted)">FREE·BASIC·PRO·BUSINESS 플랜별 월 요금, 수수료+플랜 요금 기반 플랫폼 매출 귀속(원매출이 아님), 판매자 5곳 샘플 데이터</span></div><div class="phase-time">현재</div></div>
+          <div class="phase"><div class="phase-name">완료</div><div><strong>판매자·관리자 콘솔을 Demo Store 하나로 통합</strong><br><span style="color:var(--muted)">별도 Ops Console(5174) 대신 <code>apps/demo-store</code> 안에 판매자/관리자 콘솔 탭으로 통합 — Vercel에 앱 하나만 배포하면 되는 구조. 자세한 내용은 13-J절</span></div><div class="phase-time">현재</div></div>
+          <div class="phase"><div class="phase-name">진행 중</div><div><strong>PostgreSQL 전환</strong><br><span style="color:var(--muted)"><code>DATABASE_URL</code> 기반 SQLite/Postgres 듀얼 백엔드 코드는 작성 완료, 실제 Postgres 인스턴스로는 아직 미검증. 무료 호스팅은 Neon 추천. 자세한 내용은 <code>docs/postgres-migration.md</code></span></div><div class="phase-time">검증 대기</div></div>
+          <div class="phase"><div class="phase-name">Phase</div><div><strong>실제 쇼핑몰 어댑터</strong><br><span style="color:var(--muted)">공식 API 수요가 확인된 플랫폼부터 한 곳씩 연결</span></div><div class="phase-time">검증 후</div></div>
+          <h3 style="margin:26px 0 12px">모노레포 구조</h3>
+          <p style="color:var(--muted);margin:0 0 12px">API 시스템이 아니라 <strong>판매자에게 AI 자동화를 지원하는 쇼핑몰 웹사이트</strong>가 제품의 본질이라, 배포 단위도 하나로 합쳤다 — <code>apps/demo-store</code>가 고객 쇼핑몰과 판매자·관리자 콘솔을 모두 담은 유일한 배포 대상이고, <code>apps/ops-console</code>은 통합 이전에 쓰던 독립 콘솔로 지금도 동작은 하지만 신규 기능은 demo-store 쪽에만 추가한다.</p>
           <pre><code>ai-ops-studio/
 ├── apps/
-│   ├── demo-store/
-│   └── ops-console/
+│   ├── demo-store/       # 배포 대상: 고객 쇼핑몰 + 판매자/관리자 콘솔
+│   └── ops-console/      # 통합 이전 콘솔 (동작은 하지만 보조/레거시)
 ├── services/
-│   ├── core-api/
+│   ├── core-api/         # AI·문의·리포트·스케줄러
 │   ├── ai-worker/
-│   └── mock-commerce-api/
+│   └── mock-commerce-api/ # 상품·주문·결제·정산 원장
 ├── packages/
 │   ├── ui/
 │   ├── shared-types/

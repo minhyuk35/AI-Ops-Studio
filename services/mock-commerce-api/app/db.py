@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.auth import hash_password
+from app.db_compat import Connection, PostgresConnection, database_url, is_postgres
 
 DEFAULT_ORG_ID = "org_demo"
 DEMO_CUSTOMER_PASSWORD = "demo1234"
@@ -27,7 +28,11 @@ def database_path() -> Path:
     return path
 
 
-def connect() -> sqlite3.Connection:
+def connect() -> Connection:
+    if is_postgres():
+        url = database_url()
+        assert url is not None
+        return PostgresConnection(url)
     connection = sqlite3.connect(database_path(), timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
@@ -36,10 +41,13 @@ def connect() -> sqlite3.Connection:
 
 
 @contextmanager
-def transaction() -> Iterator[sqlite3.Connection]:
+def transaction() -> Iterator[Connection]:
     connection = connect()
     try:
-        connection.execute("BEGIN IMMEDIATE")
+        # Postgres begins a transaction implicitly on the first statement;
+        # BEGIN IMMEDIATE is SQLite's write-lock-up-front syntax only.
+        if not is_postgres():
+            connection.execute("BEGIN IMMEDIATE")
         yield connection
         connection.commit()
     except Exception:
@@ -340,22 +348,38 @@ def _ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[st
     columns without this. There's no real migration framework here, so this
     is a deliberately minimal stand-in for one.
     """
-    existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+    if is_postgres():
+        existing = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT column_name AS name FROM information_schema.columns WHERE table_name = ?",
+                (table,),
+            ).fetchall()
+        }
+    else:
+        existing = {
+            row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
     for name, ddl_type in columns.items():
         if name not in existing:
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl_type}")
 
 
 def initialize_database() -> None:
+    # Every helper below is typed sqlite3.Connection for brevity even though
+    # transaction() may hand it a PostgresConnection under DATABASE_URL --
+    # both expose the same execute/executemany/executescript surface, so
+    # this is a duck-typing mismatch mypy can't see through, not a bug.
     with transaction() as connection:
         connection.executescript(SCHEMA)
-        _ensure_columns(
-            connection,
-            "customers",
-            {"password_hash": "TEXT NOT NULL DEFAULT ''", "is_admin": "INTEGER NOT NULL DEFAULT 0"},
-        )
-        _ensure_columns(connection, "products", {"org_id": "TEXT"})
-        _ensure_columns(connection, "organizations", {"plan": "TEXT NOT NULL DEFAULT 'FREE'"})
+        customer_columns = {
+            "password_hash": "TEXT NOT NULL DEFAULT ''",
+            "is_admin": "INTEGER NOT NULL DEFAULT 0",
+        }
+        _ensure_columns(connection, "customers", customer_columns)  # type: ignore[arg-type]
+        _ensure_columns(connection, "products", {"org_id": "TEXT"})  # type: ignore[arg-type]
+        organization_columns = {"plan": "TEXT NOT NULL DEFAULT 'FREE'"}
+        _ensure_columns(connection, "organizations", organization_columns)  # type: ignore[arg-type]
         connection.execute(
             """
             INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
@@ -445,11 +469,11 @@ def initialize_database() -> None:
         connection.execute(
             "DELETE FROM categories WHERE id NOT IN (SELECT DISTINCT category_id FROM products)"
         )
-        _seed_orders(connection)
-        _sync_seed_orders(connection)
-        _seed_test_accounts(connection)
-        _seed_seller_daily_demo(connection)
-        _seed_market_share_demo_sellers(connection)
+        _seed_orders(connection)  # type: ignore[arg-type]
+        _sync_seed_orders(connection)  # type: ignore[arg-type]
+        _seed_test_accounts(connection)  # type: ignore[arg-type]
+        _seed_seller_daily_demo(connection)  # type: ignore[arg-type]
+        _seed_market_share_demo_sellers(connection)  # type: ignore[arg-type]
 
 
 def _seed_test_accounts(connection: sqlite3.Connection) -> None:
@@ -1014,7 +1038,7 @@ def _seed_orders(connection: sqlite3.Connection) -> None:
         )
 
 
-def row_to_dict(row: sqlite3.Row | None) -> dict[str, object] | None:
+def row_to_dict(row: sqlite3.Row | dict[str, object] | None) -> dict[str, object] | None:
     return dict(row) if row is not None else None
 
 
