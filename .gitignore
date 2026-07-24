@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+client_secret*.json
 .venv/
 __pycache__/
 *.txt

@@ -1,6 +1,6 @@
 import type { Cart, Inquiry, Order, Product, ProductDetail } from "@ai-ops/shared-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import {
@@ -71,6 +71,10 @@ const supportSessionId = persistentId("everyday-support-session", "session");
 const guestId = persistentId("everyday-guest-id", "guest");
 
 const roleLabel: Record<string, string> = { CONSUMER: "소비자", SELLER: "판매자", ADMIN: "총관리자" };
+
+// three.js is a heavy dependency (~500kB) only needed for the home hero, so
+// it's code-split into its own chunk instead of bloating every route.
+const ThreeHero = lazy(() => import("./ThreeHero").then((module) => ({ default: module.ThreeHero })));
 
 const statusLabel: Record<string, string> = {
   PENDING_PAYMENT: "결제 대기",
@@ -333,10 +337,15 @@ export function App() {
 function Home({ products, onShop, onProduct }: { products: Product[]; onShop: () => void; onProduct: (p: Product) => void }) {
   return <main>
     <section className="hero">
-      <p className="eyebrow">NEW SEASON · 2026</p>
-      <h1>매일의 옷을<br />조금 더 선명하게.</h1>
-      <p>오래 입을 수 있는 소재와 절제된 실루엣을 고릅니다.</p>
-      <button className="primary" onClick={onShop}>컬렉션 보기</button>
+      <Suspense fallback={null}>
+        <ThreeHero />
+      </Suspense>
+      <div className="hero-content">
+        <p className="eyebrow">NEW SEASON · 2026</p>
+        <h1>매일의 옷을<br />조금 더 선명하게.</h1>
+        <p>오래 입을 수 있는 소재와 절제된 실루엣을 고릅니다.</p>
+        <button className="primary" onClick={onShop}>컬렉션 보기</button>
+      </div>
     </section>
     <section className="store-section"><SectionTitle eyebrow="EDITOR'S PICK" title="이번 주 에디터 추천" />
       <ProductGrid products={products.slice(0, 3)} onProduct={onProduct} />
