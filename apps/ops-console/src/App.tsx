@@ -24,13 +24,17 @@ import {
   getInquiries,
   getInquiry,
   getIntegrations,
+  getPlatformDailyTraffic,
   getRevenueProducts,
   getRevenueSummary,
   getSellerDailyReport,
+  getSellerMarketShare,
   getWorkflows,
   login,
+  PlatformTrafficReport,
   retryFailedJob,
   SellerDailyReport,
+  SellerMarketShareReport,
   updateDocument,
   updateInquiry,
   updateWorkflow,
@@ -46,13 +50,17 @@ type Page =
   | "failed"
   | "audit"
   | "revenue"
-  | "report";
+  | "report"
+  | "platform-traffic"
+  | "market-share";
 
 const ADMIN_NAVIGATION: { id: Page; label: string }[] = [
   { id: "dashboard", label: "대시보드" },
   { id: "inquiries", label: "문의" },
   { id: "revenue", label: "매출 분석" },
   { id: "report", label: "AI 리포트" },
+  { id: "platform-traffic", label: "플랫폼 트래픽" },
+  { id: "market-share", label: "판매자 비교" },
   { id: "workflows", label: "워크플로" },
   { id: "knowledge", label: "지식 문서" },
   { id: "integrations", label: "연동" },
@@ -256,6 +264,8 @@ function ConsoleShell({ session, onLogout }: { session: Session; onLogout: () =>
         />
       )}
       {page === "report" && <ReportPage period={period} onPeriodChange={setPeriod} />}
+      {page === "platform-traffic" && <PlatformTrafficPage token={token} />}
+      {page === "market-share" && <MarketSharePage token={token} period={period} onPeriodChange={setPeriod} />}
       {page === "failed" && (
         <FailedJobsPage jobs={failedJobs.data ?? []} loading={failedJobs.isLoading} />
       )}
@@ -693,6 +703,175 @@ function SellerDashboardPage({ token, orgId }: { token: string; orgId: string })
           </section>
           <section className="panel insight-panel" style={{ marginTop: 16 }}>
             <div className="panel-heading"><div><small>AI</small><h2>AI 리포트 · 재입고 제안</h2></div></div>
+            <div className="markdown-body"><ReactMarkdown>{report!.report}</ReactMarkdown></div>
+            <footer className="insight-footer">
+              {report!.model} · prompt {report!.prompt_source === "langfuse" ? report!.prompt_version ?? "langfuse" : "fallback"}
+              {" · "}
+              {report!.discord_sent ? "Discord 전송 완료" : "Discord 미전송"}
+            </footer>
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
+
+function PlatformTrafficPage({ token }: { token: string }) {
+  const query = useQuery({
+    queryKey: ["platform-daily-traffic"],
+    queryFn: () => getPlatformDailyTraffic(token, false),
+  });
+  const discordMutation = useMutation({
+    mutationFn: () => getPlatformDailyTraffic(token, true),
+  });
+  const report: PlatformTrafficReport | undefined = discordMutation.data ?? query.data;
+  const snapshot = report?.snapshot;
+
+  return (
+    <main>
+      <PageHeader
+        eyebrow="AI · platform-daily-traffic · 관리자 전용"
+        title="플랫폼 트래픽"
+        description="사이트 전체(모든 판매자 상품 포함) 오늘 조회수를 코드가 집계하고, AI가 해석합니다. 판매자 콘솔에는 노출되지 않습니다."
+        action={
+          <button
+            className="primary"
+            disabled={discordMutation.isPending || query.isLoading}
+            onClick={() => discordMutation.mutate()}
+          >
+            {discordMutation.isPending ? "전송 중…" : "Discord로 전송"}
+          </button>
+        }
+      />
+      {query.isLoading && <p className="empty">오늘의 트래픽을 불러오는 중…</p>}
+      {query.isError && <p className="empty">데이터를 불러오지 못했습니다.</p>}
+      {snapshot && (
+        <>
+          <section className="stats">
+            <article><span>전체 조회수</span><strong>{snapshot.total_views}</strong></article>
+            <article><span>날짜</span><strong>{snapshot.date}</strong></article>
+          </section>
+          <section className="grid two" style={{ marginTop: 16 }}>
+            <div className="card">
+              <h3>상점별 조회수 순위</h3>
+              {snapshot.store_ranking.slice(0, 8).map((row) => (
+                <p key={row.org_name}>{row.org_name}: <strong>{row.views}회</strong></p>
+              ))}
+            </div>
+            <div className="card">
+              <h3>가장 적게 조회된 상품</h3>
+              {snapshot.least_viewed_products.slice(0, 5).map((row) => (
+                <p key={row.product_id}>{row.product_name} ({row.org_name}): <strong>{row.views}회</strong></p>
+              ))}
+            </div>
+          </section>
+          <section className="panel table-panel" style={{ marginTop: 16 }}>
+            <div className="panel-heading"><div><small>TOP</small><h2>가장 많이 조회된 상품 (전체 판매자)</h2></div></div>
+            <div className="data-table">
+              <div className="data-row data-head"><span>상품</span><span>상점</span><span>조회수</span></div>
+              {snapshot.top_products.map((row) => (
+                <div className="data-row" key={row.product_id}>
+                  <span>{row.product_name}</span>
+                  <span>{row.org_name}</span>
+                  <span>{row.views}회</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="panel insight-panel" style={{ marginTop: 16 }}>
+            <div className="panel-heading"><div><small>AI</small><h2>AI 리포트</h2></div></div>
+            <div className="markdown-body"><ReactMarkdown>{report!.report}</ReactMarkdown></div>
+            <footer className="insight-footer">
+              {report!.model} · prompt {report!.prompt_source === "langfuse" ? report!.prompt_version ?? "langfuse" : "fallback"}
+              {" · "}
+              {report!.discord_sent ? "Discord 전송 완료" : "Discord 미전송"}
+            </footer>
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
+
+function MarketSharePage({
+  token,
+  period,
+  onPeriodChange,
+}: {
+  token: string;
+  period: string;
+  onPeriodChange: (period: string) => void;
+}) {
+  const query = useQuery({
+    queryKey: ["seller-market-share", period],
+    queryFn: () => getSellerMarketShare(token, false, period),
+  });
+  const discordMutation = useMutation({
+    mutationFn: () => getSellerMarketShare(token, true, period),
+  });
+  const report: SellerMarketShareReport | undefined = discordMutation.data ?? query.data;
+  const snapshot = report?.snapshot;
+  const planLabel: Record<string, string> = { FREE: "무료 입점", BASIC: "Basic", PRO: "Pro", BUSINESS: "Business" };
+
+  return (
+    <main>
+      <PageHeader
+        eyebrow="AI · seller-market-share-report · 관리자 전용"
+        title="판매자 매출 비교"
+        description="판매자 매출액이 아니라, 수수료+플랜 요금으로 이 사이트가 실제로 버는 돈을 판매자별로 비교합니다."
+        action={
+          <div className="report-actions">
+            <input
+              className="period-input"
+              aria-label="비교 기간"
+              type="month"
+              value={period}
+              onChange={(event) => onPeriodChange(event.target.value)}
+            />
+            <button
+              className="primary"
+              disabled={discordMutation.isPending || query.isLoading}
+              onClick={() => discordMutation.mutate()}
+            >
+              {discordMutation.isPending ? "전송 중…" : "Discord로 전송"}
+            </button>
+          </div>
+        }
+      />
+      {query.isLoading && <p className="empty">데이터를 불러오는 중…</p>}
+      {query.isError && <p className="empty">데이터를 불러오지 못했습니다.</p>}
+      {snapshot && (
+        <>
+          <section className="stats">
+            <article><span>플랫폼 전체 매출</span><strong>{formatWon(snapshot.total_platform_revenue)}</strong><small>수수료+플랜 요금 합계</small></article>
+            <article><span>플랫폼 기본 상품 비중</span><strong>{snapshot.platform_default_share_pct ?? "—"}%</strong></article>
+            <article><span>이번 달</span><strong>{snapshot.period}</strong></article>
+            <article><span>지난 달</span><strong>{snapshot.previous_period}</strong></article>
+          </section>
+          <section className="panel table-panel" style={{ marginTop: 16 }}>
+            <div className="panel-heading"><div><small>SELLERS</small><h2>판매자별 플랫폼 매출 점유율</h2></div></div>
+            <div className="data-table">
+              <div className="data-row data-head">
+                <span>판매자</span><span>플랜</span><span>판매액(GMV)</span><span>수수료+플랜</span><span>점유율</span>
+              </div>
+              {snapshot.sellers.map((seller) => (
+                <div className="data-row" key={seller.org_id}>
+                  <span>{seller.org_name}</span>
+                  <span>{planLabel[seller.plan] ?? seller.plan}</span>
+                  <span>{formatWon(seller.gross_revenue)}</span>
+                  <span>{formatWon(seller.commission_revenue)} + {formatWon(seller.plan_fee)} = {formatWon(seller.platform_contribution)}</span>
+                  <span>
+                    {seller.share_pct ?? "—"}%
+                    {seller.previous_share_pct !== null && seller.share_pct !== null && (
+                      <small> ({seller.share_pct >= seller.previous_share_pct ? "+" : ""}{Math.round((seller.share_pct - seller.previous_share_pct) * 10) / 10}%p)</small>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="panel insight-panel" style={{ marginTop: 16 }}>
+            <div className="panel-heading"><div><small>AI</small><h2>AI 리포트</h2></div></div>
             <div className="markdown-body"><ReactMarkdown>{report!.report}</ReactMarkdown></div>
             <footer className="insight-footer">
               {report!.model} · prompt {report!.prompt_source === "langfuse" ? report!.prompt_version ?? "langfuse" : "fallback"}

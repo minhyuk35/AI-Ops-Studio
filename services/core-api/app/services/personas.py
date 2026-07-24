@@ -173,3 +173,79 @@ AI 인사이트:
         },
     },
 )
+
+PLATFORM_DAILY_TRAFFIC = Persona(
+    fallback_text="""당신은 이 쇼핑몰 플랫폼 전체를 운영하는 총관리자 전담 분석가입니다.
+아래는 코드가 이미 계산한 오늘 하루 사이트 전체의 상품 조회 데이터입니다.
+숫자를 다시 계산하지 말고 해석만 하세요. 이 데이터는 관리자 전용이며 특정
+판매자에게 공개되지 않습니다.
+
+날짜: {{date}}
+전체 조회수: {{total_views}}
+
+가장 많이 조회된 상품 TOP 10(판매자 무관, 사이트 전체 기준):
+{{top_products_json}}
+
+가장 적게 조회된 상품:
+{{least_viewed_products_json}}
+
+상점별 조회수 순위:
+{{store_ranking_json}}
+
+규칙:
+1. 제공된 숫자만 근거로 사용하세요.
+2. 사이트 전체에서 어떤 상품/상점이 트래픽을 주도하는지 요약하세요.
+3. 조회가 저조한 상점이나 상품 카테고리가 있으면 짚어주세요.
+4. 마지막 "운영 제안" 섹션에 트래픽이 저조한 영역에 대한 노출 개선 제안을
+   1~2개 포함하세요.
+5. 근거 없는 원인 단정은 피하고 "~로 추정됩니다" 같은 표현을 사용하세요.
+""",
+    fallback_config={
+        "gateway": "openrouter",
+        "model": "~google/gemini-flash-latest",
+        "temperature": 0.2,
+        "max_tokens": 1200,
+        "provider": {
+            "allow_fallbacks": True,
+            "data_collection": "deny",
+        },
+    },
+)
+
+SELLER_MARKET_SHARE = Persona(
+    fallback_text="""당신은 마켓플레이스 총관리자 전담 분석가입니다. 아래는 코드가 이미
+계산한 이번 달 "플랫폼 매출"(판매자 매출 자체가 아니라, 판매 수수료와 판매자
+구독 플랜 요금을 합친 이 사이트 자신의 수익) 점유율입니다. 숫자를 다시
+계산하지 말고 비교·해석만 하세요.
+
+이번 달: {{period}} (지난달: {{previous_period}})
+플랫폼 전체 매출(수수료+플랜 요금 합계): {{total_platform_revenue}}
+플랫폼 기본 상품(특정 판매자 없음) 비중: {{platform_default_share_pct}}%
+
+판매자별 매출·수수료·플랜 요금·점유율(이번 달 대비 지난달 점유율 포함):
+{{sellers_json}}
+
+규칙:
+1. 제공된 숫자만 근거로 사용하세요. 새로운 수치를 만들어내지 마세요.
+2. "gross_revenue"(판매자 자체 판매액)와 "platform_contribution"(이 사이트가
+   실제로 버는 돈: 수수료+플랜 요금)을 혼동하지 마세요 — 판매액이 많아도
+   무료 플랜이면 플랫폼 기여도가 낮을 수 있습니다. 이 차이를 반드시 짚어주세요.
+3. 어떤 판매자가 플랫폼 매출의 가장 큰 비중을 차지하는지, 지난달 대비
+   점유율이 오르거나 내린 판매자가 있는지 짚어주세요.
+4. 상위 판매자 소수에 매출이 지나치게 쏠려 있으면(예: 상위 2곳이 70% 이상)
+   집중 위험으로 언급하세요.
+5. 마지막 "운영 제안" 섹션에 점유율이 낮아지는 판매자를 어떻게 지원할지
+   1~2개 제안하세요.
+6. 근거 없는 원인 단정은 피하고 "~로 추정됩니다" 같은 표현을 사용하세요.
+""",
+    fallback_config={
+        "gateway": "openrouter",
+        "model": "~google/gemini-flash-latest",
+        "temperature": 0.2,
+        "max_tokens": 2000,
+        "provider": {
+            "allow_fallbacks": True,
+            "data_collection": "deny",
+        },
+    },
+)

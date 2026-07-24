@@ -1,19 +1,21 @@
 import httpx
 
-from app.config import Settings
-
 
 class DiscordNotifier:
     """Best-effort Discord webhook sender.
 
-    Used to push sensitive-inquiry escalations and monthly reports out of
-    the app. Never raises — a missing or unreachable webhook should not
-    break the AI pipeline that triggered the notification.
+    Used to push sensitive-inquiry escalations, seller daily reports and
+    admin-only platform reports out of the app. Never raises — a missing or
+    unreachable webhook should not break the AI pipeline that triggered the
+    notification. Takes the webhook URL directly (rather than a Settings
+    object) so the app can run two independent notifiers — one for
+    per-seller/escalation messages, one for admin-only platform reports —
+    without either leaking into the wrong Discord channel.
     """
 
-    def __init__(self, settings: Settings) -> None:
-        self._webhook_url = settings.discord_webhook_url
-        self._timeout = settings.discord_timeout_seconds
+    def __init__(self, webhook_url: str, timeout_seconds: float = 10) -> None:
+        self._webhook_url = webhook_url
+        self._timeout = timeout_seconds
 
     @property
     def enabled(self) -> bool:

@@ -1,23 +1,30 @@
 # Langfuse prompt personas
 
-AI Ops Studio의 MVP는 호출 목적이 다른 다섯 개의 페르소나를 사용합니다. 하나의 긴
+AI Ops Studio의 MVP는 호출 목적이 다른 일곱 개의 페르소나를 사용합니다. 하나의 긴
 프롬프트에 모든 책임을 넣지 않고, 입력 데이터·출력 형식·평가 기준이 다른 작업을
 별도 prompt name으로 관리합니다.
 
-| Prompt name | 책임 | 입력 | 출력 | 구현 상태 |
-| --- | --- | --- | --- | --- |
-| `customer-support-answer` | 고객 문의 답변 | 질문, 주문, 정책 | 고객용 한국어 답변 | 구현 |
-| `support-triage` | 문의 분류·위험 판단 | 질문 | `{category, risk, requires_human, reason}` JSON | 구현 |
-| `commerce-insight` | 집계 수치 해석 | 계산 완료 스냅샷 | 변화·이상치·운영 제안 | 구현 |
-| `commerce-monthly-report` | 월간 보고서 편집 | 지표와 insight | 대시보드·Discord용 보고서 | 구현 |
-| `daily-seller-report` | 판매자별 일일 스냅샷 해석·재입고 제안 | 조회·판매·환불·재고 스냅샷 | 판매자 콘솔·Discord용 리포트 | 구현 |
+| Prompt name | 책임 | 입력 | 출력 | 대상 | 구현 상태 |
+| --- | --- | --- | --- | --- | --- |
+| `customer-support-answer` | 고객 문의 답변 | 질문, 주문, 정책 | 고객용 한국어 답변 | 고객 | 구현 |
+| `support-triage` | 문의 분류·위험 판단 | 질문 | `{category, risk, requires_human, reason}` JSON | 시스템 내부 | 구현 |
+| `commerce-insight` | 집계 수치 해석 | 계산 완료 스냅샷 | 변화·이상치·운영 제안 | 관리자 | 구현 |
+| `commerce-monthly-report` | 월간 보고서 편집 | 지표와 insight | 대시보드·Discord용 보고서 | 관리자 | 구현 |
+| `daily-seller-report` | 판매자별 일일 스냅샷 해석·재입고 제안 | 조회·판매·환불·재고 스냅샷(1개 판매자) | 판매자 콘솔·Discord용 리포트 | 판매자 | 구현 |
+| `platform-daily-traffic` | 사이트 전체 일일 트래픽 해석 | 전체 판매자 조회수 스냅샷 | 관리자 전용 트래픽 리포트 | 관리자 | 구현 |
+| `seller-market-share-report` | 판매자별 플랫폼 매출 점유율 비교 | 수수료+플랜 요금 스냅샷 | 관리자 전용 월간 비교 리포트 | 관리자 | 구현 |
 
-앞의 네 개는 관리자(플랫폼 전체)용이고, `daily-seller-report`만 유일하게
-**판매자 1명당 1개씩** 매일 실행된다 — 판매자 콘솔에 로그인하면 보이는
-"오늘의 대시보드"와 자정마다 자동으로 나가는 Discord 리포트가 같은 코드를
-공유한다. 자세한 내용은 `docs/prompts/daily-seller-report.md` 참고.
+`daily-seller-report`는 판매자 1명당 1개씩 매일 실행되고, 그 판매자 본인의
+상품만 본다. `platform-daily-traffic`/`seller-market-share-report`는 정반대로
+**전체 판매자를 가로질러** 보되 관리자만 조회할 수 있다 — "판매자가 자기
+상품 조회수를 보는 것"과 "관리자가 사이트 전체 트래픽·매출 비중을 보는 것"은
+같은 숫자(PRODUCT_VIEWED, commerce_events)를 다른 범위로 자른 것일 뿐인데도
+별도 페르소나·별도 API·별도 Discord 채널로 분리했다 — 판매자에게 다른
+판매자의 데이터가 노출되면 안 되기 때문이다. 자세한 내용은
+`docs/prompts/daily-seller-report.md`, `docs/prompts/platform-daily-traffic.md`,
+`docs/prompts/seller-market-share-report.md` 참고.
 
-다섯 페르소나 모두 `services/core-api/app/services/personas.py`에 오프라인
+일곱 페르소나 모두 `services/core-api/app/services/personas.py`에 오프라인
 fallback 텍스트·config가 있어서, Langfuse에 아직 프롬프트를 만들지 않았거나
 Langfuse가 죽어 있어도 앱은 fallback으로 계속 동작합니다. 다만 fallback은
 "장애 대비용"일 뿐이고, 실제로 운영·튜닝하는 프롬프트는 아래 가이드대로
@@ -26,7 +33,7 @@ Langfuse 콘솔에 등록한 버전입니다.
 ## Langfuse 콘솔에서 새 페르소나를 등록하는 법
 
 문의 답변(`customer-support-answer`)은 이미 등록돼 있는 것과 동일한 방식으로,
-나머지 세 개도 각각 **별도의 prompt name**으로 등록합니다. 하나의 프롬프트에
+나머지도 각각 **별도의 prompt name**으로 등록합니다. 하나의 프롬프트에
 여러 책임을 몰아넣지 않는 것이 핵심입니다 — 호출 목적이 다르면 name도 달라야
 버전 관리·A/B 테스트·트레이스 검색이 각자 독립적으로 됩니다.
 
@@ -38,6 +45,8 @@ Langfuse 콘솔에 등록한 버전입니다.
    - `commerce-insight`
    - `commerce-monthly-report`
    - `daily-seller-report`
+   - `platform-daily-traffic`
+   - `seller-market-share-report`
 3. **Type**: `Text` (Chat이 아님 — 코드가 `type="text"`로 조회합니다).
 4. **Prompt**: `docs/prompts/<name>.md`에 있는 코드 블록을 그대로 붙여넣습니다.
    `{{question}}`, `{{period}}`처럼 이중 중괄호로 된 변수 이름은 코드가
@@ -141,6 +150,36 @@ Langfuse 콘솔에 등록한 버전입니다.
   "model": "~google/gemini-flash-latest",
   "temperature": 0.2,
   "max_tokens": 1400,
+  "provider": {
+    "allow_fallbacks": true,
+    "data_collection": "deny"
+  }
+}
+```
+
+플랫폼 트래픽(관리자 전용):
+
+```json
+{
+  "gateway": "openrouter",
+  "model": "~google/gemini-flash-latest",
+  "temperature": 0.2,
+  "max_tokens": 1200,
+  "provider": {
+    "allow_fallbacks": true,
+    "data_collection": "deny"
+  }
+}
+```
+
+판매자 매출 점유율(관리자 전용):
+
+```json
+{
+  "gateway": "openrouter",
+  "model": "~google/gemini-flash-latest",
+  "temperature": 0.2,
+  "max_tokens": 2000,
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"

@@ -35,8 +35,12 @@ class Settings(BaseSettings):
     langfuse_commerce_insight_prompt_name: str = "commerce-insight"
     langfuse_monthly_report_prompt_name: str = "commerce-monthly-report"
     langfuse_daily_seller_report_prompt_name: str = "daily-seller-report"
+    langfuse_platform_traffic_prompt_name: str = "platform-daily-traffic"
+    langfuse_seller_market_share_prompt_name: str = "seller-market-share-report"
 
     daily_report_hour_utc: int = Field(default=0, ge=0, le=23)
+    platform_traffic_report_hour_utc: int = Field(default=1, ge=0, le=23)
+    monthly_report_day_utc: int = Field(default=1, ge=1, le=28)
 
     database_url: str = "postgresql+asyncpg://aiops:aiops@localhost:5432/aiops"
     redis_url: str = "redis://localhost:6379/0"
@@ -44,6 +48,7 @@ class Settings(BaseSettings):
     mock_commerce_timeout_seconds: float = Field(default=10, ge=1, le=60)
 
     discord_webhook_url: str = ""
+    admin_discord_webhook_url: str = ""
     discord_timeout_seconds: float = Field(default=10, ge=1, le=30)
 
     @property

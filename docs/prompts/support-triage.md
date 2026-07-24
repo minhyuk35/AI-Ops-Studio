@@ -34,7 +34,7 @@ Langfuse prompt type: `text`
 ```
 
 `answer-customer-inquiry` 트레이스 안에서 `classify-inquiry`라는 별도 span으로
-실행되며, `generate-support-reply`(customer-support-answer)보다 먼저 호출됩니다.
+실행되며, `generate-support-reply`(customer-support-answe     r)보다 먼저 호출됩니다.
 `temperature: 0`인 이유는 분류값이 매번 일관돼야 하기 때문입니다 — 답변 생성용
 프롬프트와 달리 창의성이 필요 없습니다.
 

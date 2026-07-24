@@ -221,7 +221,7 @@
   <header class="topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true"></span>AI Ops Studio</div>
     <div class="top-actions">
-      <span class="pill">Commerce AI Master PRD · v1.4</span>
+      <span class="pill">Commerce AI Master PRD · v1.5</span>
       <button class="theme-button" id="themeToggle" type="button" aria-label="색상 모드 전환">다크 모드</button>
     </div>
   </header>
@@ -780,8 +780,8 @@ POST /api/webhooks/test</code></pre>
             <strong>정확성 원칙</strong>
             <p>LLM이 금액을 계산하지 않는다. 서버가 생성한 집계 JSON과 비교 결과를 프롬프트에 한 번에 전달한다. 비용 입력이 빠졌으면 “순이익 미확정”으로 표시하며, AI 문장은 관찰된 상관관계를 원인으로 단정하지 않는다.</p>
           </div>
-          <h3 style="margin:28px 0 12px">Langfuse 페르소나 · MVP는 4개</h3>
-          <p style="color:var(--muted);margin-bottom:14px">입력 데이터, 출력 형식과 평가 기준이 다른 책임만 별도 prompt name으로 분리한다. 공통 말투와 안전 규칙은 호출 가능한 페르소나 수에 포함하지 않고 Prompt Composability로 재사용한다.</p>
+          <h3 style="margin:28px 0 12px">Langfuse 페르소나 · MVP는 7개</h3>
+          <p style="color:var(--muted);margin-bottom:14px">입력 데이터, 출력 형식과 평가 기준이 다른 책임만 별도 prompt name으로 분리한다. 공통 말투와 안전 규칙은 호출 가능한 페르소나 수에 포함하지 않고 Prompt Composability로 재사용한다. 같은 숫자(상품 조회수, 매출)라도 "누가 볼 수 있는가"가 다르면(판매자 본인 vs 관리자 전체) 별도 페르소나·별도 API·별도 Discord 채널로 분리했다.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Prompt name</th><th>페르소나</th><th>책임</th><th>출력</th><th>상태</th></tr></thead>
@@ -790,6 +790,9 @@ POST /api/webhooks/test</code></pre>
                 <tr><td><code>support-triage</code></td><td>문의 분류 담당</td><td>유형·위험도·이관 여부 판단</td><td>구조화된 분류 JSON</td><td class="priority p0">구현</td></tr>
                 <tr><td><code>commerce-insight</code></td><td>커머스 분석가</td><td>코드가 계산한 지표의 변화·이상치 해석</td><td>근거가 있는 운영 인사이트</td><td class="priority p0">구현</td></tr>
                 <tr><td><code>commerce-monthly-report</code></td><td>리포트 편집자</td><td>월간 지표와 인사이트를 채널별로 편집</td><td>대시보드·HTML·Discord 요약</td><td class="priority p0">구현</td></tr>
+                <tr><td><code>daily-seller-report</code></td><td>판매자 전담 분석가</td><td>판매자 1명의 오늘 조회·판매·환불·재고 해석</td><td>판매자 콘솔·Discord 리포트</td><td class="priority p0">구현</td></tr>
+                <tr><td><code>platform-daily-traffic</code></td><td>총관리자 전담 분석가</td><td>사이트 전체(전 판매자) 오늘 트래픽 해석</td><td>관리자 전용 Discord 리포트</td><td class="priority p0">구현</td></tr>
+                <tr><td><code>seller-market-share-report</code></td><td>총관리자 전담 분석가</td><td>판매자별 플랫폼 매출(수수료+플랜) 점유율 비교</td><td>관리자 전용 월간 Discord 리포트</td><td class="priority p0">구현</td></tr>
               </tbody>
             </table>
           </div>
@@ -994,6 +997,11 @@ POST /api/webhooks/test</code></pre>
                 <tr><td class="priority p0">ops-console "AI 인사이트 생성"</td><td><code>GET /api/v1/ai/commerce-insight</code></td><td><code>CommerceInsightService.generate_insight()</code></td><td>없음 (DB 미기록, 매 클릭마다 재생성)</td></tr>
                 <tr><td class="priority p0">ops-console "리포트 생성"</td><td><code>POST /api/v1/ai/monthly-report</code></td><td><code>MonthlyReportService.generate_report()</code></td><td>없음 (+ 체크박스 켜면 Discord로 1회 전송)</td></tr>
                 <tr><td>상담원 이관 발생 시(자동)</td><td>Discord Webhook POST</td><td><code>DiscordNotifier.send()</code></td><td>해당 없음(외부 전송)</td></tr>
+                <tr><td>ops-console 로그인</td><td><code>POST /auth/login</code></td><td><code>login()</code></td><td>없음(조회만) — role·organization을 응답으로 받아 localStorage에 세션 저장</td></tr>
+                <tr><td class="priority p0">판매자 콘솔 "오늘의 대시보드"</td><td><code>POST /api/v1/ai/seller-daily-report</code></td><td><code>SellerDailyReportService.generate_report()</code></td><td>없음 (+ 체크박스 켜면 판매자 Discord로 전송)</td></tr>
+                <tr><td>판매자 콘솔 "문의" 탭</td><td><code>GET /api/v1/inquiries?org_id=</code></td><td><code>require_org_access()</code> 검증 후 <code>list_inquiries(org_id)</code></td><td>없음(조회만) — 다른 판매자 org_id 요청 시 403</td></tr>
+                <tr><td class="priority p0">관리자 콘솔 "플랫폼 트래픽"</td><td><code>POST /api/v1/ai/platform-daily-traffic</code></td><td><code>PlatformTrafficService.generate_report()</code></td><td>없음 (+ 체크박스 켜면 관리자 전용 Discord로 전송)</td></tr>
+                <tr><td class="priority p0">관리자 콘솔 "판매자 비교"</td><td><code>POST /api/v1/ai/seller-market-share</code></td><td><code>SellerMarketShareService.generate_report()</code></td><td>없음 (+ 체크박스 켜면 관리자 전용 Discord로 전송)</td></tr>
               </tbody>
             </table>
           </div>
@@ -1304,6 +1312,58 @@ CREATE TABLE integrations (id TEXT PRIMARY KEY, name TEXT, status TEXT, config_s
 CREATE TABLE failed_jobs (id TEXT PRIMARY KEY, error_code TEXT, error_message TEXT, retry_count INTEGER, status TEXT);
 CREATE TABLE audit_logs (id TEXT PRIMARY KEY, actor TEXT, action TEXT, target_type TEXT, target_id TEXT, detail TEXT, created_at TEXT);</code></pre>
 
+          <h3 style="margin:32px 0 12px">J · 판매자·관리자 콘솔 — 로그인, 문의 라우팅, AI 리포트 3종</h3>
+          <p style="color:var(--muted)">ops-console은 원래 인증 없는 관리자 전용 화면이었다. 지금은 <strong>같은 화면이 로그인한 계정의 role에 따라 다르게 보이는 멀티테넌트 콘솔</strong>이다 — SELLER는 본인 상점만, ADMIN은 플랫폼 전체를 본다.</p>
+          <ol>
+            <li><strong>로그인</strong>: ops-console이 mock-commerce-api의 <code>POST /auth/login</code>을 직접 호출한다(core-api를 거치지 않음 — demo-store와 동일 패턴). 응답의 <code>customer.role</code>이 <code>SELLER</code>/<code>ADMIN</code>이 아니면 콘솔 접근을 거부한다.</li>
+            <li><strong>권한 검증은 core-api가 mock-commerce-api에 되묻는 방식</strong>: core-api는 JWT를 직접 디코드하지 않는다. <code>app/services/identity.py</code>의 <code>require_org_access()</code>/<code>require_admin()</code>이 매 요청마다 <code>CommerceClient.verify_identity(token)</code>으로 <code>GET /customers/me</code>를 호출해 "이 토큰이 정말 이 조직 소유자인가/관리자인가"를 확인한다.</li>
+            <li><strong>문의 → 판매자 자동 라우팅</strong>: 문의에 <code>order_id</code>가 있으면 <code>POST /api/v1/ai/reply</code>가 <code>CommerceClient.get_order_org_id()</code>로 그 주문의 실제 판매자를 조회해 <code>inquiries.organization_id</code>에 저장한다(클라이언트가 보낸 값은 신뢰하지 않는다). 조회 실패는 예외를 삼키고 <code>None</code>으로 폴백 — 조직 귀속은 부가 기능이라 원본 문의 저장을 막으면 안 된다.</li>
+            <li><strong>세 AI 리포트의 데이터 경계</strong>: <code>daily-seller-report</code>는 <code>seller_daily_snapshot(org_id, date)</code>로 딱 그 판매자의 상품만; <code>platform-daily-traffic</code>은 <code>platform_daily_traffic(date)</code>로 org 필터 없이 전체 판매자를; <code>seller-market-share-report</code>는 <code>seller_market_share(period)</code>로 전체 활성 판매자를 비교한다. 뒤의 둘은 <code>require_admin()</code>으로 막혀 있고, 전용 Discord 채널(<code>ADMIN_DISCORD_WEBHOOK_URL</code>)로만 나간다 — 판매자용 채널(<code>DISCORD_WEBHOOK_URL</code>)과 물리적으로 분리.</li>
+          </ol>
+
+          <h3 style="margin:26px 0 12px">"매출 점유율"의 실제 계산 — GMV가 아니라 플랫폼 자신의 수익</h3>
+          <p>판매자 매출 자체(GMV)를 비교하면 오해가 생긴다. 이 사이트가 실제로 버는 돈은 <strong>판매 수수료 + 판매자 구독 플랜 요금</strong>뿐이다. <code>organizations.plan</code> 컬럼(FREE/BASIC/PRO/BUSINESS)과 고정 월 요금표를 더해 이렇게 계산한다:</p>
+          <pre><code>platform_contribution = gross_revenue × organizations.commission_rate + PLAN_MONTHLY_FEES[plan]
+# PLAN_MONTHLY_FEES = { FREE: 0, BASIC: 35,000, PRO: 150,000, BUSINESS: 300,000 }
+share_pct = platform_contribution / total_platform_revenue × 100</code></pre>
+          <p style="color:var(--muted)">그래서 무료 입점 판매자가 판매액은 훨씬 커도, 유료 플랜 판매자보다 플랫폼 매출 점유율은 낮게 나올 수 있다 — 실제 시드 데이터에서 "라인 클로젯"(BUSINESS, 판매액 3위)이 "무드 스토리"(FREE, 판매액 1위)보다 훨씬 높은 점유율을 갖는 것으로 확인했다. 구독·결제 시스템은 아직 없으므로 플랜 요금은 <code>PLAN_MONTHLY_FEES</code> 상수를 쓰는 가정치다.</p>
+
+          <h3 style="margin:26px 0 12px">K · 배포 — 왜 Next.js가 아니라 Vite인가</h3>
+          <div class="grid two">
+            <div class="card">
+              <h3>애초에 Next.js가 필요 없는 구조</h3>
+              <ul>
+                <li>demo-store·ops-console 둘 다 <strong>순수 클라이언트 SPA</strong>다 — 서버 사이드 렌더링, 파일 기반 라우팅, API Route 같은 Next.js 고유 기능을 하나도 쓰지 않는다.</li>
+                <li>"API 서버"는 이미 <strong>완전히 분리된 FastAPI 서비스</strong>(core-api, mock-commerce-api)로 존재한다. Next.js의 API Route는 "프런트 프로젝트 안에 백엔드를 욱여넣는" 기능인데, 이 프로젝트는 처음부터 백엔드가 따로 있어서 그 기능 자체가 무의미하다.</li>
+                <li>SEO가 중요한 공개 마케팅 페이지가 아니라 로그인 후 쓰는 대시보드·쇼핑 데모다 — SSR/SSG로 얻는 이점(초기 HTML에 콘텐츠 포함, 크롤러 대응)이 거의 없다.</li>
+                <li>Next.js로 옮기면 라우팅·데이터 페칭·빌드 파이프라인을 전부 다시 짜야 한다 — 지금 구조(React Query + 직접 <code>fetch</code>)를 그대로 못 쓴다. 없는 문제를 해결하려고 실제 마이그레이션 비용을 지불하는 셈이다.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Vite가 실제로 준 이점</h3>
+              <ul>
+                <li>개발 서버 시작·HMR이 번들러 기반 도구보다 훨씬 빠르다 — 이 세션 내내 <code>pnpm dev</code> 한 번 띄워두고 수백 번 코드를 고치는 동안 체감됐다.</li>
+                <li>빌드 결과물이 <code>index.html</code> + 정적 JS/CSS 몇 개뿐이다 — 배포 대상이 "그냥 정적 파일"이라 어떤 정적 호스팅에도 그대로 올라간다.</li>
+                <li><code>apps/demo-store</code>, <code>apps/ops-console</code> 둘 다 <code>vite.config.ts</code> 하나로 끝난다. Next.js였다면 앱 라우터 구조, 미들웨어, 환경변수 접두사 규칙(<code>NEXT_PUBLIC_*</code>) 등 프레임워크 고유 규약을 새로 익히고 맞춰야 했을 것이다.</li>
+              </ul>
+            </div>
+          </div>
+
+          <h3 style="margin:26px 0 12px">Vercel 배포 실제 방법</h3>
+          <p style="color:var(--muted);margin-bottom:14px">Vercel은 Next.js 전용 플랫폼이 아니라 프레임워크에 무관하게 정적 빌드 결과물을 배포할 수 있는 호스팅이다. Vite 프로젝트는 "Other"가 아니라 <strong>Vite 프리셋을 자동 인식</strong>한다.</p>
+          <ol>
+            <li>이 저장소는 모노레포이자 <strong>서로 다른 두 SPA</strong>(demo-store, ops-console)를 담고 있으므로, Vercel 프로젝트를 <strong>2개</strong> 만든다(같은 GitHub 저장소를 두 번 import).</li>
+            <li>각 프로젝트의 <strong>Root Directory</strong>를 <code>apps/demo-store</code>, <code>apps/ops-console</code>로 각각 지정한다.</li>
+            <li>Framework Preset은 자동으로 "Vite"가 잡힌다. 수동 설정 시: Build Command <code>pnpm build</code>(또는 <code>vite build</code>), Output Directory <code>dist</code>.</li>
+            <li>환경변수(<code>VITE_CORE_API_URL</code>, <code>VITE_COMMERCE_API_URL</code>, <code>VITE_GOOGLE_CLIENT_ID</code>)를 Vercel 프로젝트 설정의 Environment Variables에 등록한다 — 로컬 <code>.env</code>와 별개로, 배포된 백엔드의 실제 URL을 가리켜야 한다.</li>
+            <li>pnpm 워크스페이스이므로 Vercel의 Install Command가 루트에서 <code>pnpm install</code>을 실행하도록 두고, Root Directory는 위 3번처럼 앱별로 분리한다 — 워크스페이스 의존성(<code>@ai-ops/shared-types</code>)은 pnpm이 자동으로 링크한다.</li>
+          </ol>
+
+          <div class="callout" style="margin-top:16px;border-left-color:var(--danger);background:var(--danger-soft)">
+            <strong>백엔드(core-api, mock-commerce-api)는 Vercel에 그대로 못 올린다</strong>
+            <p>Vercel의 실행 모델은 요청마다 뜨고 죽는 서버리스 함수다. 이 프로젝트의 core-api는 <code>DailySellerReportScheduler</code>/<code>PlatformTrafficScheduler</code>/<code>SellerMarketShareScheduler</code>처럼 <strong>프로세스가 계속 살아있어야 도는 asyncio 백그라운드 루프</strong>를 lifespan에 등록해뒀다 — 서버리스 환경에서는 요청 사이에 프로세스가 꺼지므로 이 스케줄러들이 예정된 시각까지 깨어있을 거라는 보장이 없다. FastAPI 두 서비스는 상시 실행되는 컨테이너/VM 호스팅(Render, Railway, Fly.io 등)에 올리고, 프런트엔드(Vercel)의 <code>VITE_CORE_API_URL</code>/<code>VITE_COMMERCE_API_URL</code>이 그 주소를 가리키게 하는 구성이 맞다.</p>
+          </div>
+
           <div class="callout" style="margin-top:16px;border-left-color:var(--warn);background:var(--warn-soft)">
             <strong>이 섹션에서 정직하게 밝히는 것</strong>
             <p>commerce-insight/commerce-monthly-report는 요청마다 새로 계산될 뿐 DB에 이력이 남지 않는다(지난달 리포트를 다시 보려면 그 기간으로 재생성해야 한다). support-triage 실패 시 키워드 폴백은 <code>HUMAN_HANDOFF_KEYWORDS</code> 5개 문자열 매칭이라 표현을 바꾸면 못 잡는다. Discord 실패는 재시도 없이 그냥 <code>false</code>를 반환한다. 전부 포트폴리오 MVP 범위에서 의도적으로 남긴 단순화다.</p>
@@ -1377,7 +1437,7 @@ CREATE TABLE audit_logs (id TEXT PRIMARY KEY, actor TEXT, action TEXT, target_ty
         </section>
       </main>
     </div>
-    <footer>AI Ops Studio · Commerce AI Master PRD v1.4 · 2026-07-24</footer>
+    <footer>AI Ops Studio · Commerce AI Master PRD v1.5 · 2026-07-24</footer>
   </div>
 
   <script>

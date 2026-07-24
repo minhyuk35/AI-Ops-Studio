@@ -36,3 +36,14 @@ async def require_org_access(
     if not organization or organization.get("id") != org_id:
         raise HTTPException(status_code=403, detail="본인 상점의 데이터만 조회할 수 있습니다.")
     return profile
+
+
+async def require_admin(
+    authorization: str | None, commerce: CommerceClient
+) -> dict[str, object]:
+    """Platform-wide data (site traffic, cross-seller revenue share) is
+    ADMIN-only — no seller ever has a legitimate org_id to scope it to."""
+    profile = await require_identity(authorization, commerce)
+    if profile.get("role") != "ADMIN":
+        raise HTTPException(status_code=403, detail="관리자만 조회할 수 있습니다.")
+    return profile

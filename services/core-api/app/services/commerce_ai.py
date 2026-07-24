@@ -8,7 +8,9 @@ from app.config import Settings
 from app.schemas.ai import (
     CommerceInsightResponse,
     MonthlyReportResponse,
+    PlatformTrafficResponse,
     SellerDailyReportResponse,
+    SellerMarketShareResponse,
 )
 from app.services import personas
 from app.services.llm_client import build_openrouter_client
@@ -264,6 +266,167 @@ class SellerDailyReportService:
                     date=date,
                     org_id=org_id,
                     org_name=org_name,
+                    report=report,
+                    snapshot=snapshot,
+                    model=compiled.model,
+                    prompt_source=compiled.source,
+                    prompt_version=compiled.version,
+                )
+
+
+class PlatformTrafficService:
+    """platform-daily-traffic persona: site-wide product-view traffic, admin-only.
+
+    Same shape of question as SellerDailyReportService ("what got looked
+    at today"), but scoped to the whole platform instead of one org — which
+    is exactly why it's a separate persona/prompt name rather than the same
+    one called without a filter: the audience, and therefore what's safe to
+    reveal, is different (a seller's own numbers vs. cross-seller traffic).
+    """
+
+    def __init__(self, settings: Settings, prompts: PromptRepository) -> None:
+        self.settings = settings
+        self.prompts = prompts
+        self.client = build_openrouter_client(settings)
+
+    def generate_report(self, snapshot: dict[str, Any]) -> PlatformTrafficResponse:
+        date = str(snapshot["date"])
+        langfuse = self.prompts.langfuse
+        attributes_context: Any = nullcontext()
+        if langfuse is not None:
+            attributes_context = propagate_attributes(
+                session_id=f"platform-traffic-{date}",
+                tags=["platform-daily-traffic"],
+                environment=self.settings.app_env,
+            )
+
+        with attributes_context:
+            root_context: Any = nullcontext()
+            if langfuse is not None:
+                root_context = langfuse.start_as_current_observation(
+                    as_type="span",
+                    name="compose-platform-traffic-report",
+                    input={"date": date},
+                )
+            with root_context as root_span:
+                compiled = self.prompts.compile(
+                    prompt_name=self.settings.langfuse_platform_traffic_prompt_name,
+                    fallback_text=personas.PLATFORM_DAILY_TRAFFIC.fallback_text,
+                    fallback_config=personas.PLATFORM_DAILY_TRAFFIC.fallback_config,
+                    variables={
+                        "date": date,
+                        "total_views": str(snapshot["total_views"]),
+                        "top_products_json": _dump(snapshot["top_products"]),
+                        "least_viewed_products_json": _dump(snapshot["least_viewed_products"]),
+                        "store_ranking_json": _dump(snapshot["store_ranking"]),
+                    },
+                )
+
+                if self.client is None:
+                    report = (
+                        f"# {date} 플랫폼 트래픽 리포트\n\n"
+                        "OPENROUTER_API_KEY가 설정되지 않아 리포트를 생성할 수 없습니다."
+                    )
+                else:
+                    completion = self.client.chat.completions.create(
+                        model=compiled.model,
+                        messages=[{"role": "user", "content": compiled.text}],
+                        extra_body=compiled.routing_parameters or None,
+                        **compiled.completion_parameters,
+                        name="generate-platform-traffic-report",
+                        metadata={
+                            "feature": "platform-daily-traffic",
+                            "prompt_name": compiled.name,
+                            "prompt_source": compiled.source,
+                            "date": date,
+                        },
+                    )
+                    report = (
+                        completion.choices[0].message.content or "리포트를 생성하지 못했습니다."
+                    )
+
+                if root_span is not None:
+                    root_span.update(output=report)
+
+                return PlatformTrafficResponse(
+                    date=date,
+                    report=report,
+                    snapshot=snapshot,
+                    model=compiled.model,
+                    prompt_source=compiled.source,
+                    prompt_version=compiled.version,
+                )
+
+
+class SellerMarketShareService:
+    """seller-market-share-report persona: each seller's % of total platform revenue, admin-only."""
+
+    def __init__(self, settings: Settings, prompts: PromptRepository) -> None:
+        self.settings = settings
+        self.prompts = prompts
+        self.client = build_openrouter_client(settings)
+
+    def generate_report(self, snapshot: dict[str, Any]) -> SellerMarketShareResponse:
+        period = str(snapshot["period"])
+        langfuse = self.prompts.langfuse
+        attributes_context: Any = nullcontext()
+        if langfuse is not None:
+            attributes_context = propagate_attributes(
+                session_id=f"market-share-{period}",
+                tags=["seller-market-share-report", f"period:{period}"],
+                environment=self.settings.app_env,
+            )
+
+        with attributes_context:
+            root_context: Any = nullcontext()
+            if langfuse is not None:
+                root_context = langfuse.start_as_current_observation(
+                    as_type="span",
+                    name="compose-seller-market-share-report",
+                    input={"period": period},
+                )
+            with root_context as root_span:
+                compiled = self.prompts.compile(
+                    prompt_name=self.settings.langfuse_seller_market_share_prompt_name,
+                    fallback_text=personas.SELLER_MARKET_SHARE.fallback_text,
+                    fallback_config=personas.SELLER_MARKET_SHARE.fallback_config,
+                    variables={
+                        "period": period,
+                        "previous_period": str(snapshot["previous_period"]),
+                        "total_platform_revenue": str(snapshot["total_platform_revenue"]),
+                        "platform_default_share_pct": str(snapshot["platform_default_share_pct"]),
+                        "sellers_json": _dump(snapshot["sellers"]),
+                    },
+                )
+
+                if self.client is None:
+                    report = (
+                        f"# {period} 판매자 매출 점유율 리포트\n\n"
+                        "OPENROUTER_API_KEY가 설정되지 않아 리포트를 생성할 수 없습니다."
+                    )
+                else:
+                    completion = self.client.chat.completions.create(
+                        model=compiled.model,
+                        messages=[{"role": "user", "content": compiled.text}],
+                        extra_body=compiled.routing_parameters or None,
+                        **compiled.completion_parameters,
+                        name="generate-seller-market-share-report",
+                        metadata={
+                            "feature": "seller-market-share-report",
+                            "prompt_name": compiled.name,
+                            "prompt_source": compiled.source,
+                            "period": period,
+                        },
+                    )
+                    report = (
+                        completion.choices[0].message.content or "리포트를 생성하지 못했습니다."
+                    )
+
+                if root_span is not None:
+                    root_span.update(output=report)
+
+                return SellerMarketShareResponse(
+                    period=period,
                     report=report,
                     snapshot=snapshot,
                     model=compiled.model,

@@ -12,9 +12,11 @@ from app.analytics import (
     PERIOD_PATTERN,
     current_period,
     is_valid_date,
+    platform_daily_traffic,
     product_breakdown,
     revenue_summary_with_comparison,
     seller_daily_snapshot,
+    seller_market_share,
     today,
 )
 from app.auth import (
@@ -1188,6 +1190,24 @@ async def analytics_seller_daily(
         if org is None:
             raise HTTPException(status_code=404, detail="조직을 찾을 수 없습니다.")
         return seller_daily_snapshot(connection, org_id, date)
+
+
+@app.get("/analytics/platform-daily-traffic")
+async def analytics_platform_daily_traffic(
+    date: str = Query(default_factory=today, pattern=DATE_PATTERN.pattern),
+) -> dict[str, object]:
+    if not is_valid_date(date):
+        raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다.")
+    with closing(connect()) as connection:
+        return platform_daily_traffic(connection, date)
+
+
+@app.get("/analytics/seller-market-share")
+async def analytics_seller_market_share(
+    period: str = Query(default_factory=current_period, pattern=PERIOD_PATTERN.pattern),
+) -> dict[str, object]:
+    with closing(connect()) as connection:
+        return seller_market_share(connection, period)
 
 
 class ProductViewEvent(BaseModel):

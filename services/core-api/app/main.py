@@ -5,19 +5,45 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import ai, health, inquiries, ops, revenue
 from app.config import get_settings
-from app.services.commerce_ai import SellerDailyReportService
+from app.services.commerce_ai import (
+    PlatformTrafficService,
+    SellerDailyReportService,
+    SellerMarketShareService,
+)
 from app.services.commerce_client import CommerceClient
 from app.services.discord import DiscordNotifier
 from app.services.inquiry_store import inquiry_store
 from app.services.prompts import PromptRepository, get_shared_langfuse
-from app.services.scheduler import DailySellerReportScheduler
+from app.services.scheduler import (
+    DailySellerReportScheduler,
+    PlatformTrafficScheduler,
+    SellerMarketShareScheduler,
+)
 
 settings = get_settings()
-scheduler = DailySellerReportScheduler(
+_commerce = CommerceClient(settings)
+_seller_notifier = DiscordNotifier(settings.discord_webhook_url, settings.discord_timeout_seconds)
+_admin_notifier = DiscordNotifier(
+    settings.admin_discord_webhook_url, settings.discord_timeout_seconds
+)
+
+seller_report_scheduler = DailySellerReportScheduler(
     settings,
-    CommerceClient(settings),
+    _commerce,
     SellerDailyReportService(settings, PromptRepository(settings)),
-    DiscordNotifier(settings),
+    _seller_notifier,
+)
+platform_traffic_scheduler = PlatformTrafficScheduler(
+    settings,
+    _commerce,
+    PlatformTrafficService(settings, PromptRepository(settings)),
+    _admin_notifier,
+)
+market_share_scheduler = SellerMarketShareScheduler(
+    settings,
+    _commerce,
+    SellerMarketShareService(settings, PromptRepository(settings)),
+    _admin_notifier,
 )
 
 
@@ -25,9 +51,13 @@ scheduler = DailySellerReportScheduler(
 async def lifespan(_: FastAPI):
     inquiry_store.initialize()
     ops.ops_store.initialize()
-    scheduler.start()
+    seller_report_scheduler.start()
+    platform_traffic_scheduler.start()
+    market_share_scheduler.start()
     yield
-    scheduler.stop()
+    seller_report_scheduler.stop()
+    platform_traffic_scheduler.stop()
+    market_share_scheduler.stop()
     langfuse = get_shared_langfuse(settings)
     if langfuse is not None:
         try:

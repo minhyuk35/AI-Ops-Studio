@@ -33,6 +33,16 @@ class CommerceClient:
     async def list_active_organizations(self) -> list[dict[str, object]]:
         return await self._get("/internal/organizations", None)
 
+    async def get_platform_daily_traffic(self, date: str | None) -> dict[str, object]:
+        return await self._get(
+            "/analytics/platform-daily-traffic", {"date": date} if date else None
+        )
+
+    async def get_seller_market_share(self, period: str | None) -> dict[str, object]:
+        return await self._get(
+            "/analytics/seller-market-share", {"period": period} if period else None
+        )
+
     async def get_order_org_id(self, order_id: str) -> str | None:
         """Best-effort: an unreachable commerce API must never break a reply.
 

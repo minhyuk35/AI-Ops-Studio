@@ -192,3 +192,73 @@ export const getSellerDailyReport = (
     "/ai/seller-daily-report",
     json("POST", { org_id: orgId, date, send_discord: sendDiscord }, token),
   );
+
+export interface PlatformTrafficProduct {
+  product_id: string;
+  product_name: string;
+  org_name: string;
+  views: number;
+}
+
+export interface PlatformTrafficSnapshot {
+  date: string;
+  total_views: number;
+  top_products: PlatformTrafficProduct[];
+  least_viewed_products: PlatformTrafficProduct[];
+  store_ranking: { org_name: string; views: number }[];
+}
+
+export interface PlatformTrafficReport {
+  date: string;
+  report: string;
+  snapshot: PlatformTrafficSnapshot;
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+  discord_sent: boolean;
+}
+
+export const getPlatformDailyTraffic = (token: string, sendDiscord: boolean, date?: string) =>
+  request<PlatformTrafficReport>(
+    "/ai/platform-daily-traffic",
+    json("POST", { date, send_discord: sendDiscord }, token),
+  );
+
+export interface SellerMarketShareRow {
+  org_id: string;
+  org_name: string;
+  plan: "FREE" | "BASIC" | "PRO" | "BUSINESS";
+  gross_revenue: number;
+  refund_amount: number;
+  net_revenue: number;
+  commission_revenue: number;
+  plan_fee: number;
+  platform_contribution: number;
+  share_pct: number | null;
+  previous_share_pct: number | null;
+}
+
+export interface SellerMarketShareSnapshot {
+  period: string;
+  previous_period: string;
+  total_platform_revenue: number;
+  platform_default_revenue: number;
+  platform_default_share_pct: number | null;
+  sellers: SellerMarketShareRow[];
+}
+
+export interface SellerMarketShareReport {
+  period: string;
+  report: string;
+  snapshot: SellerMarketShareSnapshot;
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+  discord_sent: boolean;
+}
+
+export const getSellerMarketShare = (token: string, sendDiscord: boolean, period?: string) =>
+  request<SellerMarketShareReport>(
+    "/ai/seller-market-share",
+    json("POST", { period, send_discord: sendDiscord }, token),
+  );

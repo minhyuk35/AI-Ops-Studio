@@ -2,8 +2,12 @@
 
 import pytest
 from app.config import Settings
-from app.services.commerce_ai import SellerDailyReportService
-from app.services.identity import require_identity, require_org_access
+from app.services.commerce_ai import (
+    PlatformTrafficService,
+    SellerDailyReportService,
+    SellerMarketShareService,
+)
+from app.services.identity import require_admin, require_identity, require_org_access
 from app.services.prompts import PromptRepository
 from fastapi import HTTPException
 
@@ -71,6 +75,19 @@ async def test_admin_can_access_any_org() -> None:
     assert profile["role"] == "ADMIN"
 
 
+@pytest.mark.asyncio
+async def test_require_admin_rejects_a_seller() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        await require_admin("Bearer seller-token", FakeCommerceClient(SELLER_PROFILE))
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_require_admin_accepts_an_admin() -> None:
+    profile = await require_admin("Bearer admin-token", FakeCommerceClient(ADMIN_PROFILE))
+    assert profile["role"] == "ADMIN"
+
+
 def test_seller_daily_report_falls_back_without_api_key() -> None:
     settings = _settings(openrouter_api_key="")
     service = SellerDailyReportService(settings, PromptRepository(settings))
@@ -93,5 +110,38 @@ def test_seller_daily_report_falls_back_without_api_key() -> None:
     result = service.generate_report(snapshot)
     assert result.org_id == "org_mood"
     assert result.date == "2026-07-24"
+    assert "OPENROUTER_API_KEY" in result.report
+    assert result.prompt_source == "fallback"
+
+
+def test_platform_traffic_falls_back_without_api_key() -> None:
+    settings = _settings(openrouter_api_key="")
+    service = PlatformTrafficService(settings, PromptRepository(settings))
+    snapshot = {
+        "date": "2026-07-24",
+        "total_views": 42,
+        "top_products": [],
+        "least_viewed_products": [],
+        "store_ranking": [],
+    }
+    result = service.generate_report(snapshot)
+    assert result.date == "2026-07-24"
+    assert "OPENROUTER_API_KEY" in result.report
+    assert result.prompt_source == "fallback"
+
+
+def test_seller_market_share_falls_back_without_api_key() -> None:
+    settings = _settings(openrouter_api_key="")
+    service = SellerMarketShareService(settings, PromptRepository(settings))
+    snapshot = {
+        "period": "2026-07",
+        "previous_period": "2026-06",
+        "total_platform_revenue": 100000,
+        "platform_default_revenue": 0,
+        "platform_default_share_pct": 0.0,
+        "sellers": [],
+    }
+    result = service.generate_report(snapshot)
+    assert result.period == "2026-07"
     assert "OPENROUTER_API_KEY" in result.report
     assert result.prompt_source == "fallback"

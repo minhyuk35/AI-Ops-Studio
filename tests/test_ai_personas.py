@@ -101,15 +101,13 @@ def test_commerce_insight_uses_openrouter_when_client_available() -> None:
 
 
 def test_discord_notifier_disabled_without_webhook_url() -> None:
-    settings = _settings(discord_webhook_url="")
-    notifier = DiscordNotifier(settings)
+    notifier = DiscordNotifier("")
     assert notifier.enabled is False
     assert notifier.send("hello") is False
 
 
 def test_discord_notifier_posts_to_webhook_when_configured(monkeypatch) -> None:
-    settings = _settings(discord_webhook_url="https://discord.com/api/webhooks/test")
-    notifier = DiscordNotifier(settings)
+    notifier = DiscordNotifier("https://discord.com/api/webhooks/test")
     assert notifier.enabled is True
 
     captured: dict[str, object] = {}

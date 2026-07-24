@@ -68,3 +68,33 @@ class SellerDailyReportResponse(BaseModel):
     prompt_source: Literal["langfuse", "fallback"]
     prompt_version: str | None = None
     discord_sent: bool = False
+
+
+class PlatformTrafficRequest(BaseModel):
+    date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    send_discord: bool = False
+
+
+class PlatformTrafficResponse(BaseModel):
+    date: str
+    report: str
+    snapshot: dict[str, Any]
+    model: str
+    prompt_source: Literal["langfuse", "fallback"]
+    prompt_version: str | None = None
+    discord_sent: bool = False
+
+
+class SellerMarketShareRequest(BaseModel):
+    period: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    send_discord: bool = False
+
+
+class SellerMarketShareResponse(BaseModel):
+    period: str
+    report: str
+    snapshot: dict[str, Any]
+    model: str
+    prompt_source: Literal["langfuse", "fallback"]
+    prompt_version: str | None = None
+    discord_sent: bool = False

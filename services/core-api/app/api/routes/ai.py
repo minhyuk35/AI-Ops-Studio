@@ -13,17 +13,23 @@ from app.schemas.ai import (
     CommerceInsightResponse,
     MonthlyReportRequest,
     MonthlyReportResponse,
+    PlatformTrafficRequest,
+    PlatformTrafficResponse,
     SellerDailyReportRequest,
     SellerDailyReportResponse,
+    SellerMarketShareRequest,
+    SellerMarketShareResponse,
 )
 from app.services.commerce_ai import (
     CommerceInsightService,
     MonthlyReportService,
+    PlatformTrafficService,
     SellerDailyReportService,
+    SellerMarketShareService,
 )
 from app.services.commerce_client import CommerceClient
 from app.services.discord import DiscordNotifier
-from app.services.identity import require_org_access
+from app.services.identity import require_admin, require_org_access
 from app.services.inquiry_store import inquiry_store
 from app.services.openrouter import OpenRouterSupportService
 from app.services.prompts import PromptRepository
@@ -57,13 +63,32 @@ def get_report_service() -> MonthlyReportService:
 
 @lru_cache
 def get_discord_notifier() -> DiscordNotifier:
-    return DiscordNotifier(get_settings())
+    settings = get_settings()
+    return DiscordNotifier(settings.discord_webhook_url, settings.discord_timeout_seconds)
+
+
+@lru_cache
+def get_admin_discord_notifier() -> DiscordNotifier:
+    settings = get_settings()
+    return DiscordNotifier(settings.admin_discord_webhook_url, settings.discord_timeout_seconds)
 
 
 @lru_cache
 def get_seller_report_service() -> SellerDailyReportService:
     settings = get_settings()
     return SellerDailyReportService(settings, PromptRepository(settings))
+
+
+@lru_cache
+def get_platform_traffic_service() -> PlatformTrafficService:
+    settings = get_settings()
+    return PlatformTrafficService(settings, PromptRepository(settings))
+
+
+@lru_cache
+def get_market_share_service() -> SellerMarketShareService:
+    settings = get_settings()
+    return SellerMarketShareService(settings, PromptRepository(settings))
 
 
 @router.post("/reply", response_model=AIReplyResponse)
@@ -148,5 +173,41 @@ async def seller_daily_report(
     discord_sent = False
     if payload.send_discord and notifier.enabled:
         message = f"**{report.org_name} · {report.date} 일일 리포트**\n\n{report.report}"
+        discord_sent = await run_in_threadpool(notifier.send, message)
+    return report.model_copy(update={"discord_sent": discord_sent})
+
+
+@router.post("/platform-daily-traffic", response_model=PlatformTrafficResponse)
+async def platform_daily_traffic(
+    payload: PlatformTrafficRequest,
+    service: Annotated[PlatformTrafficService, Depends(get_platform_traffic_service)],
+    commerce: Annotated[CommerceClient, Depends(get_commerce_client)],
+    notifier: Annotated[DiscordNotifier, Depends(get_admin_discord_notifier)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> PlatformTrafficResponse:
+    await require_admin(authorization, commerce)
+    snapshot = await commerce.get_platform_daily_traffic(payload.date)
+    report = await run_in_threadpool(service.generate_report, snapshot)
+    discord_sent = False
+    if payload.send_discord and notifier.enabled:
+        message = f"**{report.date} 플랫폼 트래픽 리포트**\n\n{report.report}"
+        discord_sent = await run_in_threadpool(notifier.send, message)
+    return report.model_copy(update={"discord_sent": discord_sent})
+
+
+@router.post("/seller-market-share", response_model=SellerMarketShareResponse)
+async def seller_market_share(
+    payload: SellerMarketShareRequest,
+    service: Annotated[SellerMarketShareService, Depends(get_market_share_service)],
+    commerce: Annotated[CommerceClient, Depends(get_commerce_client)],
+    notifier: Annotated[DiscordNotifier, Depends(get_admin_discord_notifier)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> SellerMarketShareResponse:
+    await require_admin(authorization, commerce)
+    snapshot = await commerce.get_seller_market_share(payload.period)
+    report = await run_in_threadpool(service.generate_report, snapshot)
+    discord_sent = False
+    if payload.send_discord and notifier.enabled:
+        message = f"**{report.period} 판매자 매출 점유율 리포트**\n\n{report.report}"
         discord_sent = await run_in_threadpool(notifier.send, message)
     return report.model_copy(update={"discord_sent": discord_sent})

@@ -265,3 +265,182 @@ def seller_daily_snapshot(
             "low_stock": [row for row in products if 0 < row["stock"] <= 3],
         },
     }
+
+
+def platform_daily_traffic(connection: sqlite3.Connection, date: str) -> dict[str, object]:
+    """Site-wide product view traffic for one day, across every seller.
+
+    Admin-only by design: which pages/products get traffic platform-wide is
+    a site-operator concern, not something any one seller needs (or should
+    see about competitors). Sellers get the same shape of number, but
+    scoped to only their own products, via seller_daily_snapshot().
+    """
+    start, end = _day_bounds(date)
+    rows = connection.execute(
+        """
+        SELECT
+            p.id AS product_id, p.name AS product_name,
+            COALESCE(o.name, '플랫폼 기본 상품') AS org_name,
+            COALESCE(v.view_count, 0) AS views
+        FROM products p
+        LEFT JOIN organizations o ON o.id = p.org_id
+        LEFT JOIN (
+            SELECT product_id, COUNT(*) AS view_count FROM commerce_events
+            WHERE event_type = 'PRODUCT_VIEWED' AND occurred_at >= :start AND occurred_at < :end
+            GROUP BY product_id
+        ) v ON v.product_id = p.id
+        ORDER BY views DESC, p.name ASC
+        """,
+        {"start": start, "end": end},
+    ).fetchall()
+
+    products = [dict(row) for row in rows]
+    total_views = sum(row["views"] for row in products)
+
+    by_store: dict[str, int] = {}
+    for row in products:
+        by_store[row["org_name"]] = by_store.get(row["org_name"], 0) + row["views"]
+    store_ranking = sorted(
+        ({"org_name": name, "views": views} for name, views in by_store.items()),
+        key=lambda entry: entry["views"],
+        reverse=True,
+    )
+
+    return {
+        "date": date,
+        "total_views": total_views,
+        "top_products": products[:10],
+        "least_viewed_products": list(reversed(products))[:5],
+        "store_ranking": store_ranking,
+    }
+
+
+# The platform's own income model, not the sellers' — see
+# docs/ai-ops-studio-master-prd.html#plans. Sellers keep their own gross
+# sales; AI Ops Studio only earns a commission cut off each sale plus a
+# flat monthly plan fee. No billing system exists yet, so these are fixed
+# assumptions used purely to interpret "site revenue" correctly rather than
+# conflating it with seller GMV.
+PLAN_MONTHLY_FEES: dict[str, int] = {
+    "FREE": 0,
+    "BASIC": 35_000,
+    "PRO": 150_000,
+    "BUSINESS": 300_000,
+}
+
+
+def _seller_gross_revenue_by_org(
+    connection: sqlite3.Connection, period: str
+) -> list[dict[str, object]]:
+    start, end = _month_bounds(period)
+    rows = connection.execute(
+        """
+        SELECT
+            o.id AS org_id, o.name AS org_name, o.commission_rate, o.plan,
+            COALESCE(SUM(CASE WHEN ce.event_type = 'PAYMENT_CONFIRMED' THEN ce.amount END), 0)
+                AS gross_revenue,
+            COALESCE(
+                SUM(CASE WHEN ce.event_type = 'REFUND_COMPLETED' THEN ce.refund_amount END), 0
+            ) AS refund_amount
+        FROM organizations o
+        LEFT JOIN commerce_events ce
+            ON ce.org_id = o.id AND ce.occurred_at >= :start AND ce.occurred_at < :end
+        WHERE o.status = 'ACTIVE'
+        GROUP BY o.id, o.name, o.commission_rate, o.plan
+        ORDER BY gross_revenue DESC
+        """,
+        {"start": start, "end": end},
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _platform_revenue_breakdown(
+    connection: sqlite3.Connection, period: str
+) -> tuple[list[dict[str, object]], int, int]:
+    """Per-seller platform revenue (commission + plan fee) for one month.
+
+    Returns (sellers, platform_default_revenue, total_platform_revenue).
+    total_gmv (every won that changed hands) comes from revenue_summary()
+    — the single source of truth for "how much did the whole site sell".
+    platform_default_revenue is GMV from the un-owned seed catalog
+    (org_id IS NULL): nobody paid a commission on it because there's no
+    third-party seller to take a cut from, so it counts as 100% platform
+    revenue, same as a seller's plan fee does.
+    """
+    total_gmv = revenue_summary(connection, period)["gross_revenue"]
+    accounted_gmv = 0
+    sellers: list[dict[str, object]] = []
+    for row in _seller_gross_revenue_by_org(connection, period):
+        gross = int(row["gross_revenue"])
+        refund = int(row["refund_amount"])
+        accounted_gmv += gross
+        plan = str(row["plan"] or "FREE")
+        commission_revenue = round(gross * float(row["commission_rate"]))
+        plan_fee = PLAN_MONTHLY_FEES.get(plan, 0)
+        sellers.append(
+            {
+                "org_id": row["org_id"],
+                "org_name": row["org_name"],
+                "plan": plan,
+                "gross_revenue": gross,
+                "refund_amount": refund,
+                "net_revenue": gross - refund,
+                "commission_revenue": commission_revenue,
+                "plan_fee": plan_fee,
+                "platform_contribution": commission_revenue + plan_fee,
+            }
+        )
+    platform_default_revenue = total_gmv - accounted_gmv
+    total_platform_revenue = platform_default_revenue + sum(
+        int(seller["platform_contribution"]) for seller in sellers
+    )
+    return sellers, platform_default_revenue, total_platform_revenue
+
+
+def seller_market_share(connection: sqlite3.Connection, period: str) -> dict[str, object]:
+    """Each active seller's share of *platform* revenue — not their own GMV.
+
+    "매출의 몇 퍼센트를 차지하는가" means each seller's cut of what AI Ops
+    Studio itself earns (commission + plan fee), because the site doesn't
+    keep a seller's sales — it keeps a slice of them. A seller with huge
+    GMV on a FREE plan can contribute less platform revenue than a smaller
+    seller paying for BUSINESS.
+    """
+    sellers, platform_default_revenue, total_platform_revenue = _platform_revenue_breakdown(
+        connection, period
+    )
+    for seller in sellers:
+        contribution = int(seller["platform_contribution"])
+        seller["share_pct"] = (
+            round(contribution / total_platform_revenue * 100, 1)
+            if total_platform_revenue
+            else None
+        )
+
+    prev_period = previous_period(period)
+    prev_sellers, _prev_default, prev_total_platform_revenue = _platform_revenue_breakdown(
+        connection, prev_period
+    )
+    previous_shares = {
+        seller["org_id"]: (
+            round(int(seller["platform_contribution"]) / prev_total_platform_revenue * 100, 1)
+            if prev_total_platform_revenue
+            else None
+        )
+        for seller in prev_sellers
+    }
+    for seller in sellers:
+        seller["previous_share_pct"] = previous_shares.get(seller["org_id"])
+
+    return {
+        "period": period,
+        "previous_period": prev_period,
+        "total_platform_revenue": total_platform_revenue,
+        "platform_default_revenue": platform_default_revenue,
+        "platform_default_share_pct": (
+            round(platform_default_revenue / total_platform_revenue * 100, 1)
+            if total_platform_revenue
+            else None
+        ),
+        "sellers": sellers,
+    }

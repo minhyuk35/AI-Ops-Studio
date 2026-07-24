@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS organizations (
     category TEXT NOT NULL,
     commission_rate REAL NOT NULL DEFAULT 0.08,
     status TEXT NOT NULL DEFAULT 'ACTIVE',
+    plan TEXT NOT NULL DEFAULT 'FREE',
     created_at TEXT NOT NULL
 );
 
@@ -354,6 +355,7 @@ def initialize_database() -> None:
             {"password_hash": "TEXT NOT NULL DEFAULT ''", "is_admin": "INTEGER NOT NULL DEFAULT 0"},
         )
         _ensure_columns(connection, "products", {"org_id": "TEXT"})
+        _ensure_columns(connection, "organizations", {"plan": "TEXT NOT NULL DEFAULT 'FREE'"})
         connection.execute(
             """
             INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
@@ -447,6 +449,7 @@ def initialize_database() -> None:
         _sync_seed_orders(connection)
         _seed_test_accounts(connection)
         _seed_seller_daily_demo(connection)
+        _seed_market_share_demo_sellers(connection)
 
 
 def _seed_test_accounts(connection: sqlite3.Connection) -> None:
@@ -474,11 +477,14 @@ def _seed_test_accounts(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
         INSERT INTO organizations(
-            id, owner_customer_id, name, category, commission_rate, status, created_at
-        ) VALUES(?,?,?,?,?,?,?)
+            id, owner_customer_id, name, category, commission_rate, status, plan, created_at
+        ) VALUES(?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO NOTHING
         """,
-        ("org_test_seller", "cus_test_seller", "테스트 스토어", "패션", 0.08, "ACTIVE", now),
+        (
+            "org_test_seller", "cus_test_seller", "테스트 스토어", "패션",
+            0.08, "ACTIVE", "BASIC", now,
+        ),
     )
 
     seller_products = [
@@ -659,11 +665,11 @@ def _seed_seller_daily_demo(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
         INSERT INTO organizations(
-            id, owner_customer_id, name, category, commission_rate, status, created_at
-        ) VALUES(?,?,?,?,?,?,?)
+            id, owner_customer_id, name, category, commission_rate, status, plan, created_at
+        ) VALUES(?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO NOTHING
         """,
-        (org_id, seller_id, "무드 스토리", "패션", 0.08, "ACTIVE", now),
+        (org_id, seller_id, "무드 스토리", "패션", 0.08, "ACTIVE", "PRO", now),
     )
 
     # id, slug, category_id, name, price, image-slug, sku, color, size,
@@ -755,6 +761,136 @@ def _seed_seller_daily_demo(connection: sqlite3.Connection) -> None:
                 refund=True,
                 **common,
             )
+
+
+# Three more stores so seller-market-share-report has enough sellers to
+# actually compare (docs/ai-ops-studio-master-prd.html#plans). Each pairs a
+# different subscription plan with a different sales volume on purpose:
+# 무드 스토리(PRO, real GMV from _seed_seller_daily_demo) already exists;
+# these three fill in a BUSINESS-plan seller with the highest platform
+# contribution, a BASIC-plan seller with modest GMV, and a FREE-plan seller
+# whose GMV is actually *larger* than the BASIC seller's but contributes
+# less platform revenue — the plan fee, not raw sales, decides that.
+MARKET_SHARE_SELLERS = [
+    {
+        "seller_id": "cus_test_seller3", "email": "seller3@test.com", "name": "박라인",
+        "phone": "010-6666-7777", "org_id": "org_test_seller3", "org_name": "라인 클로젯",
+        "plan": "BUSINESS",
+        "products": [
+            ("prd_s3_01", "실켓 코튼 셔츠", 45000, "화이트", "M", 10, 4, 0),
+            ("prd_s3_02", "테이퍼드 슬랙스", 58000, "블랙", "30", 8, 3, 1),
+            ("prd_s3_03", "니트 가디건", 72000, "베이지", "FREE", 6, 2, 0),
+            ("prd_s3_04", "레더 스니커즈", 120000, "브라운", "270", 5, 2, 0),
+            ("prd_s3_05", "캔버스 백팩", 68000, "카키", "FREE", 9, 3, 0),
+        ],
+    },
+    {
+        "seller_id": "cus_test_seller4", "email": "seller4@test.com", "name": "정어반",
+        "phone": "010-7777-8888", "org_id": "org_test_seller4", "org_name": "어반 무드",
+        "plan": "BASIC",
+        "products": [
+            ("prd_s4_01", "오버핏 후드", 49000, "그레이", "L", 12, 3, 0),
+            ("prd_s4_02", "와이드 데님", 65000, "블루", "32", 7, 2, 0),
+            ("prd_s4_03", "스트라이프 셔츠", 39000, "네이비", "M", 10, 2, 1),
+            ("prd_s4_04", "버킷햇", 25000, "블랙", "FREE", 15, 1, 0),
+            ("prd_s4_05", "크로스백", 47000, "브라운", "FREE", 8, 1, 0),
+        ],
+    },
+    {
+        "seller_id": "cus_test_seller5", "email": "seller5@test.com", "name": "한소프트",
+        "phone": "010-8888-9999", "org_id": "org_test_seller5", "org_name": "소프트 데일리",
+        "plan": "FREE",
+        "products": [
+            ("prd_s5_01", "베이직 티셔츠", 19000, "화이트", "M", 20, 8, 0),
+            ("prd_s5_02", "조거 팬츠", 39000, "그레이", "L", 14, 6, 1),
+            ("prd_s5_03", "플리스 자켓", 59000, "네이비", "M", 10, 4, 0),
+            ("prd_s5_04", "니트 비니", 15000, "블랙", "FREE", 18, 5, 0),
+            ("prd_s5_05", "에코백", 12000, "베이지", "FREE", 16, 6, 0),
+        ],
+    },
+]
+
+
+def _seed_market_share_demo_sellers(connection: sqlite3.Connection) -> None:
+    now = utc_now()
+    for seller in MARKET_SHARE_SELLERS:
+        connection.execute(
+            """
+            INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
+            VALUES(?,?,?,?,?,0,?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            (
+                seller["seller_id"], seller["email"], seller["name"], seller["phone"],
+                hash_password(TEST_ACCOUNT_PASSWORD), now,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO organizations(
+                id, owner_customer_id, name, category, commission_rate, status, plan, created_at
+            ) VALUES(?,?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            (
+                seller["org_id"], seller["seller_id"], seller["org_name"], "패션",
+                0.08, "ACTIVE", seller["plan"], now,
+            ),
+        )
+        for product_id, name, price, color, size, stock, sold_qty, refunded_qty in seller[
+            "products"
+        ]:
+            slug = f"{seller['org_id']}-{product_id}".replace("_", "-")
+            variant_id = f"var_{product_id[4:]}"
+            connection.execute(
+                """
+                INSERT INTO products(
+                    id, slug, category_id, org_id, brand, name, description, material, care,
+                    image, price, compare_at_price, rating, review_count, created_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (
+                    product_id, slug, "cat_fashion", seller["org_id"], seller["org_name"],
+                    name, f"{seller['org_name']}의 시즌 아이템입니다.", "상세 참고", "상세 참고",
+                    "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab"
+                    "?auto=format&fit=crop&w=1200&q=85",
+                    price, None, 0, 0, now,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO variants(id, product_id, sku, color, size, price, stock)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (variant_id, product_id, f"{product_id.upper()}-SKU", color, size, price, stock),
+            )
+
+            kept_qty = sold_qty - refunded_qty
+            common = {
+                "org_id": seller["org_id"],
+                "product_id": product_id,
+                "product_name": name,
+                "variant_id": variant_id,
+                "sku": f"{product_id.upper()}-SKU",
+                "color": color,
+                "size": size,
+                "price": price,
+                "now": now,
+            }
+            if kept_qty > 0:
+                _seed_seller_order(
+                    connection, order_id=f"ord_seed_{product_id}_a", quantity=kept_qty, **common
+                )
+            if refunded_qty > 0:
+                _seed_seller_order(
+                    connection,
+                    order_id=f"ord_seed_{product_id}_b",
+                    quantity=refunded_qty,
+                    refund=True,
+                    **common,
+                )
 
 
 def _sync_seed_orders(connection: sqlite3.Connection) -> None:
