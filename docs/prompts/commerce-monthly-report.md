@@ -29,6 +29,7 @@ AI 인사이트:
   "model": "~google/gemini-flash-latest",
   "temperature": 0.3,
   "max_tokens": 1800,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"

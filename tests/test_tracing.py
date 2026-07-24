@@ -35,7 +35,8 @@ def test_prompt_config_uses_openrouter_runtime_defaults() -> None:
     assert compiled.model == "~google/gemini-flash-latest"
     assert compiled.completion_parameters == {"temperature": 0.2, "max_tokens": 700}
     assert compiled.routing_parameters == {
-        "provider": {"allow_fallbacks": True, "data_collection": "deny"}
+        "provider": {"allow_fallbacks": True, "data_collection": "deny"},
+        "reasoning": {"effort": "none"},
     }
 
 

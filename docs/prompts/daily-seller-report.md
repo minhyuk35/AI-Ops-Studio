@@ -35,7 +35,8 @@ Langfuse prompt type: `text`
   "gateway": "openrouter",
   "model": "~google/gemini-flash-latest",
   "temperature": 0.2,
-  "max_tokens": 1400,
+  "max_tokens": 1800,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"

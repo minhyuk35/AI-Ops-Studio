@@ -42,6 +42,7 @@ SUPPORT_ANSWER = Persona(
         "model": "~google/gemini-flash-latest",
         "temperature": 0.2,
         "max_tokens": 700,
+        "reasoning": {"effort": "none"},
         "provider": {
             "allow_fallbacks": True,
             "data_collection": "deny",
@@ -69,6 +70,7 @@ SUPPORT_TRIAGE = Persona(
         "model": "~google/gemini-flash-latest",
         "temperature": 0,
         "max_tokens": 300,
+        "reasoning": {"effort": "none"},
         "provider": {
             "allow_fallbacks": True,
             "data_collection": "deny",
@@ -100,6 +102,7 @@ COMMERCE_INSIGHT = Persona(
         "model": "~google/gemini-flash-latest",
         "temperature": 0.1,
         "max_tokens": 1200,
+        "reasoning": {"effort": "none"},
         "provider": {
             "allow_fallbacks": True,
             "data_collection": "deny",
@@ -136,7 +139,8 @@ DAILY_SELLER_REPORT = Persona(
         "gateway": "openrouter",
         "model": "~google/gemini-flash-latest",
         "temperature": 0.2,
-        "max_tokens": 1400,
+        "max_tokens": 1800,
+        "reasoning": {"effort": "none"},
         "provider": {
             "allow_fallbacks": True,
             "data_collection": "deny",
@@ -167,6 +171,7 @@ AI 인사이트:
         "model": "~google/gemini-flash-latest",
         "temperature": 0.3,
         "max_tokens": 1800,
+        "reasoning": {"effort": "none"},
         "provider": {
             "allow_fallbacks": True,
             "data_collection": "deny",
@@ -205,6 +210,7 @@ PLATFORM_DAILY_TRAFFIC = Persona(
         "model": "~google/gemini-flash-latest",
         "temperature": 0.2,
         "max_tokens": 1200,
+        "reasoning": {"effort": "none"},
         "provider": {
             "allow_fallbacks": True,
             "data_collection": "deny",
@@ -243,6 +249,7 @@ SELLER_MARKET_SHARE = Persona(
         "model": "~google/gemini-flash-latest",
         "temperature": 0.2,
         "max_tokens": 2000,
+        "reasoning": {"effort": "none"},
         "provider": {
             "allow_fallbacks": True,
             "data_collection": "deny",

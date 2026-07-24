@@ -30,6 +30,7 @@ Langfuse prompt type: `text`
   "model": "~google/gemini-flash-latest",
   "temperature": 0.1,
   "max_tokens": 1200,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"

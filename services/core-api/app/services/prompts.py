@@ -57,7 +57,13 @@ class CompiledPrompt:
 
     @property
     def routing_parameters(self) -> dict[str, Any]:
-        allowed = ("models", "provider")
+        # "reasoning" disables Gemini's thinking mode by default (see
+        # personas.py) -- thinking tokens are deducted from max_tokens
+        # before the model emits its actual answer, so a low max_tokens
+        # combined with the model's default "think a lot" behavior can burn
+        # the whole budget before any visible output is produced, leaving a
+        # truncated or empty report.
+        allowed = ("models", "provider", "reasoning")
         return {key: self.config[key] for key in allowed if key in self.config}
 
 

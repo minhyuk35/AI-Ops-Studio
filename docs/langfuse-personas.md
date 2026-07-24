@@ -80,6 +80,28 @@ Langfuse 콘솔에 등록한 버전입니다.
   기능은 아닙니다.
 - Prompt Composability: 프롬프트 안에서 공통 prompt를 참조해 조합하는 기능입니다.
 
+## `reasoning`: Gemini "생각하기" 모드를 반드시 꺼야 하는 이유
+
+`model: "~google/gemini-flash-latest"`가 가리키는 Gemini Flash 계열은 기본적으로
+"thinking"(내부 추론) 모드가 켜져 있고, **이 추론 토큰이 `max_tokens` 예산에서
+차감됩니다**. 즉 답변을 한 글자도 쓰기 전에 모델이 "생각"부터 하고, 그 생각이
+`max_tokens`를 다 써버리면 실제 리포트 본문은 잘리거나 아예 비어버립니다 —
+Discord로 온 일일 리포트가 "###"에서 뚝 끊기거나 "Refining and Formatting:
+Ensure the structure strictly follows..." 같은 모델의 내부 계획 문구가 그대로
+노출된 것도 이 때문이었습니다(2026-07-24 실측 확인, OpenRouter 공식 문서로 원인
+재확인).
+
+그래서 아래 모든 config 템플릿에 `"reasoning": {"effort": "none"}`을 포함시켰습니다.
+이 페르소나들은 이미 계산된 숫자를 한국어 리포트로 정리하는 작업이라 깊은
+다단계 추론이 필요 없으므로, 추론을 완전히 끄고 그 예산을 전부 답변 본문에
+씁니다. `services/core-api/app/services/personas.py`의 fallback config가 이미
+이 값을 갖고 있어서, **Langfuse 콘솔에 등록한 버전이 `reasoning` 키를 아예
+포함하지 않으면 fallback의 `reasoning: {"effort": "none"}`이 그대로 적용됩니다**
+(config는 fallback 위에 Langfuse 원격 config를 얕은 병합하는 방식이라, 원격이
+언급하지 않은 키는 fallback 값이 살아남습니다). 그래도 Langfuse 콘솔에 등록하는
+config에도 아래처럼 명시적으로 넣어두는 걸 권장합니다 — 나중에 팀원이 콘솔만
+보고도 의도를 알 수 있도록.
+
 ## Config templates
 
 문의 답변:
@@ -90,6 +112,7 @@ Langfuse 콘솔에 등록한 버전입니다.
   "model": "~google/gemini-flash-latest",
   "temperature": 0.2,
   "max_tokens": 700,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"
@@ -105,6 +128,7 @@ Langfuse 콘솔에 등록한 버전입니다.
   "model": "~google/gemini-flash-latest",
   "temperature": 0,
   "max_tokens": 300,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"
@@ -120,6 +144,7 @@ Langfuse 콘솔에 등록한 버전입니다.
   "model": "~google/gemini-flash-latest",
   "temperature": 0.1,
   "max_tokens": 1200,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"
@@ -135,6 +160,7 @@ Langfuse 콘솔에 등록한 버전입니다.
   "model": "~google/gemini-flash-latest",
   "temperature": 0.3,
   "max_tokens": 1800,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"
@@ -149,7 +175,8 @@ Langfuse 콘솔에 등록한 버전입니다.
   "gateway": "openrouter",
   "model": "~google/gemini-flash-latest",
   "temperature": 0.2,
-  "max_tokens": 1400,
+  "max_tokens": 1800,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"
@@ -165,6 +192,7 @@ Langfuse 콘솔에 등록한 버전입니다.
   "model": "~google/gemini-flash-latest",
   "temperature": 0.2,
   "max_tokens": 1200,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"
@@ -180,6 +208,7 @@ Langfuse 콘솔에 등록한 버전입니다.
   "model": "~google/gemini-flash-latest",
   "temperature": 0.2,
   "max_tokens": 2000,
+  "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"
