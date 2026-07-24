@@ -1,7 +1,11 @@
 import type { Cart, Inquiry, Order, Product, ProductDetail } from "@ai-ops/shared-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+
+gsap.registerPlugin(ScrollTrigger);
 
 import {
   activateSeller,
@@ -335,22 +339,68 @@ export function App() {
 }
 
 function Home({ products, onShop, onProduct }: { products: Product[]; onShop: () => void; onProduct: (p: Product) => void }) {
+  const heroRef = useRef<HTMLDivElement>(null);
+  const benefitsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.set(".hero-reveal", { opacity: 0, y: 26 });
+      gsap.to(".hero-reveal", {
+        opacity: 1,
+        y: 0,
+        duration: 0.9,
+        ease: "power3.out",
+        stagger: 0.12,
+        delay: 0.15,
+      });
+      // The hero heading is a photo showing through its own letter shapes
+      // (background-clip: text) — this slowly pans that photo so the effect
+      // reads as alive rather than a static image crop.
+      gsap.to(".hero-heading", {
+        backgroundPositionX: "78%",
+        duration: 10,
+        ease: "sine.inOut",
+        repeat: -1,
+        yoyo: true,
+      });
+    }, heroRef);
+    return () => ctx.revert();
+  }, []);
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".benefit-card",
+        { opacity: 0, y: 24 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.7,
+          ease: "power2.out",
+          stagger: 0.1,
+          scrollTrigger: { trigger: benefitsRef.current, start: "top 85%" },
+        },
+      );
+    }, benefitsRef);
+    return () => ctx.revert();
+  }, []);
+
   return <main>
-    <section className="hero">
+    <section className="hero" ref={heroRef}>
       <Suspense fallback={null}>
         <ThreeHero />
       </Suspense>
       <div className="hero-content">
-        <p className="eyebrow">NEW SEASON · 2026</p>
-        <h1>매일의 옷을<br />조금 더 선명하게.</h1>
-        <p>오래 입을 수 있는 소재와 절제된 실루엣을 고릅니다.</p>
-        <button className="primary" onClick={onShop}>컬렉션 보기</button>
+        <p className="eyebrow hero-reveal">NEW SEASON · 2026</p>
+        <h1 className="hero-heading hero-reveal">매일의 옷을<br />조금 더 선명하게.</h1>
+        <p className="hero-reveal">오래 입을 수 있는 소재와 절제된 실루엣을 고릅니다.</p>
+        <button className="primary hero-reveal" onClick={onShop}>컬렉션 보기</button>
       </div>
     </section>
     <section className="store-section"><SectionTitle eyebrow="EDITOR'S PICK" title="이번 주 에디터 추천" />
       <ProductGrid products={products.slice(0, 3)} onProduct={onProduct} />
     </section>
-    <section className="benefits"><article><b>10만원 이상 무료배송</b><span>평균 2~3영업일 내 도착</span></article><article><b>7일 이내 반품 신청</b><span>주문 상세에서 간편 접수</span></article><article><b>AI 고객지원</b><span>주문 문맥을 연결한 빠른 답변</span></article></section>
+    <section className="benefits" ref={benefitsRef}><article className="benefit-card"><b>10만원 이상 무료배송</b><span>평균 2~3영업일 내 도착</span></article><article className="benefit-card"><b>7일 이내 반품 신청</b><span>주문 상세에서 간편 접수</span></article><article className="benefit-card"><b>AI 고객지원</b><span>주문 문맥을 연결한 빠른 답변</span></article></section>
   </main>;
 }
 
@@ -362,10 +412,41 @@ function Catalog(props: { products: Product[]; categories: { slug: string; name:
   </main>;
 }
 
-function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) { return <div className="section-title"><p>{eyebrow}</p><h2>{title}</h2></div>; }
+function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ref.current,
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.7, ease: "power2.out", scrollTrigger: { trigger: ref.current, start: "top 90%" } },
+      );
+    }, ref);
+    return () => ctx.revert();
+  }, [eyebrow, title]);
+  return <div className="section-title" ref={ref}><p>{eyebrow}</p><h2>{title}</h2></div>;
+}
 
 function ProductGrid({ products, onProduct }: { products: Product[]; onProduct: (p: Product) => void }) {
-  return <div className="product-grid">{products.map((item) => <button className="product-card" key={item.id} onClick={() => onProduct(item)}><div className="product-image"><img src={item.image} alt={item.name} loading="lazy" />{!item.in_stock && <span>품절</span>}</div><small>{item.brand}</small><h3>{item.name}</h3><div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div><p>★ {item.rating.toFixed(1)} <span>({item.review_count})</span></p></button>)}</div>;
+  const gridRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".product-card",
+        { opacity: 0, y: 28 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.7,
+          ease: "power2.out",
+          stagger: 0.08,
+          scrollTrigger: { trigger: gridRef.current, start: "top 88%" },
+        },
+      );
+    }, gridRef);
+    return () => ctx.revert();
+  }, [products]);
+  return <div className="product-grid" ref={gridRef}>{products.map((item) => <button className="product-card" key={item.id} onClick={() => onProduct(item)}><div className="product-image"><img src={item.image} alt={item.name} loading="lazy" />{!item.in_stock && <span>품절</span>}</div><small>{item.brand}</small><h3>{item.name}</h3><div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div><p>★ {item.rating.toFixed(1)} <span>({item.review_count})</span></p></button>)}</div>;
 }
 
 function ProductPage({ product, variantId, onVariant, onAdd, onBuy }: { product: ProductDetail; variantId: string; onVariant: (id: string) => void; onAdd: () => void; onBuy: () => void }) {
