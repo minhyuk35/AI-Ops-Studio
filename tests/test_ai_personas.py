@@ -124,3 +124,31 @@ def test_discord_notifier_posts_to_webhook_when_configured(monkeypatch) -> None:
     assert notifier.send("월간 리포트입니다") is True
     assert captured["url"] == "https://discord.com/api/webhooks/test"
     assert captured["json"] == {"content": "월간 리포트입니다"}
+
+
+def test_discord_notifier_splits_long_reports_into_multiple_messages(monkeypatch) -> None:
+    """A report over Discord's 2000-char limit must arrive in full, split
+    across several messages, instead of being sliced off mid-sentence."""
+    notifier = DiscordNotifier("https://discord.com/api/webhooks/test")
+    paragraph = "가" * 500
+    long_report = "\n\n".join([paragraph] * 5)  # ~2508 chars, well past the limit
+
+    sent_chunks: list[str] = []
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+    def fake_post(url, json, timeout):
+        sent_chunks.append(json["content"])
+        return FakeResponse()
+
+    monkeypatch.setattr("app.services.discord.httpx.post", fake_post)
+    assert notifier.send(long_report) is True
+
+    assert len(sent_chunks) > 1
+    for chunk in sent_chunks:
+        assert len(chunk) <= 2000
+    # Every character of the original report survives somewhere in the
+    # reassembled output — nothing was silently truncated.
+    assert "".join(sent_chunks).replace("\n", "") == long_report.replace("\n", "")
