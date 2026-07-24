@@ -221,7 +221,7 @@
   <header class="topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true"></span>AI Ops Studio</div>
     <div class="top-actions">
-      <span class="pill">Commerce AI Master PRD · v1.3</span>
+      <span class="pill">Commerce AI Master PRD · v1.4</span>
       <button class="theme-button" id="themeToggle" type="button" aria-label="색상 모드 전환">다크 모드</button>
     </div>
   </header>
@@ -262,6 +262,7 @@
         <a href="#plans">요금제</a>
         <a href="#discord">Discord 알림</a>
         <a href="#security">보안</a>
+        <a href="#implementation">기능별 구현 상세</a>
         <a href="#roadmap">로드맵</a>
         <a href="#acceptance">출시 기준</a>
       </nav>
@@ -474,7 +475,7 @@
           </div>
 
           <h3 style="margin:34px 0 12px">AI 파이프라인 실제 동작 · 구현 코드 기준</h3>
-          <p style="color:var(--muted);margin-bottom:14px">면접·코드 리뷰에서 “AI가 정확히 어디서 어떻게 호출되나요”에 바로 답하기 위한 절차 기록이다. 지금 실제로 동작하는 페르소나는 <code>customer-support-answer</code> 하나뿐이며, 아래 내용은 전부 그 경로를 기준으로 한다.</p>
+          <p style="color:var(--muted);margin-bottom:14px">면접·코드 리뷰에서 “AI가 정확히 어디서 어떻게 호출되나요”에 바로 답하기 위한 절차 기록이다. 아래는 <code>customer-support-answer</code>(+ 그 안에서 함께 도는 <code>support-triage</code>) 경로를 기준으로 하며, 네 페르소나 전체를 버튼 클릭 단위로 정리한 표는 <a href="#implementation">15. 기능별 구현 상세</a>에 있다.</p>
 
           <div class="table-wrap">
             <table>
@@ -786,9 +787,9 @@ POST /api/webhooks/test</code></pre>
               <thead><tr><th>Prompt name</th><th>페르소나</th><th>책임</th><th>출력</th><th>상태</th></tr></thead>
               <tbody>
                 <tr><td><code>customer-support-answer</code></td><td>고객지원 상담원</td><td>주문·정책 근거로 문의 답변</td><td>고객용 한국어 답변</td><td class="priority p0">구현</td></tr>
-                <tr><td><code>support-triage</code></td><td>문의 분류 담당</td><td>유형·위험도·이관 여부 판단</td><td>구조화된 분류 JSON</td><td class="priority p1">예정</td></tr>
-                <tr><td><code>commerce-insight</code></td><td>커머스 분석가</td><td>코드가 계산한 지표의 변화·이상치 해석</td><td>근거가 있는 운영 인사이트</td><td class="priority p1">예정</td></tr>
-                <tr><td><code>commerce-monthly-report</code></td><td>리포트 편집자</td><td>월간 지표와 인사이트를 채널별로 편집</td><td>대시보드·HTML·Discord 요약</td><td class="priority p1">예정</td></tr>
+                <tr><td><code>support-triage</code></td><td>문의 분류 담당</td><td>유형·위험도·이관 여부 판단</td><td>구조화된 분류 JSON</td><td class="priority p0">구현</td></tr>
+                <tr><td><code>commerce-insight</code></td><td>커머스 분석가</td><td>코드가 계산한 지표의 변화·이상치 해석</td><td>근거가 있는 운영 인사이트</td><td class="priority p0">구현</td></tr>
+                <tr><td><code>commerce-monthly-report</code></td><td>리포트 편집자</td><td>월간 지표와 인사이트를 채널별로 편집</td><td>대시보드·HTML·Discord 요약</td><td class="priority p0">구현</td></tr>
               </tbody>
             </table>
           </div>
@@ -965,9 +966,353 @@ POST /api/webhooks/test</code></pre>
           </div>
         </section>
 
+        <section id="implementation">
+          <header>
+            <div><span class="section-no">13</span><h2>기능별 구현 상세</h2><p>버튼 하나가 눌렸을 때 실제로 무슨 코드가 돌고, 어떤 JSON이 오가고, 어디에 저장되는지 — 면접에서 "이거 실제로 어떻게 동작하나요"라는 질문에 화면 없이 답할 수 있도록 정리한 부록이다.</p></div>
+          </header>
+
+          <div class="callout">
+            <strong>읽는 법</strong>
+            <p>위 섹션들이 "무엇을 왜 만들었는가"라면 이 섹션은 "지금 코드가 정확히 어떻게 동작하는가"다. 파일 경로·함수명·SQLite 스키마·실제 JSON 예시는 모두 <code>services/core-api</code>, <code>services/mock-commerce-api</code>, <code>apps/demo-store</code>, <code>apps/ops-console</code>의 현재 코드 기준이며, 문서가 아니라 코드가 정답이다.</p>
+          </div>
+
+          <h3 style="margin:28px 0 12px">한눈에 보는 버튼 → 요청 → 저장 매핑</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>화면 · 버튼</th><th>HTTP 요청</th><th>처리 함수</th><th>DB 쓰기</th></tr></thead>
+              <tbody>
+                <tr><td>demo-store 회원가입 폼</td><td><code>POST /auth/signup</code></td><td><code>signup()</code></td><td><code>customers</code> (+<code>as_seller</code>면 <code>organizations</code>)</td></tr>
+                <tr><td>demo-store 로그인 폼</td><td><code>POST /auth/login</code></td><td><code>login()</code></td><td>없음 (조회만)</td></tr>
+                <tr><td>demo-store "Google로 계속하기"</td><td><code>POST /auth/google</code></td><td><code>google_auth()</code></td><td><code>customers</code> (최초 1회만 INSERT)</td></tr>
+                <tr><td>마이페이지 "비즈니스로 가입하기"</td><td><code>POST /sellers/activate</code></td><td>activate 핸들러</td><td><code>organizations</code></td></tr>
+                <tr><td>판매자 콘솔 "상품 등록"</td><td><code>POST /sellers/me/products</code></td><td>seller product create</td><td><code>products</code> + <code>variants</code></td></tr>
+                <tr><td>판매자 콘솔 재고 인라인 수정</td><td><code>PATCH /sellers/me/products/{id}/variants/{id}</code></td><td>variant update</td><td><code>variants</code></td></tr>
+                <tr><td>관리자 콘솔 정지/활성화</td><td><code>PATCH /admin/organizations/{id}</code></td><td>org status update</td><td><code>organizations</code></td></tr>
+                <tr><td>결제하기</td><td><code>POST /payments/confirm</code></td><td><code>confirm_payment()</code></td><td><code>payments</code>, <code>orders</code>, <code>commerce_events</code>(PAYMENT_CONFIRMED)</td></tr>
+                <tr><td>주문 취소</td><td><code>POST /orders/{id}/cancel</code></td><td>cancel 핸들러</td><td><code>orders</code>, <code>commerce_events</code>(REFUND_COMPLETED)</td></tr>
+                <tr><td class="priority p0">문의 위젯 "전송"</td><td><code>POST /api/v1/ai/reply</code></td><td><code>OpenRouterSupportService.generate_reply()</code></td><td><code>inquiries</code>/<code>conversations</code>/<code>messages</code>/<code>inquiry_events</code></td></tr>
+                <tr><td class="priority p0">ops-console "AI 인사이트 생성"</td><td><code>GET /api/v1/ai/commerce-insight</code></td><td><code>CommerceInsightService.generate_insight()</code></td><td>없음 (DB 미기록, 매 클릭마다 재생성)</td></tr>
+                <tr><td class="priority p0">ops-console "리포트 생성"</td><td><code>POST /api/v1/ai/monthly-report</code></td><td><code>MonthlyReportService.generate_report()</code></td><td>없음 (+ 체크박스 켜면 Discord로 1회 전송)</td></tr>
+                <tr><td>상담원 이관 발생 시(자동)</td><td>Discord Webhook POST</td><td><code>DiscordNotifier.send()</code></td><td>해당 없음(외부 전송)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style="margin:32px 0 12px">A · 인증 — 이메일/비밀번호 + Google 로그인</h3>
+          <div class="grid two">
+            <div class="card">
+              <h3>사용 기술</h3>
+              <ul>
+                <li>비밀번호: <code>bcrypt.hashpw</code> 직접 호출(passlib 미사용). 72바이트 제한을 피하려 SHA-256으로 먼저 다이제스트한 뒤 bcrypt 처리.</li>
+                <li>세션: PyJWT, <code>HS256</code>, 7일 만료. payload는 <code>{sub: customer_id, iat, exp}</code>뿐 — role은 토큰에 안 넣고 매 요청마다 DB에서 다시 계산.</li>
+                <li>Google: Google Identity Services(GIS) 브라우저 팝업 → <code>id_token</code> 획득 → 서버가 Google <code>tokeninfo</code> 엔드포인트로 검증(JWKS 클라이언트 없이 단순 HTTP GET 한 번).</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>트리거 조건</h3>
+              <ul>
+                <li>회원가입/로그인 폼 제출 시 즉시.</li>
+                <li>Google 버튼 클릭 → 팝업에서 계정 선택 성공 시.</li>
+                <li>role은 저장된 값이 아니라 <strong>매 요청마다 파생</strong>: <code>is_admin</code>이면 ADMIN, <code>organizations.owner_customer_id</code>가 있으면 SELLER, 아니면 CONSUMER.</li>
+              </ul>
+            </div>
+          </div>
+          <h4 style="margin:18px 0 8px">Google 로그인 처리 순서</h4>
+          <ol>
+            <li>demo-store가 GIS 스크립트로 팝업을 띄우고 <code>id_token</code>(JWT)을 받는다.</li>
+            <li><code>POST /auth/google { id_token }</code> 전송.</li>
+            <li>서버가 <code>GET https://oauth2.googleapis.com/tokeninfo?id_token=...</code> 호출.</li>
+            <li><code>aud</code>(토큰 대상)가 서버의 <code>GOOGLE_CLIENT_ID</code>와 일치하는지, <code>email_verified</code>인지 검증 — 하나라도 틀리면 401.</li>
+            <li>이메일로 기존 <code>customers</code> row를 찾고, 없으면 무작위 비밀번호 해시(로그인 불가능한 값)로 새로 만든다 — 소셜 로그인 계정도 같은 <code>customers</code> 테이블 한 곳에 산다.</li>
+            <li><code>create_access_token()</code>으로 JWT 발급, 이메일/비밀번호 로그인과 동일한 응답 형태로 반환.</li>
+          </ol>
+          <div class="grid two" style="margin-top:10px">
+            <div>
+              <h4>요청 — <code>POST /auth/signup</code></h4>
+              <pre><code>{
+  "email": "seller@test.com",
+  "password": "test1234",
+  "name": "김판매",
+  "phone": "010-2222-3333",
+  "as_seller": true,
+  "shop_name": "테스트 스토어",
+  "shop_category": "패션"
+}</code></pre>
+            </div>
+            <div>
+              <h4>응답 — 모든 로그인 경로 공통 형태</h4>
+              <pre><code>{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "bearer",
+  "customer": {
+    "id": "cus_test_seller",
+    "email": "seller@test.com",
+    "name": "김판매",
+    "is_admin": false,
+    "role": "SELLER",
+    "organization": {
+      "id": "org_test_seller",
+      "name": "테스트 스토어",
+      "commission_rate": 0.08,
+      "status": "ACTIVE"
+    }
+  }
+}</code></pre>
+            </div>
+          </div>
+          <h4 style="margin:18px 0 8px"><code>customers</code> 테이블</h4>
+          <pre><code>CREATE TABLE customers (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL DEFAULT '',
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);</code></pre>
+
+          <h3 style="margin:32px 0 12px">B · 마켓플레이스 — 판매자 상품 등록 · 관리자 승인/정지</h3>
+          <div class="grid two">
+            <div class="card">
+              <h3>사용 기술</h3>
+              <ul>
+                <li>FastAPI + 원시 SQLite(ORM 없음), <code>Authorization: Bearer</code> 헤더를 매 요청 직접 파싱.</li>
+                <li><code>require_seller_org()</code> / <code>require_admin()</code> 가드가 라우트 진입 시 role을 재검증 — 토큰이 유효해도 role 조건을 못 채우면 403.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>트리거 조건</h3>
+              <ul>
+                <li>판매자 콘솔 "상품 등록" 폼 제출 → 상품 1개 + 옵션(variant) 1개를 함께 생성.</li>
+                <li>재고 입력칸에서 포커스 아웃(onBlur) → 즉시 PATCH, 별도 저장 버튼 없음.</li>
+                <li>관리자 콘솔 정지 버튼 → <code>status</code>를 ACTIVE ↔ SUSPENDED로 토글. 정지되는 순간 그 조직 상품은 <code>list_products</code> 쿼리의 <code>WHERE</code>절 조건 때문에 공개 카탈로그 검색에서 즉시 사라진다(행 삭제 아님).</li>
+              </ul>
+            </div>
+          </div>
+          <pre><code>-- products.org_id가 NULL이면 플랫폼 기본 시드 상품, 값이 있으면 그 조직이 등록한 상품
+CREATE TABLE organizations (
+    id TEXT PRIMARY KEY,
+    owner_customer_id TEXT NOT NULL UNIQUE REFERENCES customers(id),
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    commission_rate REAL NOT NULL DEFAULT 0.08,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE products (
+    id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE,
+    category_id TEXT NOT NULL REFERENCES categories(id),
+    org_id TEXT REFERENCES organizations(id),
+    brand TEXT NOT NULL, name TEXT NOT NULL, price INTEGER NOT NULL, /* ... */
+    created_at TEXT NOT NULL
+);
+CREATE TABLE variants (
+    id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id),
+    sku TEXT NOT NULL UNIQUE, color TEXT NOT NULL, size TEXT NOT NULL,
+    price INTEGER NOT NULL, stock INTEGER NOT NULL CHECK(stock >= 0)
+);</code></pre>
+          <pre><code>PATCH /admin/organizations/org_test_seller
+{ "status": "SUSPENDED" }
+
+→ 200
+{
+  "id": "org_test_seller", "status": "SUSPENDED",
+  "owner": { "id": "cus_test_seller", "email": "seller@test.com" },
+  "product_count": 2
+}</code></pre>
+
+          <h3 style="margin:32px 0 12px">C · 커머스 이벤트 원장 & 매출 분석</h3>
+          <div class="callout" style="margin-bottom:14px">
+            <strong>이 기능에는 AI가 전혀 관여하지 않는다</strong>
+            <p><code>analytics.py</code>의 모든 숫자는 SQL <code>SUM</code>/<code>COUNT</code>다. commerce-insight 페르소나는 이 숫자가 이미 계산된 뒤에만 호출된다 — LLM이 매출을 계산하는 경로는 코드 어디에도 없다.</p>
+          </div>
+          <ul>
+            <li><strong>기록 시점</strong>: <code>POST /payments/confirm</code> 성공 시 <code>record_event(event_type="PAYMENT_CONFIRMED", amount=...)</code>. 주문 취소 시 <code>record_event(event_type="REFUND_COMPLETED", refund_amount=...)</code>.</li>
+            <li><strong>멱등성</strong>: <code>external_event_id</code>가 <code>UNIQUE</code> + <code>INSERT OR IGNORE</code>. 예: <code>"{order_id}:PAYMENT_CONFIRMED"</code> — 같은 결제 확인 요청이 재시도돼도 매출이 두 번 잡히지 않는다.</li>
+            <li><strong>집계 기준</strong>: 이벤트가 <em>발생한(occurred_at)</em> 달을 기준으로 계산한다. 주문 상태의 현재값이 아니라 이벤트 원장을 다시 읽어 계산하므로, 다음 달에 환불이 나도 이번 달 매출이 소급 수정되지 않는다.</li>
+            <li><strong>ops-console 경로</strong>: "매출 분석" 페이지 → <code>GET /api/v1/revenue/summary?period=</code> (core-api) → <code>CommerceClient</code>가 <code>GET http://localhost:8001/analytics/summary?period=</code>를 프록시 호출 → mock-commerce-api가 SQL 집계 → 그대로 반환. core-api는 숫자를 다시 계산하지 않고 통과시킨다.</li>
+          </ul>
+          <pre><code>CREATE TABLE commerce_events (
+    id TEXT PRIMARY KEY,
+    external_event_id TEXT NOT NULL UNIQUE,   -- 멱등성 키
+    event_type TEXT NOT NULL,                 -- PAYMENT_CONFIRMED | REFUND_COMPLETED
+    org_id TEXT NOT NULL,
+    order_id TEXT, product_id TEXT, variant_id TEXT,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    amount INTEGER NOT NULL DEFAULT 0,
+    refund_amount INTEGER NOT NULL DEFAULT 0,
+    occurred_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX idx_commerce_events_type_time ON commerce_events(event_type, occurred_at);</code></pre>
+
+          <h3 style="margin:32px 0 12px">D · AI ① customer-support-answer + support-triage — 문의 위젯</h3>
+          <p style="color:var(--muted)">두 페르소나는 한 요청 안에서 순서대로 실행된다. 자세한 단계별 근거·한계는 <a href="#ops-prd">05. AI Ops PRD</a>에 이미 정리돼 있으므로, 여기서는 "클릭 → 저장"까지의 압축본만 다룬다.</p>
+          <ol>
+            <li>고객이 문의창에 질문 입력 후 전송 클릭 → demo-store <code>askSupport()</code>가 <code>POST /api/v1/ai/reply</code> 호출.</li>
+            <li>core-api <code>OpenRouterSupportService.generate_reply()</code>가 Langfuse 루트 span(<code>answer-customer-inquiry</code>)을 연다.</li>
+            <li><strong>먼저</strong> <code>_classify_inquiry()</code>가 <code>support-triage</code> 프롬프트로 OpenRouter를 호출해 <code>{category, risk, requires_human}</code> JSON을 받는다(중첩 span <code>classify-inquiry</code>).</li>
+            <li>이어서 <code>_compile_prompt()</code>가 <code>customer-support-answer</code> 프롬프트를 Langfuse에서 가져와 변수 치환하고, <code>_generate_with_openrouter()</code>가 실제 답변을 생성한다(span <code>generate-support-reply</code>).</li>
+            <li><code>requires_human</code>은 triage 결과의 <code>risk == HIGH</code>이거나, 질문 원문에 <code>HUMAN_HANDOFF_KEYWORDS</code>(분쟁·소송·신고·고액 환불·개인정보 유출) 문자열이 있으면 무조건 true — 두 신호를 OR로 결합해 AI 판단 하나에만 이관을 맡기지 않는다.</li>
+            <li><code>inquiry_store.save_exchange()</code>가 core-api 자체 <code>support.db</code>에 문의·대화·메시지를 저장한다(Langfuse trace와는 별개 저장소).</li>
+            <li><code>requires_human=true</code>면 core-api가 즉시 <code>DiscordNotifier.send()</code>로 상담원 이관 알림을 보낸다(웹훅 미설정 시 조용히 스킵).</li>
+          </ol>
+          <div class="grid two" style="margin-top:10px">
+            <div>
+              <h4>요청 — <code>POST /api/v1/ai/reply</code></h4>
+              <pre><code>{
+  "question": "고액 환불을 요청하며 소송도 고려중입니다",
+  "order_id": "ord_1001",
+  "order_context": { "status": "SHIPPING" },
+  "policy_context": "배송 중 주문은 예정일을 안내합니다.",
+  "session_id": "sess_abc",
+  "user_id": "cus_demo",
+  "request_id": "req_xyz",
+  "channel": "demo-store"
+}</code></pre>
+            </div>
+            <div>
+              <h4>응답</h4>
+              <pre><code>{
+  "answer": "안녕하세요, 고객님. ...",
+  "model": "google/gemini-3.6-flash",
+  "prompt_source": "langfuse",
+  "prompt_version": "3",
+  "requires_human": true,
+  "category": "REFUND",
+  "risk": "HIGH",
+  "inquiry_id": "inq_2e7d9b77de3e",
+  "conversation_id": "conv_44bd339ed2ab",
+  "trace_id": "c25ecbad9cdbc400f33cf65191897b3b"
+}</code></pre>
+            </div>
+          </div>
+          <h4 style="margin:18px 0 8px">support-triage가 모델에서 실제로 받는 원문(파싱 전)</h4>
+          <pre><code>{"category": "REFUND", "risk": "HIGH", "requires_human": true, "reason": "고액 환불과 소송 언급"}</code></pre>
+          <p style="color:var(--muted)">JSON 파싱에 실패하거나(코드펜스, 잡담 섞임 등) OpenRouter 호출 자체가 실패하면 <code>_keyword_triage()</code>가 즉시 같은 모양의 결과를 키워드 매칭으로 대신 만든다 — 호출부는 실패를 알 필요 없이 항상 <code>TriageResult</code>를 받는다.</p>
+          <h4 style="margin:18px 0 8px"><code>support.db</code> 저장 테이블 (core-api)</h4>
+          <pre><code>CREATE TABLE inquiries (
+    id TEXT PRIMARY KEY, customer_id TEXT, order_id TEXT,
+    category TEXT NOT NULL,      -- support-triage 결과 (DELIVERY|CANCEL|REFUND|OTHER)
+    status TEXT NOT NULL,        -- AI_PROCESSING → AUTO_RESOLVED | ESCALATED
+    channel TEXT NOT NULL, subject TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE conversations (id TEXT PRIMARY KEY, inquiry_id TEXT UNIQUE, session_id TEXT, created_at TEXT NOT NULL);
+CREATE TABLE messages (
+    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL,          -- user | assistant | agent
+    content TEXT NOT NULL, model TEXT, prompt_source TEXT, prompt_version TEXT, trace_id TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE inquiry_events (id TEXT PRIMARY KEY, inquiry_id TEXT NOT NULL, event_type TEXT NOT NULL, actor TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL);</code></pre>
+
+          <h3 style="margin:32px 0 12px">E · AI ③ commerce-insight — "AI 인사이트 생성" 버튼</h3>
+          <div class="grid two">
+            <div class="card">
+              <h3>트리거</h3>
+              <p>ops-console "매출 분석" 페이지의 <strong>"AI 인사이트 생성" 버튼을 눌렀을 때만</strong> 실행된다. 페이지 진입 시 자동 호출하지 않는다 — 불필요한 OpenRouter 비용을 피하기 위한 의도적 설계다.</p>
+            </div>
+            <div class="card">
+              <h3>DB 저장 여부</h3>
+              <p><strong>저장하지 않는다.</strong> 버튼을 다시 누르면 그 시점의 매출 스냅샷으로 매번 새로 생성한다. React Query가 응답을 클라이언트 메모리에만 캐시한다(새로고침하면 사라짐).</p>
+            </div>
+          </div>
+          <ol>
+            <li>버튼 클릭 → <code>GET /api/v1/ai/commerce-insight?period=2026-07</code>.</li>
+            <li>core-api가 <code>CommerceClient</code>로 mock-commerce-api의 <code>/analytics/summary</code>, <code>/analytics/products</code>를 호출해 그 달 지표를 가져온다(= 섹션 C와 동일한 코드가 만든 숫자).</li>
+            <li><code>CommerceInsightService.generate_insight()</code>가 그 JSON을 <code>commerce-insight</code> 프롬프트의 <code>{{summary_json}}</code>/<code>{{products_json}}</code>에 그대로 문자열로 꽂아 OpenRouter를 호출한다.</li>
+            <li>모델 응답 텍스트(마크다운 불릿)를 그대로 <code>insight</code> 필드로 반환 — 후처리·파싱 없음.</li>
+          </ol>
+          <pre><code>GET /api/v1/ai/commerce-insight?period=2026-07
+
+→ 200
+{
+  "period": "2026-07",
+  "insight": "- 총매출 0원으로 이번 달 거래가 아직 없습니다...",
+  "model": "~google/gemini-flash-latest",
+  "prompt_source": "fallback",
+  "prompt_version": "0"
+}</code></pre>
+          <p style="color:var(--muted)"><code>prompt_source: "fallback"</code>은 Langfuse 콘솔에 아직 <code>commerce-insight</code> prompt를 안 만들었다는 뜻이다 — 이 경우에도 코드 내장 fallback 프롬프트로 OpenRouter는 정상 호출된다(<a href="#personas">docs/prompts/commerce-insight.md</a> 참고).</p>
+
+          <h3 style="margin:32px 0 12px">F · AI ④ commerce-monthly-report — "리포트 생성" · Discord 전송</h3>
+          <ol>
+            <li>ops-console "AI 리포트" 페이지에서 기간 선택 후 "리포트 생성" 클릭(체크박스로 "Discord로 전송" 선택 가능) → <code>POST /api/v1/ai/monthly-report</code>.</li>
+            <li>core-api가 그 달 매출 요약을 조회한 뒤, <strong>commerce-insight를 먼저 내부적으로 한 번 더 호출</strong>해 인사이트 텍스트를 만든다(섹션 E와 같은 서비스, 화면에는 안 보임).</li>
+            <li><code>MonthlyReportService.generate_report()</code>가 매출 요약 + 방금 만든 인사이트를 <code>commerce-monthly-report</code> 프롬프트에 넣어 최종 리포트를 생성한다 — 이 페르소나는 원본 숫자를 다시 해석하지 않고, 이미 나온 인사이트를 "편집"만 한다.</li>
+            <li><code>send_discord: true</code>였고 <code>DISCORD_WEBHOOK_URL</code>이 설정돼 있으면, 생성된 리포트 텍스트를 그대로 <code>DiscordNotifier.send()</code>로 전송한다. 웹훅이 없으면 <code>discord_sent: false</code>로 조용히 넘어간다 — 리포트 생성 자체는 실패하지 않는다.</li>
+          </ol>
+          <pre><code>POST /api/v1/ai/monthly-report
+{ "period": "2026-07", "send_discord": true }
+
+→ 200
+{
+  "period": "2026-07",
+  "report": "# 2026년 7월 커머스 월간 운영 리포트\n\n### 1. 이번 달 요약\n...",
+  "model": "~google/gemini-flash-latest",
+  "prompt_source": "fallback",
+  "prompt_version": "0",
+  "discord_sent": false
+}</code></pre>
+          <h4 style="margin:18px 0 8px">실제 Discord로 나가는 요청</h4>
+          <pre><code>POST https://discord.com/api/webhooks/&lt;id&gt;/&lt;token&gt;
+Content-Type: application/json
+
+{ "content": "&lt;리포트 마크다운 전문, 최대 2000자로 자름&gt;" }</code></pre>
+          <p style="color:var(--muted)">웹훅 URL, API Key 등 비밀값은 <code>prompt.config</code>나 응답 JSON 어디에도 담기지 않는다 — 서버 프로세스의 환경변수(<code>DISCORD_WEBHOOK_URL</code>, <code>OPENROUTER_API_KEY</code>)에만 존재한다.</p>
+
+          <h3 style="margin:32px 0 12px">G · 페르소나 4개 공통 메커니즘</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>개념</th><th>이 프로젝트에서의 의미</th></tr></thead>
+              <tbody>
+                <tr><td><code>PromptRepository.compile()</code></td><td>4개 페르소나가 전부 공유하는 하나의 함수. <code>prompt_name</code>·fallback 텍스트·fallback config·변수 딕셔너리를 받아 Langfuse에서 프롬프트를 가져오거나, 실패 시 로컬 fallback으로 대체한다.</td></tr>
+                <tr><td><code>personas.py</code></td><td>4개 페르소나 각각의 fallback 프롬프트 원문 + OpenRouter config를 한 파일에 모아둔 것. Langfuse에 아직 프롬프트를 안 만들었어도 앱이 죽지 않는 이유.</td></tr>
+                <tr><td>Langfuse 클라이언트</td><td>페르소나마다 따로 만들지 않고 프로세스 전체에서 <code>get_shared_langfuse()</code> 하나를 공유 — trace 전송용 백그라운드 워커가 4개가 아니라 1개다.</td></tr>
+                <tr><td>Langfuse <code>name</code></td><td><code>customer-support-answer</code> / <code>support-triage</code> / <code>commerce-insight</code> / <code>commerce-monthly-report</code> — 기능마다 반드시 다른 이름. 하나의 프롬프트가 여러 역할을 겸하지 않는다.</td></tr>
+                <tr><td>Langfuse <code>label</code></td><td>앱은 항상 <code>production</code> 라벨만 조회한다(<code>LANGFUSE_PROMPT_LABEL</code>). 라벨 없는 새 버전은 아무리 저장해도 실행되지 않는다 — 검증 후 라벨을 옮기는 게 곧 "배포".</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style="margin:32px 0 12px">H · demo-store 비주얼 — Three.js + GSAP</h3>
+          <div class="grid two">
+            <div class="card">
+              <h3>사용 기술</h3>
+              <ul>
+                <li><strong>Three.js</strong>: 히어로 배경은 3D 오브젝트가 아니라 <code>PlaneGeometry</code>에 매 프레임 사인파로 정점(vertex)의 y좌표를 흔드는 "패브릭 웨이브" — 옷감 질감을 은유한다. <code>MeshBasicMaterial({ wireframe: true })</code>로 렌더링.</li>
+                <li><strong>GSAP</strong>: 무한 루프 마퀴 밴드(<code>xPercent</code> 트윈), 커서를 따라오는 마그네틱 버튼(<code>gsap.quickTo</code>), <code>ScrollTrigger</code> 기반 섹션 등장·이미지 스케일 애니메이션.</li>
+                <li><strong>텍스트-속-사진 효과</strong>: <code>background-clip: text</code> CSS — 별도 라이브러리 없이 순수 CSS로 글자 모양대로 이미지가 보이게 만든다.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>트리거 · 성능</h3>
+              <ul>
+                <li>웨이브·마퀴는 페이지 로드 시 자동 재생(항상 움직여서 "GSAP을 실제로 썼는지" 눈에 보이게 함).</li>
+                <li>스크롤 리빌은 <code>ScrollTrigger</code>가 뷰포트 진입을 감지할 때, 마그네틱 버튼은 <code>mousemove</code> 이벤트마다.</li>
+                <li>Three.js 청크(~500KB)는 <code>React.lazy()</code> + <code>Suspense</code>로 메인 번들과 분리 — 초기 로드에 영향을 주지 않는다.</li>
+              </ul>
+            </div>
+          </div>
+
+          <h3 style="margin:32px 0 12px">I · ops_store 4종 (워크플로 · 지식 문서 · 연동 · 실패 작업)</h3>
+          <p style="color:var(--muted)">이 넷은 <code>services/core-api/app/services/ops_store.py</code>가 관리하며, "연동" 페이지의 Discord 카드를 제외하면 <strong>전부 읽기·수동 상태 변경 위주의 관제 UI 껍데기</strong>다 — 워크플로 실행 엔진, 지식 문서 RAG 검색, 실패 작업 자동 재시도는 아직 실제 로직이 없다(섹션 05의 한계 표 참고). 유일하게 실제로 동작하도록 만든 것이 Discord 연동 상태다: "연결 점검" 버튼을 누르면 <code>DISCORD_WEBHOOK_URL</code>이 실제로 설정돼 있는지 서버가 확인해 CONNECTED/DISCONNECTED를 정직하게 반환한다(예전엔 항상 DISCONNECTED로 하드코딩돼 있었다).</p>
+          <pre><code>CREATE TABLE workflows (id TEXT PRIMARY KEY, name TEXT, status TEXT, steps TEXT /* JSON 배열 */, success_count INTEGER, failure_count INTEGER);
+CREATE TABLE knowledge_documents (id TEXT PRIMARY KEY, title TEXT, category TEXT, status TEXT, content TEXT, chunk_count INTEGER);
+CREATE TABLE integrations (id TEXT PRIMARY KEY, name TEXT, status TEXT, config_summary TEXT, last_checked_at TEXT);
+CREATE TABLE failed_jobs (id TEXT PRIMARY KEY, error_code TEXT, error_message TEXT, retry_count INTEGER, status TEXT);
+CREATE TABLE audit_logs (id TEXT PRIMARY KEY, actor TEXT, action TEXT, target_type TEXT, target_id TEXT, detail TEXT, created_at TEXT);</code></pre>
+
+          <div class="callout" style="margin-top:16px;border-left-color:var(--warn);background:var(--warn-soft)">
+            <strong>이 섹션에서 정직하게 밝히는 것</strong>
+            <p>commerce-insight/commerce-monthly-report는 요청마다 새로 계산될 뿐 DB에 이력이 남지 않는다(지난달 리포트를 다시 보려면 그 기간으로 재생성해야 한다). support-triage 실패 시 키워드 폴백은 <code>HUMAN_HANDOFF_KEYWORDS</code> 5개 문자열 매칭이라 표현을 바꾸면 못 잡는다. Discord 실패는 재시도 없이 그냥 <code>false</code>를 반환한다. 전부 포트폴리오 MVP 범위에서 의도적으로 남긴 단순화다.</p>
+          </div>
+        </section>
+
         <section id="roadmap">
           <header>
-            <div><span class="section-no">13</span><h2>개발 로드맵</h2><p>현재 Demo Store를 기준으로 자동화 → 집계 → AI 분석 → 알림 순서로 확장한다.</p></div>
+            <div><span class="section-no">14</span><h2>개발 로드맵</h2><p>현재 Demo Store를 기준으로 자동화 → 집계 → AI 분석 → 알림 순서로 확장한다.</p></div>
           </header>
           <div class="phase"><div class="phase-name">완료</div><div><strong>Demo Store + 문의 자동화</strong><br><span style="color:var(--muted)">패션 상품·주문·결제·환불, OpenRouter 응답, Langfuse runtime config, Ops Console</span></div><div class="phase-time">현재</div></div>
           <div class="phase"><div class="phase-name">완료</div><div><strong>Commerce Event Ledger + 코드 기반 매출 분석</strong><br><span style="color:var(--muted)">판매·취소·환불 이벤트 원장(멱등), 매출·상품·환불 요약 API, Ops Console 매출 분석 화면</span></div><div class="phase-time">현재</div></div>
@@ -996,7 +1341,7 @@ POST /api/webhooks/test</code></pre>
 
         <section id="acceptance">
           <header>
-            <div><span class="section-no">14</span><h2>MVP 출시 기준</h2><p>고객지원과 경영 비서 가치가 함께 증명돼야 완료로 본다.</p></div>
+            <div><span class="section-no">15</span><h2>MVP 출시 기준</h2><p>고객지원과 경영 비서 가치가 함께 증명돼야 완료로 본다.</p></div>
           </header>
           <div class="grid two">
             <div class="card">
@@ -1032,7 +1377,7 @@ POST /api/webhooks/test</code></pre>
         </section>
       </main>
     </div>
-    <footer>AI Ops Studio · Commerce AI Master PRD v1.3 · 2026-07-24</footer>
+    <footer>AI Ops Studio · Commerce AI Master PRD v1.4 · 2026-07-24</footer>
   </div>
 
   <script>
