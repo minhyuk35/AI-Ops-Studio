@@ -452,6 +452,7 @@ function Home({ products, onShop, onProduct }: { products: Product[]; onShop: ()
   }, []);
 
   useEffect(() => {
+    if (!products.length) return;
     const ctx = gsap.context(() => {
       gsap.fromTo(
         ".editorial-feature, .editorial-side .product-card",
@@ -592,6 +593,7 @@ function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
 function ProductGrid({ products, onProduct }: { products: Product[]; onProduct: (p: Product) => void }) {
   const gridRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (!products.length) return;
     const ctx = gsap.context(() => {
       gsap.fromTo(
         ".product-card",
