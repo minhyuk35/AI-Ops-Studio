@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     mock_commerce_api_url: str = "http://localhost:8001"
     mock_commerce_timeout_seconds: float = Field(default=10, ge=1, le=60)
 
+    discord_webhook_url: str = ""
+    discord_timeout_seconds: float = Field(default=10, ge=1, le=30)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

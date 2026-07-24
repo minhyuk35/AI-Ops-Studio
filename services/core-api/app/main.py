@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import ai, health, inquiries, ops, revenue
 from app.config import get_settings
 from app.services.inquiry_store import inquiry_store
+from app.services.prompts import get_shared_langfuse
 
 settings = get_settings()
 
@@ -15,12 +16,12 @@ async def lifespan(_: FastAPI):
     inquiry_store.initialize()
     ops.ops_store.initialize()
     yield
-    try:
-        service = ai.get_ai_service()
-        if service.prompts.langfuse is not None:
-            service.prompts.langfuse.flush()
-    except Exception:
-        pass
+    langfuse = get_shared_langfuse(settings)
+    if langfuse is not None:
+        try:
+            langfuse.flush()
+        except Exception:
+            pass
 
 
 app = FastAPI(

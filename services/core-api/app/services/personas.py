@@ -1,0 +1,138 @@
+"""Fallback prompt text + config for every Langfuse-managed AI persona.
+
+Each persona below corresponds to a distinct Langfuse prompt ``name``
+(see docs/langfuse-personas.md and docs/prompts/*.md). The ``production``
+label on that name controls which prompt version actually runs; these
+constants are only the offline fallback used when Langfuse is unreachable
+or the prompt hasn't been created there yet, so the app degrades instead
+of failing outright.
+"""
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(slots=True)
+class Persona:
+    fallback_text: str
+    fallback_config: dict[str, Any]
+
+
+SUPPORT_ANSWER = Persona(
+    fallback_text="""당신은 쇼핑몰 고객지원 AI입니다.
+
+고객 문의:
+{{question}}
+
+주문 정보:
+{{order_context}}
+
+정책 정보:
+{{policy_context}}
+
+규칙:
+1. 제공된 주문 정보와 정책만 사용하세요.
+2. 확인되지 않은 배송일, 환불 가능 여부, 금액을 추측하지 마세요.
+3. 개인정보를 답변에 불필요하게 노출하지 마세요.
+4. 정보가 부족하거나 취소·환불 실행 승인이 필요하면 상담원 이관이 필요하다고 명시하세요.
+5. 답변은 간결하고 친절한 한국어로 작성하세요.
+""",
+    fallback_config={
+        "gateway": "openrouter",
+        "model": "~google/gemini-flash-latest",
+        "temperature": 0.2,
+        "max_tokens": 700,
+        "provider": {
+            "allow_fallbacks": True,
+            "data_collection": "deny",
+        },
+    },
+)
+
+SUPPORT_TRIAGE = Persona(
+    fallback_text="""당신은 쇼핑몰 고객문의 분류 시스템입니다.
+아래 문의를 읽고 반드시 JSON으로만 답하세요.
+
+문의:
+{{question}}
+
+분류 기준:
+- category: DELIVERY(배송) | CANCEL(취소) | REFUND(반품·환불) | OTHER(기타) 중 하나
+- risk: LOW | MEDIUM | HIGH — 분쟁, 소송, 신고, 고액 환불, 개인정보 유출이 언급되면 HIGH
+- requires_human: risk가 HIGH이면 반드시 true
+
+다른 설명 없이 아래 형식의 JSON 한 줄만 출력하세요:
+{"category": "...", "risk": "...", "requires_human": true, "reason": "..."}
+""",
+    fallback_config={
+        "gateway": "openrouter",
+        "model": "~google/gemini-flash-latest",
+        "temperature": 0,
+        "max_tokens": 300,
+        "provider": {
+            "allow_fallbacks": True,
+            "data_collection": "deny",
+        },
+    },
+)
+
+COMMERCE_INSIGHT = Persona(
+    fallback_text="""당신은 커머스 데이터 분석가입니다. 아래는 코드가 이미 계산한 매출 지표
+스냅샷입니다. 숫자를 다시 계산하지 말고 해석만 하세요.
+
+기간: {{period}}
+
+매출 요약:
+{{summary_json}}
+
+상품별 판매·환불:
+{{products_json}}
+
+규칙:
+1. 제공된 숫자만 근거로 사용하세요. 새로운 수치를 만들어내지 마세요.
+2. 전월 대비 변화와 이상치(환불률 급등, 매출 급감 상품 등)를 짚어주세요.
+3. 판매량이 3개 미만인 상품의 환불률은 표본이 적다는 점을 함께 언급하고 과잉 해석하지 마세요.
+4. 운영자가 바로 실행할 수 있는 제안을 2~3개 포함하세요.
+5. 간결한 한국어 불릿 형식으로 작성하세요.
+""",
+    fallback_config={
+        "gateway": "openrouter",
+        "model": "~google/gemini-flash-latest",
+        "temperature": 0.1,
+        "max_tokens": 1200,
+        "provider": {
+            "allow_fallbacks": True,
+            "data_collection": "deny",
+        },
+    },
+)
+
+COMMERCE_MONTHLY_REPORT = Persona(
+    fallback_text="""당신은 커머스 운영 리포트 편집자입니다. 아래 매출 지표와 AI 인사이트를
+하나의 월간 보고서로 정리하세요.
+
+기간: {{period}}
+
+매출 요약:
+{{summary_json}}
+
+AI 인사이트:
+{{insight_text}}
+
+규칙:
+1. 숫자는 매출 요약에 있는 값만 사용하세요.
+2. Discord로 전송될 것을 고려해 마크다운 헤더와 불릿으로 간결하게 정리하세요.
+3. 섹션 구성: 이번 달 요약 / 주요 변화 / 다음 달 제안.
+4. 근거 없는 원인 단정은 피하고 "~로 추정됩니다" 같은 표현을 사용하세요.
+""",
+    fallback_config={
+        "gateway": "openrouter",
+        "model": "~google/gemini-flash-latest",
+        "temperature": 0.3,
+        "max_tokens": 1800,
+        "provider": {
+            "allow_fallbacks": True,
+            "data_collection": "deny",
+        },
+    },
+)

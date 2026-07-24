@@ -434,14 +434,19 @@ class OpsStore:
             )
         return next(item for item in self.list_documents() if item["id"] == document_id)
 
-    def check_integration(self, integration_id: str) -> dict[str, Any] | None:
+    def check_integration(
+        self, integration_id: str, *, discord_ready: bool = False
+    ) -> dict[str, Any] | None:
         with self.transaction() as connection:
             row = connection.execute(
                 "SELECT * FROM integrations WHERE id = ?", (integration_id,)
             ).fetchone()
             if row is None:
                 return None
-            status = "DISCONNECTED" if integration_id == "int_slack" else "CONNECTED"
+            if integration_id == "int_slack":
+                status = "CONNECTED" if discord_ready else "DISCONNECTED"
+            else:
+                status = "CONNECTED"
             connection.execute(
                 """
                 UPDATE integrations
@@ -458,12 +463,17 @@ class OpsStore:
             )
         return next(item for item in self.list_integrations() if item["id"] == integration_id)
 
-    def retry_failed_job(self, job_id: str) -> dict[str, Any] | None:
+    def retry_failed_job(
+        self, job_id: str, *, discord_ready: bool = False
+    ) -> dict[str, Any] | None:
         with self.transaction() as connection:
             row = connection.execute("SELECT * FROM failed_jobs WHERE id = ?", (job_id,)).fetchone()
             if row is None:
                 return None
-            status = "FAILED" if row["error_code"] == "INTEGRATION_OFFLINE" else "RESOLVED"
+            if row["error_code"] == "INTEGRATION_OFFLINE":
+                status = "RESOLVED" if discord_ready else "FAILED"
+            else:
+                status = "RESOLVED"
             connection.execute(
                 """
                 UPDATE failed_jobs

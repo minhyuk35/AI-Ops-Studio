@@ -23,6 +23,30 @@ class AIReplyResponse(BaseModel):
     prompt_source: Literal["langfuse", "fallback"]
     prompt_version: str | None = None
     requires_human: bool = False
+    category: Literal["DELIVERY", "CANCEL", "REFUND", "OTHER"] = "OTHER"
+    risk: Literal["LOW", "MEDIUM", "HIGH"] = "LOW"
     inquiry_id: str | None = None
     conversation_id: str | None = None
     trace_id: str | None = None
+
+
+class CommerceInsightResponse(BaseModel):
+    period: str
+    insight: str
+    model: str
+    prompt_source: Literal["langfuse", "fallback"]
+    prompt_version: str | None = None
+
+
+class MonthlyReportRequest(BaseModel):
+    period: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    send_discord: bool = False
+
+
+class MonthlyReportResponse(BaseModel):
+    period: str
+    report: str
+    model: str
+    prompt_source: Literal["langfuse", "fallback"]
+    prompt_version: str | None = None
+    discord_sent: bool = False

@@ -1,8 +1,10 @@
 import type {
   AuditLog,
+  CommerceInsight,
   FailedJob,
   Inquiry,
   KnowledgeDocument,
+  MonthlyReport,
   OpsIntegration,
   OpsWorkflow,
   ProductMetric,
@@ -70,3 +72,11 @@ export const getRevenueSummary = (period: string) =>
   request<RevenueSummary>(`/revenue/summary?period=${period}`);
 export const getRevenueProducts = (period: string) =>
   request<ProductMetric[]>(`/revenue/products?period=${period}`);
+
+export const getCommerceInsight = (period: string) =>
+  request<CommerceInsight>(`/ai/commerce-insight?period=${period}`);
+export const generateMonthlyReport = (period: string, sendDiscord: boolean) =>
+  request<MonthlyReport>(
+    "/ai/monthly-report",
+    json("POST", { period, send_discord: sendDiscord }),
+  );

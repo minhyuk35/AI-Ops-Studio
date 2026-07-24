@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from app.config import Settings
 from app.schemas.ai import AIReplyRequest
+from app.services import personas
 from app.services.openrouter import OpenRouterSupportService
 from app.services.prompts import CompiledPrompt, PromptRepository
 from app.services.tracing import redact_sensitive_text
@@ -20,9 +21,14 @@ def test_prompt_config_uses_openrouter_runtime_defaults() -> None:
         langfuse_secret_key="",
     )
     compiled = PromptRepository(settings).compile(
-        question="배송이 언제 도착하나요?",
-        order_context='{"status":"SHIPPING"}',
-        policy_context="배송 예정일만 안내합니다.",
+        prompt_name="customer-support-answer",
+        fallback_text=personas.SUPPORT_ANSWER.fallback_text,
+        fallback_config=personas.SUPPORT_ANSWER.fallback_config,
+        variables={
+            "question": "배송이 언제 도착하나요?",
+            "order_context": '{"status":"SHIPPING"}',
+            "policy_context": "배송 예정일만 안내합니다.",
+        },
     )
 
     assert compiled.name == "customer-support-answer"

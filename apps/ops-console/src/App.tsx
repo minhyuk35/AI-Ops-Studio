@@ -15,7 +15,9 @@ import ReactMarkdown from "react-markdown";
 import {
   checkIntegration,
   createDocument,
+  generateMonthlyReport,
   getAuditLogs,
+  getCommerceInsight,
   getDocuments,
   getFailedJobs,
   getInquiries,
@@ -38,12 +40,14 @@ type Page =
   | "integrations"
   | "failed"
   | "audit"
-  | "revenue";
+  | "revenue"
+  | "report";
 
 const navigation: { id: Page; label: string }[] = [
   { id: "dashboard", label: "대시보드" },
   { id: "inquiries", label: "문의" },
   { id: "revenue", label: "매출 분석" },
+  { id: "report", label: "AI 리포트" },
   { id: "workflows", label: "워크플로" },
   { id: "knowledge", label: "지식 문서" },
   { id: "integrations", label: "연동" },
@@ -149,6 +153,7 @@ export function App() {
           onPeriodChange={setPeriod}
         />
       )}
+      {page === "report" && <ReportPage period={period} onPeriodChange={setPeriod} />}
       {page === "failed" && (
         <FailedJobsPage jobs={failedJobs.data ?? []} loading={failedJobs.isLoading} />
       )}
@@ -307,6 +312,9 @@ function RevenuePage({
     });
     return withData;
   }, [products, sort]);
+  const insightMutation = useMutation({
+    mutationFn: () => getCommerceInsight(period),
+  });
 
   return (
     <main>
@@ -334,6 +342,30 @@ function RevenuePage({
           <RevenueStat label="객단가" value={summary.average_order_value} change={summary.change.average_order_value_pct} />
         </section>
       )}
+      <section className="panel insight-panel">
+        <div className="panel-heading">
+          <div><small>AI · commerce-insight</small><h2>AI 인사이트</h2></div>
+          <button
+            className="primary"
+            disabled={insightMutation.isPending}
+            onClick={() => insightMutation.mutate()}
+          >
+            {insightMutation.isPending ? "분석 중…" : "AI 인사이트 생성"}
+          </button>
+        </div>
+        {insightMutation.isError && <p className="empty">인사이트 생성에 실패했습니다.</p>}
+        {insightMutation.isSuccess && (
+          <>
+            <div className="markdown-body"><ReactMarkdown>{insightMutation.data.insight}</ReactMarkdown></div>
+            <footer className="insight-footer">
+              {insightMutation.data.model} · prompt {insightMutation.data.prompt_source === "langfuse" ? insightMutation.data.prompt_version ?? "langfuse" : "fallback"}
+            </footer>
+          </>
+        )}
+        {!insightMutation.isSuccess && !insightMutation.isPending && !insightMutation.isError && (
+          <p className="empty">숫자는 코드가 이미 계산했습니다. 버튼을 누르면 AI가 변화와 이상치를 해석합니다.</p>
+        )}
+      </section>
       <section className="panel table-panel revenue-table">
         <div className="panel-heading">
           <div><small>PRODUCTS</small><h2>상품별 판매·환불</h2></div>
@@ -388,6 +420,74 @@ function RevenueStat({
         </small>
       )}
     </article>
+  );
+}
+
+function ReportPage({
+  period,
+  onPeriodChange,
+}: {
+  period: string;
+  onPeriodChange: (period: string) => void;
+}) {
+  const [sendDiscord, setSendDiscord] = useState(false);
+  const reportMutation = useMutation({
+    mutationFn: () => generateMonthlyReport(period, sendDiscord),
+  });
+
+  return (
+    <main>
+      <PageHeader
+        eyebrow="AI · commerce-monthly-report"
+        title="AI 리포트"
+        description="매출 지표와 AI 인사이트를 하나의 월간 보고서로 정리하고, 원하면 Discord로 전송합니다."
+        action={
+          <input
+            className="period-input"
+            aria-label="리포트 기간"
+            type="month"
+            value={period}
+            onChange={(event) => onPeriodChange(event.target.value)}
+          />
+        }
+      />
+      <section className="panel report-panel">
+        <div className="panel-heading">
+          <div><small>REPORT</small><h2>{period} 월간 리포트</h2></div>
+          <div className="report-actions">
+            <label className="discord-toggle">
+              <input
+                type="checkbox"
+                checked={sendDiscord}
+                onChange={(event) => setSendDiscord(event.target.checked)}
+              />
+              Discord로 전송
+            </label>
+            <button
+              className="primary"
+              disabled={reportMutation.isPending}
+              onClick={() => reportMutation.mutate()}
+            >
+              {reportMutation.isPending ? "생성 중…" : "리포트 생성"}
+            </button>
+          </div>
+        </div>
+        {reportMutation.isError && <p className="empty">리포트 생성에 실패했습니다.</p>}
+        {reportMutation.isSuccess && (
+          <>
+            <div className="markdown-body"><ReactMarkdown>{reportMutation.data.report}</ReactMarkdown></div>
+            <footer className="insight-footer">
+              {reportMutation.data.model} · prompt {reportMutation.data.prompt_source === "langfuse" ? reportMutation.data.prompt_version ?? "langfuse" : "fallback"}
+              {" · "}
+              {reportMutation.data.discord_sent ? "Discord 전송 완료" : sendDiscord ? "Discord 전송 안 됨 (웹훅 미설정)" : "Discord 미전송"}
+            </footer>
+          </>
+        )}
+        {!reportMutation.isSuccess && !reportMutation.isPending && !reportMutation.isError && (
+          <p className="empty">버튼을 누르면 이번 기간의 인사이트를 먼저 생성한 뒤 리포트로 편집합니다.</p>
+        )}
+      </section>
+    </main>
   );
 }
 

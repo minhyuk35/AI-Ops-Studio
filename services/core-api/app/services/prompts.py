@@ -6,35 +6,31 @@ from langfuse import Langfuse
 from app.config import Settings
 from app.services.tracing import mask_otel_spans
 
-FALLBACK_PROMPT = """당신은 쇼핑몰 고객지원 AI입니다.
+_shared_langfuse: Langfuse | None = None
+_shared_langfuse_built = False
 
-고객 문의:
-{{question}}
 
-주문 정보:
-{{order_context}}
+def get_shared_langfuse(settings: Settings) -> Langfuse | None:
+    """One Langfuse client per process, shared by every PromptRepository.
 
-정책 정보:
-{{policy_context}}
-
-규칙:
-1. 제공된 주문 정보와 정책만 사용하세요.
-2. 확인되지 않은 배송일, 환불 가능 여부, 금액을 추측하지 마세요.
-3. 개인정보를 답변에 불필요하게 노출하지 마세요.
-4. 정보가 부족하거나 취소·환불 실행 승인이 필요하면 상담원 이관이 필요하다고 명시하세요.
-5. 답변은 간결하고 친절한 한국어로 작성하세요.
-"""
-
-FALLBACK_CONFIG: dict[str, Any] = {
-    "gateway": "openrouter",
-    "model": "~google/gemini-flash-latest",
-    "temperature": 0.2,
-    "max_tokens": 700,
-    "provider": {
-        "allow_fallbacks": True,
-        "data_collection": "deny",
-    },
-}
+    Each persona (support answer, triage, commerce insight, monthly report)
+    gets its own PromptRepository instance, but they all export traces
+    through the same Langfuse background worker instead of one per persona.
+    """
+    global _shared_langfuse, _shared_langfuse_built
+    if not _shared_langfuse_built:
+        _shared_langfuse_built = True
+        if settings.langfuse_enabled:
+            _shared_langfuse = Langfuse(
+                public_key=settings.langfuse_public_key,
+                secret_key=settings.langfuse_secret_key,
+                base_url=settings.langfuse_base_url,
+                environment=settings.app_env,
+                release=settings.app_version,
+                sample_rate=settings.langfuse_sample_rate,
+                mask_otel_spans=mask_otel_spans,
+            )
+    return _shared_langfuse
 
 
 @dataclass(slots=True)
@@ -64,28 +60,16 @@ class CompiledPrompt:
 class PromptRepository:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._langfuse = (
-            Langfuse(
-                public_key=settings.langfuse_public_key,
-                secret_key=settings.langfuse_secret_key,
-                base_url=settings.langfuse_base_url,
-                environment=settings.app_env,
-                release=settings.app_version,
-                sample_rate=settings.langfuse_sample_rate,
-                mask_otel_spans=mask_otel_spans,
-            )
-            if settings.langfuse_enabled
-            else None
-        )
+        self._langfuse = get_shared_langfuse(settings)
 
-    def compile(self, *, question: str, order_context: str, policy_context: str) -> CompiledPrompt:
-        variables = {
-            "question": question,
-            "order_context": order_context,
-            "policy_context": policy_context or "등록된 정책 정보 없음",
-        }
-        prompt_name = self.settings.langfuse_support_prompt_name
-
+    def compile(
+        self,
+        *,
+        prompt_name: str,
+        fallback_text: str,
+        fallback_config: dict[str, Any],
+        variables: dict[str, str],
+    ) -> CompiledPrompt:
         if self._langfuse is not None:
             try:
                 prompt = self._langfuse.get_prompt(
@@ -93,7 +77,7 @@ class PromptRepository:
                     type="text",
                     label=self.settings.langfuse_prompt_label,
                     cache_ttl_seconds=self.settings.langfuse_prompt_cache_ttl_seconds,
-                    fallback=FALLBACK_PROMPT,
+                    fallback=fallback_text,
                 )
                 source = "fallback" if getattr(prompt, "is_fallback", False) else "langfuse"
                 version = getattr(prompt, "version", None)
@@ -102,13 +86,13 @@ class PromptRepository:
                     name=prompt_name,
                     source=source,
                     version=str(version) if version is not None else None,
-                    config=self._runtime_config(getattr(prompt, "config", None)),
+                    config=self._runtime_config(fallback_config, getattr(prompt, "config", None)),
                     langfuse_prompt=None if getattr(prompt, "is_fallback", False) else prompt,
                 )
             except Exception:
                 pass
 
-        text = FALLBACK_PROMPT
+        text = fallback_text
         for key, value in variables.items():
             text = text.replace("{{" + key + "}}", value)
         return CompiledPrompt(
@@ -116,12 +100,14 @@ class PromptRepository:
             name=prompt_name,
             source="fallback",
             version=None,
-            config=self._runtime_config(None),
+            config=self._runtime_config(fallback_config, None),
             langfuse_prompt=None,
         )
 
-    def _runtime_config(self, remote: Any | None) -> dict[str, Any]:
-        config = {**FALLBACK_CONFIG}
+    def _runtime_config(
+        self, fallback_config: dict[str, Any], remote: Any | None
+    ) -> dict[str, Any]:
+        config = {**fallback_config}
         config["model"] = self.settings.openrouter_default_model
         if isinstance(remote, dict):
             config.update(remote)

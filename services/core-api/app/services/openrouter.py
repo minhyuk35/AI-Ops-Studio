@@ -1,35 +1,35 @@
 import json
 from contextlib import nullcontext
+from dataclasses import dataclass
 from typing import Any
 
 from langfuse import propagate_attributes
-from langfuse.openai import OpenAI
 
 from app.config import Settings
 from app.schemas.ai import AIReplyRequest, AIReplyResponse
+from app.services import personas
+from app.services.llm_client import build_openrouter_client
 from app.services.prompts import CompiledPrompt, PromptRepository
 
 HUMAN_HANDOFF_KEYWORDS = ("분쟁", "소송", "신고", "고액 환불", "개인정보 유출")
+
+_CATEGORIES = ("DELIVERY", "CANCEL", "REFUND", "OTHER")
+_RISKS = ("LOW", "MEDIUM", "HIGH")
+
+
+@dataclass(slots=True)
+class TriageResult:
+    category: str
+    risk: str
+    requires_human: bool
+    reason: str = ""
 
 
 class OpenRouterSupportService:
     def __init__(self, settings: Settings, prompts: PromptRepository) -> None:
         self.settings = settings
         self.prompts = prompts
-        headers = {
-            "HTTP-Referer": settings.openrouter_http_referer,
-            "X-OpenRouter-Title": settings.openrouter_app_title,
-        }
-        self.client = (
-            OpenAI(
-                api_key=settings.openrouter_api_key,
-                base_url=settings.openrouter_base_url,
-                default_headers=headers,
-                timeout=settings.openrouter_timeout_seconds,
-            )
-            if settings.openrouter_api_key
-            else None
-        )
+        self.client = build_openrouter_client(settings)
 
     def generate_reply(self, request: AIReplyRequest) -> AIReplyResponse:
         langfuse = self.prompts.langfuse
@@ -71,14 +71,19 @@ class OpenRouterSupportService:
                             "requires_human": response.requires_human,
                             "prompt_source": response.prompt_source,
                             "prompt_version": response.prompt_version,
+                            "category": response.category,
+                            "risk": response.risk,
                         },
                     )
                     return response.model_copy(update={"trace_id": root_span.trace_id})
                 return response
 
     def _run_pipeline(self, request: AIReplyRequest) -> AIReplyResponse:
+        triage = self._classify_inquiry(request)
         compiled = self._compile_prompt(request)
-        requires_human = any(keyword in request.question for keyword in HUMAN_HANDOFF_KEYWORDS)
+        requires_human = triage.requires_human or any(
+            keyword in request.question for keyword in HUMAN_HANDOFF_KEYWORDS
+        )
 
         if self.client is None:
             return AIReplyResponse(
@@ -90,6 +95,8 @@ class OpenRouterSupportService:
                 prompt_source=compiled.source,
                 prompt_version=compiled.version,
                 requires_human=True,
+                category=triage.category,
+                risk=triage.risk,
             )
 
         answer, resolved_model = self._generate_with_openrouter(request, compiled)
@@ -99,6 +106,107 @@ class OpenRouterSupportService:
             prompt_source=compiled.source,
             prompt_version=compiled.version,
             requires_human=requires_human,
+            category=triage.category,
+            risk=triage.risk,
+        )
+
+    def _classify_inquiry(self, request: AIReplyRequest) -> TriageResult:
+        """support-triage persona: category + risk classification.
+
+        Runs as its own nested Langfuse span ("classify-inquiry") ahead of
+        the actual reply generation, so the pipeline mirrors the "문의 분류
+        → 주문 조회 → 정책 검증 → OpenRouter 답변" workflow steps rather than
+        collapsing everything into one call.
+        """
+        langfuse = self.prompts.langfuse
+        triage_context: Any = nullcontext()
+        if langfuse is not None:
+            triage_context = langfuse.start_as_current_observation(
+                as_type="span",
+                name="classify-inquiry",
+                input=request.question,
+            )
+
+        with triage_context as triage_span:
+            compiled = self.prompts.compile(
+                prompt_name=self.settings.langfuse_triage_prompt_name,
+                fallback_text=personas.SUPPORT_TRIAGE.fallback_text,
+                fallback_config=personas.SUPPORT_TRIAGE.fallback_config,
+                variables={"question": request.question},
+            )
+            result = self._keyword_triage(request.question)
+            if self.client is not None:
+                try:
+                    completion = self.client.chat.completions.create(
+                        model=compiled.model,
+                        messages=[{"role": "user", "content": compiled.text}],
+                        extra_body=compiled.routing_parameters or None,
+                        **compiled.completion_parameters,
+                        name="classify-support-inquiry",
+                        metadata={
+                            "feature": "support-triage",
+                            "prompt_name": compiled.name,
+                            "prompt_source": compiled.source,
+                            "request_id": request.request_id,
+                        },
+                    )
+                    raw = completion.choices[0].message.content or ""
+                    parsed = self._parse_triage_json(raw)
+                    if parsed is not None:
+                        result = parsed
+                except Exception:
+                    pass
+            if triage_span is not None:
+                triage_span.update(
+                    output={
+                        "category": result.category,
+                        "risk": result.risk,
+                        "requires_human": result.requires_human,
+                    }
+                )
+            return result
+
+    @staticmethod
+    def _keyword_triage(question: str) -> TriageResult:
+        if any(word in question for word in ("배송", "도착", "택배")):
+            category = "DELIVERY"
+        elif any(word in question for word in ("취소", "철회")):
+            category = "CANCEL"
+        elif any(word in question for word in ("환불", "반품", "교환")):
+            category = "REFUND"
+        else:
+            category = "OTHER"
+        risk = "HIGH" if any(word in question for word in HUMAN_HANDOFF_KEYWORDS) else "LOW"
+        return TriageResult(
+            category=category,
+            risk=risk,
+            requires_human=risk == "HIGH",
+            reason="keyword-fallback",
+        )
+
+    @staticmethod
+    def _parse_triage_json(raw: str) -> TriageResult | None:
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            text = text.split("\n", 1)[-1] if "\n" in text else text
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        try:
+            data = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+        category = str(data.get("category", "OTHER")).upper()
+        if category not in _CATEGORIES:
+            category = "OTHER"
+        risk = str(data.get("risk", "LOW")).upper()
+        if risk not in _RISKS:
+            risk = "LOW"
+        requires_human = bool(data.get("requires_human", risk == "HIGH"))
+        reason = str(data.get("reason", ""))[:300]
+        return TriageResult(
+            category=category, risk=risk, requires_human=requires_human, reason=reason
         )
 
     def _compile_prompt(self, request: AIReplyRequest) -> CompiledPrompt:
@@ -118,9 +226,14 @@ class OpenRouterSupportService:
 
         with prompt_context as prompt_span:
             compiled = self.prompts.compile(
-                question=request.question,
-                order_context=order_context or "주문 정보 없음",
-                policy_context=request.policy_context,
+                prompt_name=self.settings.langfuse_support_prompt_name,
+                fallback_text=personas.SUPPORT_ANSWER.fallback_text,
+                fallback_config=personas.SUPPORT_ANSWER.fallback_config,
+                variables={
+                    "question": request.question,
+                    "order_context": order_context or "주문 정보 없음",
+                    "policy_context": request.policy_context or "등록된 정책 정보 없음",
+                },
             )
             if prompt_span is not None:
                 prompt_span.update(

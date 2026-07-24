@@ -101,7 +101,7 @@ class InquiryStore:
                         "데모 고객",
                         request.order_id,
                         request.product_id,
-                        self._classify(request.question),
+                        response.category,
                         status,
                         request.channel,
                         request.question[:100],
@@ -281,17 +281,6 @@ class InquiryStore:
                     )
             connection.commit()
         return self.get_inquiry(inquiry_id)
-
-    @staticmethod
-    def _classify(question: str) -> str:
-        if any(word in question for word in ("배송", "도착", "택배")):
-            return "DELIVERY"
-        if any(word in question for word in ("취소", "철회")):
-            return "CANCEL"
-        if any(word in question for word in ("환불", "반품", "교환")):
-            return "REFUND"
-        return "OTHER"
-
 
 inquiry_store = InquiryStore()
 inquiry_store.initialize()

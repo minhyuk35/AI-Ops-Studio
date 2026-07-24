@@ -171,9 +171,28 @@ export interface AIReply {
   prompt_source: "langfuse" | "fallback";
   prompt_version: string | null;
   requires_human: boolean;
+  category: "DELIVERY" | "CANCEL" | "REFUND" | "OTHER";
+  risk: "LOW" | "MEDIUM" | "HIGH";
   inquiry_id: string;
   conversation_id: string;
   trace_id: string | null;
+}
+
+export interface CommerceInsight {
+  period: string;
+  insight: string;
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+}
+
+export interface MonthlyReport {
+  period: string;
+  report: string;
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+  discord_sent: boolean;
 }
 
 export interface OpsWorkflow {

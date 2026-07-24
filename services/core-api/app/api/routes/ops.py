@@ -3,6 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.config import get_settings
 from app.services.ops_store import ops_store
 
 router = APIRouter(prefix="/ops", tags=["ops"])
@@ -62,7 +63,8 @@ async def list_integrations() -> list[dict[str, object]]:
 
 @router.post("/integrations/{integration_id}/check")
 async def check_integration(integration_id: str) -> dict[str, object]:
-    integration = ops_store.check_integration(integration_id)
+    discord_ready = bool(get_settings().discord_webhook_url)
+    integration = ops_store.check_integration(integration_id, discord_ready=discord_ready)
     if integration is None:
         raise HTTPException(status_code=404, detail="연동을 찾을 수 없습니다.")
     return integration
@@ -75,7 +77,8 @@ async def list_failed_jobs() -> list[dict[str, object]]:
 
 @router.post("/failed-jobs/{job_id}/retry")
 async def retry_failed_job(job_id: str) -> dict[str, object]:
-    job = ops_store.retry_failed_job(job_id)
+    discord_ready = bool(get_settings().discord_webhook_url)
+    job = ops_store.retry_failed_job(job_id, discord_ready=discord_ready)
     if job is None:
         raise HTTPException(status_code=404, detail="실패 작업을 찾을 수 없습니다.")
     return job
