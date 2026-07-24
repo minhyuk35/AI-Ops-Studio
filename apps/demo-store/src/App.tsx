@@ -1,4 +1,4 @@
-import type { Cart, Inquiry, Order, Product, ProductDetail } from "@ai-ops/shared-types";
+import type { Cart, Category, Inquiry, Order, Product, ProductDetail } from "@ai-ops/shared-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -14,6 +14,7 @@ import {
   AuthResponse,
   cancelOrder,
   confirmPayment,
+  createMyProduct,
   createOrder,
   deleteCartItem,
   getCart,
@@ -21,16 +22,23 @@ import {
   getInquiries,
   getInquiry,
   getMe,
+  getMyProducts,
   getOrder,
   getOrders,
+  getOrganizations,
   getProduct,
   getProducts,
   googleAuth,
   login,
+  OrganizationSummary,
   returnOrder,
+  SellerProduct,
+  SellerProductInput,
   signup,
   SignupInput,
   updateCartItem,
+  updateMyVariant,
+  updateOrganizationStatus,
 } from "./api";
 
 type View =
@@ -44,7 +52,9 @@ type View =
   | "inquiries"
   | "login"
   | "signup"
-  | "profile";
+  | "profile"
+  | "seller"
+  | "admin";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const won = new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW", maximumFractionDigits: 0 });
@@ -379,7 +389,20 @@ export function App() {
           onUpdated={persistAuth}
           onLogout={logout}
           onError={setNotice}
+          onOpenSellerConsole={() => setView("seller")}
+          onOpenAdminConsole={() => setView("admin")}
         />
+      )}
+      {view === "seller" && auth && (
+        <SellerConsolePage
+          auth={auth}
+          categories={categories.data ?? []}
+          onBack={() => setView("profile")}
+          onError={setNotice}
+        />
+      )}
+      {view === "admin" && auth && (
+        <AdminConsolePage auth={auth} onBack={() => setView("profile")} onError={setNotice} />
       )}
 
       <SupportChat order={order.data ?? null} product={product.data ?? null} customerId={identityId} onSaved={() => {
@@ -812,11 +835,15 @@ function ProfilePage({
   onUpdated,
   onLogout,
   onError,
+  onOpenSellerConsole,
+  onOpenAdminConsole,
 }: {
   auth: AuthResponse;
   onUpdated: (auth: AuthResponse) => void;
   onLogout: () => void;
   onError: (message: string) => void;
+  onOpenSellerConsole: () => void;
+  onOpenAdminConsole: () => void;
 }) {
   const [shopName, setShopName] = useState("");
   const [shopCategory, setShopCategory] = useState("패션");
@@ -874,9 +901,200 @@ function ProfilePage({
           <h3>판매자 상점</h3>
           <p><b>{customer.organization.name}</b> · {customer.organization.category}</p>
           <p>플랫폼 수수료율 {Math.round(customer.organization.commission_rate * 100)}% · 상태 {customer.organization.status}</p>
-          <p className="demo-note">판매자 콘솔(상품 등록·매출 관리)은 다음 단계에서 제공될 예정입니다.</p>
+          <button className="primary dark" onClick={onOpenSellerConsole}>판매자 콘솔로 이동</button>
+        </div>
+      )}
+
+      {customer.is_admin && (
+        <div className="seller-activate-card">
+          <h3>총관리자</h3>
+          <p>마켓플레이스에 입점한 판매자를 조회하고 승인·정지할 수 있습니다.</p>
+          <button className="primary dark" onClick={onOpenAdminConsole}>관리자 콘솔로 이동</button>
         </div>
       )}
     </main>
+  );
+}
+
+function SellerConsolePage({
+  auth,
+  categories,
+  onBack,
+  onError,
+}: {
+  auth: AuthResponse;
+  categories: Category[];
+  onBack: () => void;
+  onError: (message: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    category_id: categories[0]?.id ?? "cat_fashion",
+    description: "",
+    price: "",
+    color: "",
+    size: "",
+    stock: "1",
+  });
+  const products = useQuery({
+    queryKey: ["seller-products", auth.customer.id],
+    queryFn: () => getMyProducts(auth.access_token),
+  });
+  const create = useMutation({
+    mutationFn: () =>
+      createMyProduct(auth.access_token, {
+        name: form.name,
+        category_id: form.category_id,
+        description: form.description,
+        price: Number(form.price),
+        color: form.color,
+        size: form.size,
+        stock: Number(form.stock),
+      } satisfies SellerProductInput),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["seller-products", auth.customer.id] });
+      setShowForm(false);
+      setForm({ name: "", category_id: categories[0]?.id ?? "cat_fashion", description: "", price: "", color: "", size: "", stock: "1" });
+    },
+    onError: (error: Error) => onError(error.message),
+  });
+  const updateStock = useMutation({
+    mutationFn: ({ product, stock }: { product: SellerProduct; stock: number }) =>
+      updateMyVariant(auth.access_token, product.id, product.variants[0].id, { stock }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["seller-products", auth.customer.id] }),
+    onError: (error: Error) => onError(error.message),
+  });
+  const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+
+  return (
+    <main className="store-section profile-page">
+      <PageHeader
+        eyebrow="SELLER CONSOLE"
+        title={auth.customer.organization?.name ?? "판매자 콘솔"}
+        onBack={onBack}
+        action={<button className="primary dark" onClick={() => setShowForm((value) => !value)}>{showForm ? "취소" : "상품 등록"}</button>}
+      />
+      {showForm && (
+        <form
+          className="auth-form seller-product-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            create.mutate();
+          }}
+        >
+          <label>상품명<input required value={form.name} onChange={(e) => update("name", e.target.value)} /></label>
+          <label>카테고리
+            <select value={form.category_id} onChange={(e) => update("category_id", e.target.value)}>
+              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </label>
+          <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
+          <label>가격(원)<input required type="number" min={1} value={form.price} onChange={(e) => update("price", e.target.value)} /></label>
+          <label>색상<input required value={form.color} onChange={(e) => update("color", e.target.value)} /></label>
+          <label>사이즈<input required value={form.size} onChange={(e) => update("size", e.target.value)} /></label>
+          <label>초기 재고<input required type="number" min={0} value={form.stock} onChange={(e) => update("stock", e.target.value)} /></label>
+          <button className="primary dark block" disabled={create.isPending}>{create.isPending ? "등록 중…" : "상품 등록"}</button>
+        </form>
+      )}
+      <div className="seller-product-list">
+        {products.isLoading && <p className="empty">불러오는 중…</p>}
+        {products.data?.map((product) => (
+          <article className="seller-product-row" key={product.id}>
+            <img src={product.image} alt={product.name} />
+            <div>
+              <h3>{product.name}</h3>
+              <small>{product.variants[0]?.color} / {product.variants[0]?.size} · {won.format(product.price)}</small>
+            </div>
+            <label className="seller-stock-field">
+              재고
+              <input
+                type="number"
+                min={0}
+                defaultValue={product.variants[0]?.stock ?? 0}
+                onBlur={(event) => {
+                  const stock = Number(event.target.value);
+                  if (!Number.isNaN(stock) && stock !== product.variants[0]?.stock) {
+                    updateStock.mutate({ product, stock });
+                  }
+                }}
+              />
+            </label>
+          </article>
+        ))}
+        {!products.isLoading && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
+      </div>
+    </main>
+  );
+}
+
+function AdminConsolePage({
+  auth,
+  onBack,
+  onError,
+}: {
+  auth: AuthResponse;
+  onBack: () => void;
+  onError: (message: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const organizations = useQuery({
+    queryKey: ["admin-organizations"],
+    queryFn: () => getOrganizations(auth.access_token),
+  });
+  const toggleStatus = useMutation({
+    mutationFn: (org: OrganizationSummary) =>
+      updateOrganizationStatus(auth.access_token, org.id, org.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-organizations"] }),
+    onError: (error: Error) => onError(error.message),
+  });
+
+  return (
+    <main className="store-section profile-page admin-console">
+      <PageHeader eyebrow="ADMIN CONSOLE" title="판매자 관리" onBack={onBack} />
+      {organizations.isLoading && <p className="empty">불러오는 중…</p>}
+      <div className="admin-org-list">
+        {organizations.data?.map((org) => (
+          <article className="admin-org-row" key={org.id}>
+            <div>
+              <span className={`state ${org.status === "ACTIVE" ? "active" : "disconnected"}`}>{org.status}</span>
+              <h3>{org.name}</h3>
+              <small>{org.category} · 상품 {org.product_count}개 · 대표 {org.owner?.name} ({org.owner?.email})</small>
+            </div>
+            <button
+              className={org.status === "ACTIVE" ? "danger-button" : "primary dark"}
+              disabled={toggleStatus.isPending}
+              onClick={() => toggleStatus.mutate(org)}
+            >
+              {org.status === "ACTIVE" ? "정지" : "활성화"}
+            </button>
+          </article>
+        ))}
+        {!organizations.isLoading && !organizations.data?.length && <p className="empty">입점한 판매자가 없습니다.</p>}
+      </div>
+    </main>
+  );
+}
+
+function PageHeader({
+  eyebrow,
+  title,
+  onBack,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  onBack: () => void;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="page-header">
+      <button className="link back-link" onClick={onBack}>← 마이페이지로</button>
+      <div className="page-header-row">
+        <SectionTitle eyebrow={eyebrow} title={title} />
+        {action}
+      </div>
+    </div>
   );
 }

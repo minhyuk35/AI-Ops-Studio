@@ -101,6 +101,29 @@ class SellerActivateRequest(BaseModel):
     shop_category: str = Field(min_length=2, max_length=40)
 
 
+class SellerProductCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    category_id: str = Field(min_length=1, max_length=50)
+    description: str = Field(min_length=5, max_length=1000)
+    material: str = Field(default="", max_length=200)
+    care: str = Field(default="", max_length=200)
+    image: str = Field(default="", max_length=500)
+    price: int = Field(gt=0)
+    compare_at_price: int | None = Field(default=None, gt=0)
+    color: str = Field(min_length=1, max_length=30)
+    size: str = Field(min_length=1, max_length=20)
+    stock: int = Field(ge=0)
+
+
+class SellerVariantUpdate(BaseModel):
+    stock: int = Field(ge=0)
+    price: int | None = Field(default=None, gt=0)
+
+
+class OrganizationStatusUpdate(BaseModel):
+    status: Literal["ACTIVE", "SUSPENDED"]
+
+
 class GoogleAuthRequest(BaseModel):
     id_token: str = Field(min_length=10)
     as_seller: bool = False
@@ -277,6 +300,23 @@ def require_customer(connection, authorization: str | None) -> dict[str, object]
     return customer
 
 
+def require_seller_org(connection, authorization: str | None) -> dict[str, object]:
+    customer = require_customer(connection, authorization)
+    org = connection.execute(
+        "SELECT * FROM organizations WHERE owner_customer_id = ?", (customer["id"],)
+    ).fetchone()
+    if org is None:
+        raise HTTPException(status_code=403, detail="판매자로 활성화된 계정만 이용할 수 있습니다.")
+    return dict(org)
+
+
+def require_admin(connection, authorization: str | None) -> dict[str, object]:
+    customer = require_customer(connection, authorization)
+    if not customer.get("is_admin"):
+        raise HTTPException(status_code=403, detail="총관리자만 이용할 수 있습니다.")
+    return customer
+
+
 @app.get("/")
 async def root() -> dict[str, str]:
     return {"service": "Everyday Market Commerce API", "docs": "/docs"}
@@ -325,7 +365,10 @@ async def list_products(
         clauses.append(
             "EXISTS(SELECT 1 FROM variants sv WHERE sv.product_id = p.id AND sv.stock > 0)"
         )
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    # A suspended seller's listings disappear from the public catalog, even
+    # though the rows stay in the DB (so reactivating the seller restores them).
+    clauses.append("(p.org_id IS NULL OR o.status IS NULL OR o.status != 'SUSPENDED')")
+    where = f"WHERE {' AND '.join(clauses)}"
     with closing(connect()) as connection:
         rows = connection.execute(
             f"""
@@ -333,6 +376,7 @@ async def list_products(
                    COALESCE(SUM(v.stock), 0) total_stock
             FROM products p JOIN categories c ON c.id = p.category_id
             LEFT JOIN variants v ON v.product_id = p.id
+            LEFT JOIN organizations o ON o.id = p.org_id
             {where} GROUP BY p.id ORDER BY {order_by}
             """,
             parameters,
@@ -513,6 +557,168 @@ async def activate_seller(
             "SELECT * FROM customers WHERE id = ?", (customer["id"],)
         ).fetchone()
         return customer_profile(connection, updated)
+
+
+def seller_product_payload(connection, product_row) -> dict[str, object]:
+    product = dict(product_row)
+    product["variants"] = [
+        dict(row)
+        for row in connection.execute(
+            "SELECT id, sku, color, size, price, stock FROM variants WHERE product_id = ?",
+            (product["id"],),
+        ).fetchall()
+    ]
+    return product
+
+
+@app.get("/sellers/me/products")
+async def list_my_products(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        org = require_seller_org(connection, authorization)
+        rows = connection.execute(
+            "SELECT * FROM products WHERE org_id = ? ORDER BY created_at DESC", (org["id"],)
+        ).fetchall()
+        return [seller_product_payload(connection, row) for row in rows]
+
+
+@app.post("/sellers/me/products", status_code=201)
+async def create_my_product(
+    payload: SellerProductCreate, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        org = require_seller_org(connection, authorization)
+        category = connection.execute(
+            "SELECT id FROM categories WHERE id = ?", (payload.category_id,)
+        ).fetchone()
+        if category is None:
+            raise HTTPException(status_code=400, detail="존재하지 않는 카테고리입니다.")
+        product_id = f"prd_{uuid4().hex[:12]}"
+        slug = f"{product_id}-{uuid4().hex[:6]}"
+        now = utc_now()
+        default_image = (
+            "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab"
+            "?auto=format&fit=crop&w=1200&q=85"
+        )
+        connection.execute(
+            """
+            INSERT INTO products(
+                id, slug, category_id, org_id, brand, name, description, material, care,
+                image, price, compare_at_price, rating, review_count, created_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                product_id,
+                slug,
+                payload.category_id,
+                org["id"],
+                org["name"],
+                payload.name,
+                payload.description,
+                payload.material,
+                payload.care,
+                payload.image.strip() or default_image,
+                payload.price,
+                payload.compare_at_price,
+                0,
+                0,
+                now,
+            ),
+        )
+        variant_id = f"var_{uuid4().hex[:12]}"
+        sku = f"{product_id[:10]}-{uuid4().hex[:6]}".upper()
+        connection.execute(
+            """
+            INSERT INTO variants(id, product_id, sku, color, size, price, stock)
+            VALUES(?,?,?,?,?,?,?)
+            """,
+            (
+                variant_id,
+                product_id,
+                sku,
+                payload.color,
+                payload.size,
+                payload.price,
+                payload.stock,
+            ),
+        )
+        product_row = connection.execute(
+            "SELECT * FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        return seller_product_payload(connection, product_row)
+
+
+@app.patch("/sellers/me/products/{product_id}/variants/{variant_id}")
+async def update_my_product_variant(
+    product_id: str,
+    variant_id: str,
+    payload: SellerVariantUpdate,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    with transaction() as connection:
+        org = require_seller_org(connection, authorization)
+        product = connection.execute(
+            "SELECT id FROM products WHERE id = ? AND org_id = ?", (product_id, org["id"])
+        ).fetchone()
+        if product is None:
+            raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+        variant = connection.execute(
+            "SELECT id FROM variants WHERE id = ? AND product_id = ?", (variant_id, product_id)
+        ).fetchone()
+        if variant is None:
+            raise HTTPException(status_code=404, detail="옵션을 찾을 수 없습니다.")
+        connection.execute(
+            "UPDATE variants SET stock = ?, price = COALESCE(?, price) WHERE id = ?",
+            (payload.stock, payload.price, variant_id),
+        )
+        product_row = connection.execute(
+            "SELECT * FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        return seller_product_payload(connection, product_row)
+
+
+def organization_payload(connection, org_row) -> dict[str, object]:
+    org = dict(org_row)
+    owner = connection.execute(
+        "SELECT id, email, name FROM customers WHERE id = ?", (org["owner_customer_id"],)
+    ).fetchone()
+    org["owner"] = dict(owner) if owner else None
+    counts = connection.execute(
+        "SELECT COUNT(*) AS product_count FROM products WHERE org_id = ?", (org["id"],)
+    ).fetchone()
+    org["product_count"] = int(counts["product_count"])
+    return org
+
+
+@app.get("/admin/organizations")
+async def list_organizations(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        require_admin(connection, authorization)
+        rows = connection.execute("SELECT * FROM organizations ORDER BY created_at DESC").fetchall()
+        return [organization_payload(connection, row) for row in rows]
+
+
+@app.patch("/admin/organizations/{org_id}")
+async def update_organization_status(
+    org_id: str,
+    payload: OrganizationStatusUpdate,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    with transaction() as connection:
+        require_admin(connection, authorization)
+        org = connection.execute("SELECT * FROM organizations WHERE id = ?", (org_id,)).fetchone()
+        if org is None:
+            raise HTTPException(status_code=404, detail="조직을 찾을 수 없습니다.")
+        connection.execute(
+            "UPDATE organizations SET status = ? WHERE id = ?", (payload.status, org_id)
+        )
+        updated = connection.execute(
+            "SELECT * FROM organizations WHERE id = ?", (org_id,)
+        ).fetchone()
+        return organization_payload(connection, updated)
 
 
 @app.get("/carts/{cart_id}")

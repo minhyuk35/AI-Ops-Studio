@@ -200,3 +200,87 @@ export const askSupport = (input: {
     request_id: crypto.randomUUID().replaceAll("-", ""),
     channel: "demo-store",
   }));
+
+export interface SellerVariant {
+  id: string;
+  sku: string;
+  color: string;
+  size: string;
+  price: number;
+  stock: number;
+}
+
+export interface SellerProduct {
+  id: string;
+  slug: string;
+  category_id: string;
+  org_id: string;
+  brand: string;
+  name: string;
+  description: string;
+  material: string;
+  care: string;
+  image: string;
+  price: number;
+  compare_at_price: number | null;
+  rating: number;
+  review_count: number;
+  created_at: string;
+  variants: SellerVariant[];
+}
+
+export interface SellerProductInput {
+  name: string;
+  category_id: string;
+  description: string;
+  material?: string;
+  care?: string;
+  image?: string;
+  price: number;
+  compare_at_price?: number;
+  color: string;
+  size: string;
+  stock: number;
+}
+
+export const getMyProducts = (token: string) =>
+  request<SellerProduct[]>(`${commerceBaseUrl}/sellers/me/products`, authGet(token));
+
+export const createMyProduct = (token: string, input: SellerProductInput) =>
+  request<SellerProduct>(`${commerceBaseUrl}/sellers/me/products`, json("POST", input, token));
+
+export const updateMyVariant = (
+  token: string,
+  productId: string,
+  variantId: string,
+  input: { stock: number; price?: number },
+) =>
+  request<SellerProduct>(
+    `${commerceBaseUrl}/sellers/me/products/${productId}/variants/${variantId}`,
+    json("PATCH", input, token),
+  );
+
+export interface OrganizationSummary {
+  id: string;
+  owner_customer_id: string;
+  name: string;
+  category: string;
+  commission_rate: number;
+  status: "ACTIVE" | "SUSPENDED";
+  created_at: string;
+  owner: { id: string; email: string; name: string } | null;
+  product_count: number;
+}
+
+export const getOrganizations = (token: string) =>
+  request<OrganizationSummary[]>(`${commerceBaseUrl}/admin/organizations`, authGet(token));
+
+export const updateOrganizationStatus = (
+  token: string,
+  orgId: string,
+  status: "ACTIVE" | "SUSPENDED",
+) =>
+  request<OrganizationSummary>(
+    `${commerceBaseUrl}/admin/organizations/${orgId}`,
+    json("PATCH", { status }, token),
+  );

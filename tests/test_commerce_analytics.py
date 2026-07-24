@@ -79,7 +79,10 @@ async def test_product_breakdown_includes_zero_sale_products(commerce_app) -> No
         products = (await client.get("/analytics/products", params={"period": period})).json()
 
         by_id = {row["product_id"]: row for row in products}
-        assert len(products) == 6  # every seed product is represented, sold or not
+        # Every product in the catalog is represented, sold or not — the
+        # exact count includes the seeded test-seller's products too, so
+        # this only pins the fixed demo catalog's IDs rather than a total.
+        assert {"prd_001", "prd_002", "prd_003", "prd_004", "prd_005", "prd_006"} <= by_id.keys()
 
         sold = by_id["prd_002"]
         assert sold["units_sold"] == 1

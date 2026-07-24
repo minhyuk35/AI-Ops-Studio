@@ -11,6 +11,7 @@ from app.auth import hash_password
 
 DEFAULT_ORG_ID = "org_demo"
 DEMO_CUSTOMER_PASSWORD = "demo1234"
+TEST_ACCOUNT_PASSWORD = "test1234"
 
 
 def utc_now() -> str:
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS products (
     id TEXT PRIMARY KEY,
     slug TEXT NOT NULL UNIQUE,
     category_id TEXT NOT NULL REFERENCES categories(id),
+    org_id TEXT REFERENCES organizations(id),
     brand TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
@@ -351,6 +353,7 @@ def initialize_database() -> None:
             "customers",
             {"password_hash": "TEXT NOT NULL DEFAULT ''", "is_admin": "INTEGER NOT NULL DEFAULT 0"},
         )
+        _ensure_columns(connection, "products", {"org_id": "TEXT"})
         connection.execute(
             """
             INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
@@ -442,6 +445,105 @@ def initialize_database() -> None:
         )
         _seed_orders(connection)
         _sync_seed_orders(connection)
+        _seed_test_accounts(connection)
+
+
+def _seed_test_accounts(connection: sqlite3.Connection) -> None:
+    """One login-ready account per marketplace role, for demoing the role split.
+
+    Idempotent (INSERT OR IGNORE / ON CONFLICT DO NOTHING) so re-running
+    initialize_database() on every app boot never duplicates or errors.
+    """
+    now = utc_now()
+    accounts = [
+        ("cus_test_consumer", "consumer@test.com", "이소비", "010-1111-2222", 0),
+        ("cus_test_seller", "seller@test.com", "김판매", "010-2222-3333", 0),
+        ("cus_test_admin", "admin@test.com", "박관리", "010-3333-4444", 1),
+    ]
+    for customer_id, email, name, phone, is_admin in accounts:
+        connection.execute(
+            """
+            INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
+            VALUES(?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            (customer_id, email, name, phone, hash_password(TEST_ACCOUNT_PASSWORD), is_admin, now),
+        )
+
+    connection.execute(
+        """
+        INSERT INTO organizations(
+            id, owner_customer_id, name, category, commission_rate, status, created_at
+        ) VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO NOTHING
+        """,
+        ("org_test_seller", "cus_test_seller", "테스트 스토어", "패션", 0.08, "ACTIVE", now),
+    )
+
+    seller_products = [
+        {
+            "id": "prd_seller_001",
+            "slug": "test-store-graphic-tee",
+            "category_id": "cat_fashion",
+            "brand": "TEST STORE",
+            "name": "Test Store Graphic Tee",
+            "description": "테스트 판매자 계정이 등록한 샘플 상품입니다.",
+            "material": "면 100%",
+            "care": "찬물 세탁, 그늘 건조",
+            "image": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=1200&q=85",
+            "price": 39000,
+            "variant": ("var_seller_001_m", "TEST-TEE-WH-M", "화이트", "M", 39000, 15),
+        },
+        {
+            "id": "prd_seller_002",
+            "slug": "test-store-canvas-tote",
+            "category_id": "cat_bags",
+            "brand": "TEST STORE",
+            "name": "Test Store Canvas Tote",
+            "description": "테스트 판매자 계정이 등록한 샘플 상품입니다.",
+            "material": "면 캔버스 100%",
+            "care": "오염 부위만 부분 세탁",
+            "image": "https://images.unsplash.com/photo-1591561954557-26941169b49e?auto=format&fit=crop&w=1200&q=85",
+            "price": 27000,
+            "variant": ("var_seller_002_free", "TEST-TOTE-BK-FREE", "블랙", "FREE", 27000, 9),
+        },
+    ]
+    for product in seller_products:
+        connection.execute(
+            """
+            INSERT INTO products(
+                id, slug, category_id, org_id, brand, name, description, material, care,
+                image, price, compare_at_price, rating, review_count, created_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            (
+                product["id"],
+                product["slug"],
+                product["category_id"],
+                "org_test_seller",
+                product["brand"],
+                product["name"],
+                product["description"],
+                product["material"],
+                product["care"],
+                product["image"],
+                product["price"],
+                None,
+                0,
+                0,
+                now,
+            ),
+        )
+        variant_id, sku, color, size, price, stock = product["variant"]
+        connection.execute(
+            """
+            INSERT INTO variants(id, product_id, sku, color, size, price, stock)
+            VALUES(?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            (variant_id, product["id"], sku, color, size, price, stock),
+        )
 
 
 def _sync_seed_orders(connection: sqlite3.Connection) -> None:
