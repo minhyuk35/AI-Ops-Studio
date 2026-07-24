@@ -3,6 +3,7 @@
 !.env.example
 .venv/
 __pycache__/
+*.txt
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
