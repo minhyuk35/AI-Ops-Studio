@@ -5,17 +5,29 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import ai, health, inquiries, ops, revenue
 from app.config import get_settings
+from app.services.commerce_ai import SellerDailyReportService
+from app.services.commerce_client import CommerceClient
+from app.services.discord import DiscordNotifier
 from app.services.inquiry_store import inquiry_store
-from app.services.prompts import get_shared_langfuse
+from app.services.prompts import PromptRepository, get_shared_langfuse
+from app.services.scheduler import DailySellerReportScheduler
 
 settings = get_settings()
+scheduler = DailySellerReportScheduler(
+    settings,
+    CommerceClient(settings),
+    SellerDailyReportService(settings, PromptRepository(settings)),
+    DiscordNotifier(settings),
+)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     inquiry_store.initialize()
     ops.ops_store.initialize()
+    scheduler.start()
     yield
+    scheduler.stop()
     langfuse = get_shared_langfuse(settings)
     if langfuse is not None:
         try:

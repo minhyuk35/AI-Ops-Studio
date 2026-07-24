@@ -446,6 +446,7 @@ def initialize_database() -> None:
         _seed_orders(connection)
         _sync_seed_orders(connection)
         _seed_test_accounts(connection)
+        _seed_seller_daily_demo(connection)
 
 
 def _seed_test_accounts(connection: sqlite3.Connection) -> None:
@@ -544,6 +545,216 @@ def _seed_test_accounts(connection: sqlite3.Connection) -> None:
             """,
             (variant_id, product["id"], sku, color, size, price, stock),
         )
+
+
+def _seed_seller_order(
+    connection: sqlite3.Connection,
+    *,
+    order_id: str,
+    org_id: str,
+    product_id: str,
+    product_name: str,
+    variant_id: str,
+    sku: str,
+    color: str,
+    size: str,
+    price: int,
+    quantity: int,
+    now: str,
+    refund: bool = False,
+) -> None:
+    """One already-completed order, backdated to today, for daily-report seed data.
+
+    Unlike the live checkout flow, this never touches variants.stock — the
+    seed catalog already lists each variant's final post-sale stock directly.
+    """
+    line_total = price * quantity
+    status = "CANCELLED" if refund else "DELIVERED"
+    payment_status = "REFUNDED" if refund else "PAID"
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO orders(
+            id, customer_id, email, recipient, phone, postal_code, address1, address2,
+            delivery_memo, status, subtotal, discount, shipping_fee, total,
+            payment_status, ordered_at, updated_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            order_id, "cus_demo", "demo@example.com", "김민지", "010-0000-0000",
+            "04524", "서울특별시 중구 세종대로 110", "101호", "",
+            status, line_total, 0, 0, line_total, payment_status, now, now,
+        ),
+    )
+    connection.execute(
+        "INSERT OR IGNORE INTO order_items VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (
+            f"oi_{order_id}", order_id, product_id, variant_id,
+            product_name, sku, f"{color} / {size}", price, quantity, line_total,
+        ),
+    )
+    connection.execute(
+        "INSERT OR IGNORE INTO payments VALUES(?,?,?,?,?,?,?)",
+        (f"pay_{order_id}", order_id, f"seed_{order_id}", "CARD", line_total, payment_status, now),
+    )
+    record_event(
+        connection,
+        event_type="PAYMENT_CONFIRMED",
+        external_event_id=f"{order_id}:PAYMENT_CONFIRMED",
+        order_id=order_id,
+        product_id=product_id,
+        variant_id=variant_id,
+        quantity=quantity,
+        amount=line_total,
+        occurred_at=now,
+        org_id=org_id,
+    )
+    if refund:
+        connection.execute(
+            "INSERT OR IGNORE INTO claims VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                f"clm_{order_id}", order_id, "CANCEL", "테스트 시드 환불", "REFUNDED",
+                line_total, 0, now, now,
+            ),
+        )
+        record_event(
+            connection,
+            event_type="REFUND_COMPLETED",
+            external_event_id=f"{order_id}:REFUND_COMPLETED",
+            order_id=order_id,
+            product_id=product_id,
+            variant_id=variant_id,
+            refund_amount=line_total,
+            occurred_at=now,
+            org_id=org_id,
+        )
+
+
+def _seed_seller_daily_demo(connection: sqlite3.Connection) -> None:
+    """A second seller with rich, varied activity for the daily-seller-report persona.
+
+    Ten fashion products spanning every branch the report and its AI feedback
+    step are meant to react to: a clear bestseller, a low-stock item that's
+    obviously in demand, an out-of-stock item that already sold out, two
+    refunded orders, and exactly one product with zero views and zero sales —
+    a genuinely untouched listing (docs/prompts/daily-seller-report.md calls
+    this out explicitly). Views and sales are backdated to *today* (whenever
+    the app happens to boot) so the daily snapshot always has something to
+    report the first time this runs.
+    """
+    now = utc_now()
+    seller_id = "cus_test_seller2"
+    org_id = "org_test_seller2"
+
+    connection.execute(
+        """
+        INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
+        VALUES(?,?,?,?,?,0,?)
+        ON CONFLICT(id) DO NOTHING
+        """,
+        (
+            seller_id, "seller2@test.com", "이무드", "010-4444-5555",
+            hash_password(TEST_ACCOUNT_PASSWORD), now,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO organizations(
+            id, owner_customer_id, name, category, commission_rate, status, created_at
+        ) VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO NOTHING
+        """,
+        (org_id, seller_id, "무드 스토리", "패션", 0.08, "ACTIVE", now),
+    )
+
+    # id, slug, category_id, name, price, image-slug, sku, color, size,
+    # stock, views, sold_qty, refunded_qty (refunded_qty is part of sold_qty
+    # — a refund happens to an order that was already counted as paid).
+    catalog = [
+        ("prd_s2_01", "mood-oversized-wool-knit", "cat_fashion", "오버사이즈 울 니트", 68000,
+         "1576871337622-98d48d1cf531", "MS-KNIT-CHAR-FR", "차콜", "FREE", 12, 45, 8, 0),
+        ("prd_s2_02", "mood-straight-denim-pants", "cat_fashion", "스트레이트 데님 팬츠", 59000,
+         "1541099649105-f69ad21f3246", "MS-DENIM-BLU-30", "블루", "30", 6, 30, 5, 0),
+        ("prd_s2_03", "mood-cotton-long-sleeve-tee", "cat_fashion", "코튼 롱슬리브 티셔츠", 29000,
+         "1521572163474-6864f9cf17ab", "MS-TEE-WHT-M", "화이트", "M", 15, 22, 4, 1),
+        ("prd_s2_04", "mood-block-check-shirt", "cat_fashion", "블록 체크 셔츠", 49000,
+         "1598033129183-c4f50c736f10", "MS-SHIRT-CHK-L", "체크", "L", 9, 18, 3, 0),
+        ("prd_s2_05", "mood-wide-slacks", "cat_fashion", "와이드 슬랙스", 52000,
+         "1594633312681-425c7b97ccd1", "MS-SLACKS-BLK-M", "블랙", "M", 2, 15, 2, 0),
+        ("prd_s2_06", "mood-minimal-leather-belt", "cat_accessories", "미니멀 레더 벨트", 32000,
+         "1624222247344-550fb60583dc", "MS-BELT-BRN-FR", "브라운", "FREE", 25, 12, 2, 0),
+        ("prd_s2_07", "mood-wool-blend-coat", "cat_fashion", "울 블렌드 코트", 189000,
+         "1539533018447-63fcce2678e3", "MS-COAT-CAM-M", "카멜", "M", 0, 9, 1, 0),
+        ("prd_s2_08", "mood-basic-crewneck-sweat", "cat_fashion", "베이직 크루넥 스웨트", 39000,
+         "1556821840-3a63f95609a7", "MS-SWEAT-GRY-L", "그레이", "L", 10, 6, 1, 1),
+        ("prd_s2_09", "mood-corduroy-ball-cap", "cat_accessories", "코듀로이 볼캡", 27000,
+         "1588850561407-ed78c282e89b", "MS-CAP-BEIGE-FR", "베이지", "FREE", 14, 3, 0, 0),
+        ("prd_s2_10", "mood-tailored-jacket", "cat_fashion", "테일러드 재킷", 99000,
+         "1591047139829-d91aecb6caea", "MS-JACKET-NVY-M", "네이비", "M", 20, 0, 0, 0),
+    ]
+
+    for (
+        product_id, slug, category_id, name, price, image_slug,
+        sku, color, size, stock, views, sold_qty, refunded_qty,
+    ) in catalog:
+        variant_id = f"var_{product_id[4:]}"
+        image = f"https://images.unsplash.com/photo-{image_slug}?auto=format&fit=crop&w=1200&q=85"
+        connection.execute(
+            """
+            INSERT INTO products(
+                id, slug, category_id, org_id, brand, name, description, material, care,
+                image, price, compare_at_price, rating, review_count, created_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            (
+                product_id, slug, category_id, org_id, "MOOD STORY", name,
+                "무드 스토리가 소개하는 시즌 아이템입니다.", "상세 참고", "상세 참고",
+                image, price, None, 0, 0, now,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO variants(id, product_id, sku, color, size, price, stock)
+            VALUES(?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            (variant_id, product_id, sku, color, size, price, stock),
+        )
+
+        for i in range(views):
+            record_event(
+                connection,
+                event_type="PRODUCT_VIEWED",
+                external_event_id=f"seed_view_{product_id}_{i:03d}",
+                product_id=product_id,
+                occurred_at=now,
+                org_id=org_id,
+            )
+
+        kept_qty = sold_qty - refunded_qty
+        common = {
+            "org_id": org_id,
+            "product_id": product_id,
+            "product_name": name,
+            "variant_id": variant_id,
+            "sku": sku,
+            "color": color,
+            "size": size,
+            "price": price,
+            "now": now,
+        }
+        if kept_qty > 0:
+            _seed_seller_order(
+                connection, order_id=f"ord_seed_{product_id}_a", quantity=kept_qty, **common
+            )
+        if refunded_qty > 0:
+            _seed_seller_order(
+                connection,
+                order_id=f"ord_seed_{product_id}_b",
+                quantity=refunded_qty,
+                refund=True,
+                **common,
+            )
 
 
 def _sync_seed_orders(connection: sqlite3.Connection) -> None:
@@ -673,6 +884,26 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, object] | None:
 
 def json_value(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)
+
+
+def infer_order_org_id(connection: sqlite3.Connection, order_id: str) -> str:
+    """Which seller does this order belong to?
+
+    Orders are single-seller (see docs/ai-ops-studio-master-prd.html —
+    marketplace carts never mix products from two organizations), so any one
+    item's product tells us the whole order's org. Platform seed products
+    have org_id = NULL, which falls back to DEFAULT_ORG_ID.
+    """
+    row = connection.execute(
+        """
+        SELECT p.org_id FROM order_items oi
+        JOIN products p ON p.id = oi.product_id
+        WHERE oi.order_id = ? AND p.org_id IS NOT NULL
+        LIMIT 1
+        """,
+        (order_id,),
+    ).fetchone()
+    return row["org_id"] if row else DEFAULT_ORG_ID
 
 
 def record_event(

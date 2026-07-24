@@ -111,6 +111,9 @@ export function getProducts(params: {
 export const getProduct = (slug: string) =>
   request<ProductDetail>(`${commerceBaseUrl}/products/${slug}`);
 
+export const recordProductView = (productId: string) =>
+  fetch(`${commerceBaseUrl}/events/product-view`, json("POST", { product_id: productId }));
+
 export const getCart = (cartId: string, couponCode?: string) => {
   const query = couponCode ? `?coupon_code=${encodeURIComponent(couponCode)}` : "";
   return request<Cart>(`${commerceBaseUrl}/carts/${cartId}${query}`);

@@ -1,6 +1,6 @@
 # Langfuse prompt personas
 
-AI Ops Studio의 MVP는 호출 목적이 다른 네 개의 페르소나를 사용합니다. 하나의 긴
+AI Ops Studio의 MVP는 호출 목적이 다른 다섯 개의 페르소나를 사용합니다. 하나의 긴
 프롬프트에 모든 책임을 넣지 않고, 입력 데이터·출력 형식·평가 기준이 다른 작업을
 별도 prompt name으로 관리합니다.
 
@@ -10,8 +10,14 @@ AI Ops Studio의 MVP는 호출 목적이 다른 네 개의 페르소나를 사�
 | `support-triage` | 문의 분류·위험 판단 | 질문 | `{category, risk, requires_human, reason}` JSON | 구현 |
 | `commerce-insight` | 집계 수치 해석 | 계산 완료 스냅샷 | 변화·이상치·운영 제안 | 구현 |
 | `commerce-monthly-report` | 월간 보고서 편집 | 지표와 insight | 대시보드·Discord용 보고서 | 구현 |
+| `daily-seller-report` | 판매자별 일일 스냅샷 해석·재입고 제안 | 조회·판매·환불·재고 스냅샷 | 판매자 콘솔·Discord용 리포트 | 구현 |
 
-네 페르소나 모두 `services/core-api/app/services/personas.py`에 오프라인
+앞의 네 개는 관리자(플랫폼 전체)용이고, `daily-seller-report`만 유일하게
+**판매자 1명당 1개씩** 매일 실행된다 — 판매자 콘솔에 로그인하면 보이는
+"오늘의 대시보드"와 자정마다 자동으로 나가는 Discord 리포트가 같은 코드를
+공유한다. 자세한 내용은 `docs/prompts/daily-seller-report.md` 참고.
+
+다섯 페르소나 모두 `services/core-api/app/services/personas.py`에 오프라인
 fallback 텍스트·config가 있어서, Langfuse에 아직 프롬프트를 만들지 않았거나
 Langfuse가 죽어 있어도 앱은 fallback으로 계속 동작합니다. 다만 fallback은
 "장애 대비용"일 뿐이고, 실제로 운영·튜닝하는 프롬프트는 아래 가이드대로
@@ -31,6 +37,7 @@ Langfuse 콘솔에 등록한 버전입니다.
    - `support-triage`
    - `commerce-insight`
    - `commerce-monthly-report`
+   - `daily-seller-report`
 3. **Type**: `Text` (Chat이 아님 — 코드가 `type="text"`로 조회합니다).
 4. **Prompt**: `docs/prompts/<name>.md`에 있는 코드 블록을 그대로 붙여넣습니다.
    `{{question}}`, `{{period}}`처럼 이중 중괄호로 된 변수 이름은 코드가
@@ -119,6 +126,21 @@ Langfuse 콘솔에 등록한 버전입니다.
   "model": "~google/gemini-flash-latest",
   "temperature": 0.3,
   "max_tokens": 1800,
+  "provider": {
+    "allow_fallbacks": true,
+    "data_collection": "deny"
+  }
+}
+```
+
+일일 판매자 리포트:
+
+```json
+{
+  "gateway": "openrouter",
+  "model": "~google/gemini-flash-latest",
+  "temperature": 0.2,
+  "max_tokens": 1400,
   "provider": {
     "allow_fallbacks": true,
     "data_collection": "deny"

@@ -13,6 +13,13 @@ button { font: inherit; }
 .workspace { display: grid; gap: 4px; margin-top: auto; padding: 14px; border: 1px solid #e4e7ec; border-radius: 10px; }
 .workspace small,.workspace span { color: #6b7280; font-size: 11px; }
 .workspace span { color: #12805c; }
+.workspace button { margin-top: 8px; border: 1px solid #d4d9e2; border-radius: 7px; padding: 7px 10px; color: #333c48; background: #ffffff; font-size: 12px; cursor: pointer; }
+.login-shell { display: grid; place-items: center; min-height: 100vh; background: #f7f8fa; }
+.login-card { display: grid; gap: 14px; width: min(380px, 92vw); padding: 32px; border: 1px solid #e4e7ec; border-radius: 16px; background: #ffffff; box-shadow: 0 12px 40px rgba(16,21,31,.06); }
+.login-card label { display: grid; gap: 6px; color: #4b5565; font-size: 13px; }
+.login-card input { border: 1px solid #d4d9e2; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.login-card .empty { font-size: 12px; }
+.callout-warning { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid #f3d19e; border-radius: 12px; background: #fff8ec; color: #7a4a00; font-size: 13px; }
 main { min-width: 0; padding: 38px clamp(20px,4vw,54px) 70px; }
 main header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
 main header p,.panel-heading small { margin: 0; color: #3b5bdb; font-size: 11px; font-weight: 800; letter-spacing: .16em; }

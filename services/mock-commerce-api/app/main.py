@@ -8,10 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
 from app.analytics import (
+    DATE_PATTERN,
     PERIOD_PATTERN,
     current_period,
+    is_valid_date,
     product_breakdown,
     revenue_summary_with_comparison,
+    seller_daily_snapshot,
+    today,
 )
 from app.auth import (
     GoogleTokenError,
@@ -21,7 +25,16 @@ from app.auth import (
     verify_google_id_token,
     verify_password,
 )
-from app.db import connect, initialize_database, record_event, row_to_dict, transaction, utc_now
+from app.db import (
+    DEFAULT_ORG_ID,
+    connect,
+    infer_order_org_id,
+    initialize_database,
+    record_event,
+    row_to_dict,
+    transaction,
+    utc_now,
+)
 
 DEFAULT_COMMISSION_RATE = 0.08
 
@@ -871,6 +884,7 @@ async def create_order(
             (f"ship_{uuid4().hex[:10]}", order_id, None, None, "PREPARING", eta, None, now),
         )
         connection.execute("DELETE FROM cart_items WHERE cart_id = ?", (payload.cart_id,))
+        order_org_id = infer_order_org_id(connection, order_id)
         record_event(
             connection,
             event_type="ORDER_CREATED",
@@ -881,6 +895,7 @@ async def create_order(
             discount=int(cart["discount"]),
             shipping_fee=int(cart["shipping_fee"]),
             occurred_at=now,
+            org_id=order_org_id,
         )
         for item in cart["items"]:
             record_event(
@@ -892,6 +907,7 @@ async def create_order(
                 variant_id=item["variant_id"],
                 quantity=-int(item["quantity"]),
                 occurred_at=now,
+                org_id=order_org_id,
             )
         return order_payload(connection, order_id)
 
@@ -944,6 +960,7 @@ async def confirm_payment(payload: PaymentConfirm) -> dict[str, object]:
             order_id=payload.order_id,
             amount=payload.amount,
             occurred_at=now,
+            org_id=infer_order_org_id(connection, payload.order_id),
         )
         return {"payment": payment, "order": order_payload(connection, payload.order_id)}
 
@@ -999,6 +1016,7 @@ async def cancel_order(order_id: str, payload: OrderAction) -> dict[str, object]
             "SELECT * FROM order_items WHERE order_id = ?", (order_id,)
         ).fetchall()
         now = utc_now()
+        order_org_id = infer_order_org_id(connection, order_id)
         for item in items:
             connection.execute(
                 "UPDATE variants SET stock = stock + ? WHERE id = ?",
@@ -1013,6 +1031,7 @@ async def cancel_order(order_id: str, payload: OrderAction) -> dict[str, object]
                 variant_id=item["variant_id"],
                 quantity=int(item["quantity"]),
                 occurred_at=now,
+                org_id=order_org_id,
             )
         connection.execute(
             """
@@ -1050,6 +1069,7 @@ async def cancel_order(order_id: str, payload: OrderAction) -> dict[str, object]
             order_id=order_id,
             amount=order["total"],
             occurred_at=now,
+            org_id=order_org_id,
         )
         record_event(
             connection,
@@ -1058,6 +1078,7 @@ async def cancel_order(order_id: str, payload: OrderAction) -> dict[str, object]
             order_id=order_id,
             refund_amount=claim["refund_amount"],
             occurred_at=now,
+            org_id=order_org_id,
         )
         return order_payload(connection, order_id)
 
@@ -1108,6 +1129,7 @@ async def request_return(order_id: str, payload: OrderAction) -> dict[str, objec
             order_id=order_id,
             refund_amount=int(claim["refund_amount"]),
             occurred_at=now,
+            org_id=infer_order_org_id(connection, order_id),
         )
         return {"claim": claim, "order": order_payload(connection, order_id)}
 
@@ -1152,6 +1174,66 @@ async def analytics_products(
 ) -> list[dict[str, object]]:
     with closing(connect()) as connection:
         return product_breakdown(connection, period)
+
+
+@app.get("/analytics/seller-daily")
+async def analytics_seller_daily(
+    org_id: str = Query(min_length=1, max_length=64),
+    date: str = Query(default_factory=today, pattern=DATE_PATTERN.pattern),
+) -> dict[str, object]:
+    if not is_valid_date(date):
+        raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다.")
+    with closing(connect()) as connection:
+        org = connection.execute("SELECT id FROM organizations WHERE id = ?", (org_id,)).fetchone()
+        if org is None:
+            raise HTTPException(status_code=404, detail="조직을 찾을 수 없습니다.")
+        return seller_daily_snapshot(connection, org_id, date)
+
+
+class ProductViewEvent(BaseModel):
+    product_id: str = Field(min_length=1, max_length=64)
+
+
+@app.post("/events/product-view", status_code=202)
+async def record_product_view(payload: ProductViewEvent) -> dict[str, object]:
+    with transaction() as connection:
+        product = connection.execute(
+            "SELECT org_id FROM products WHERE id = ?", (payload.product_id,)
+        ).fetchone()
+        if product is None:
+            raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+        record_event(
+            connection,
+            event_type="PRODUCT_VIEWED",
+            external_event_id=f"view_{uuid4().hex}",
+            product_id=payload.product_id,
+            org_id=product["org_id"] or DEFAULT_ORG_ID,
+        )
+    return {"status": "recorded"}
+
+
+@app.get("/internal/organizations")
+async def internal_organizations() -> list[dict[str, object]]:
+    """Unauthenticated, service-to-service only (never exposed to a browser).
+
+    Lets core-api's daily scheduler and inquiry-routing logic enumerate
+    active sellers without going through the customer JWT auth model, which
+    only makes sense for a human sitting at a browser.
+    """
+    with closing(connect()) as connection:
+        rows = connection.execute(
+            "SELECT id, name FROM organizations WHERE status = 'ACTIVE' ORDER BY name"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+@app.get("/internal/orders/{order_id}/org")
+async def internal_order_org(order_id: str) -> dict[str, object]:
+    with closing(connect()) as connection:
+        order = connection.execute("SELECT id FROM orders WHERE id = ?", (order_id,)).fetchone()
+        if order is None:
+            raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+        return {"order_id": order_id, "org_id": infer_order_org_id(connection, order_id)}
 
 
 @app.get("/policies/commerce")

@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     langfuse_triage_prompt_name: str = "support-triage"
     langfuse_commerce_insight_prompt_name: str = "commerce-insight"
     langfuse_monthly_report_prompt_name: str = "commerce-monthly-report"
+    langfuse_daily_seller_report_prompt_name: str = "daily-seller-report"
+
+    daily_report_hour_utc: int = Field(default=0, ge=0, le=23)
 
     database_url: str = "postgresql+asyncpg://aiops:aiops@localhost:5432/aiops"
     redis_url: str = "redis://localhost:6379/0"

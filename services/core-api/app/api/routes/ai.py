@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from starlette.concurrency import run_in_threadpool
 
 from app.api.routes.revenue import get_commerce_client
@@ -13,10 +13,17 @@ from app.schemas.ai import (
     CommerceInsightResponse,
     MonthlyReportRequest,
     MonthlyReportResponse,
+    SellerDailyReportRequest,
+    SellerDailyReportResponse,
 )
-from app.services.commerce_ai import CommerceInsightService, MonthlyReportService
+from app.services.commerce_ai import (
+    CommerceInsightService,
+    MonthlyReportService,
+    SellerDailyReportService,
+)
 from app.services.commerce_client import CommerceClient
 from app.services.discord import DiscordNotifier
+from app.services.identity import require_org_access
 from app.services.inquiry_store import inquiry_store
 from app.services.openrouter import OpenRouterSupportService
 from app.services.prompts import PromptRepository
@@ -53,15 +60,26 @@ def get_discord_notifier() -> DiscordNotifier:
     return DiscordNotifier(get_settings())
 
 
+@lru_cache
+def get_seller_report_service() -> SellerDailyReportService:
+    settings = get_settings()
+    return SellerDailyReportService(settings, PromptRepository(settings))
+
+
 @router.post("/reply", response_model=AIReplyResponse)
 async def create_reply(
     payload: AIReplyRequest,
     service: Annotated[OpenRouterSupportService, Depends(get_ai_service)],
     notifier: Annotated[DiscordNotifier, Depends(get_discord_notifier)],
+    commerce: Annotated[CommerceClient, Depends(get_commerce_client)],
 ) -> AIReplyResponse:
     response = await run_in_threadpool(service.generate_reply, payload)
+    # Which seller does this inquiry belong to, so it shows up on *their*
+    # console instead of only the platform-wide inbox — resolved from the
+    # order, never trusted from the client-supplied organization_id.
+    org_id = await commerce.get_order_org_id(payload.order_id) if payload.order_id else None
     inquiry_id, conversation_id = await run_in_threadpool(
-        inquiry_store.save_exchange, payload, response
+        inquiry_store.save_exchange, payload, response, org_id
     )
     final = response.model_copy(
         update={
@@ -113,4 +131,22 @@ async def monthly_report(
     discord_sent = False
     if payload.send_discord and notifier.enabled:
         discord_sent = await run_in_threadpool(notifier.send, report.report)
+    return report.model_copy(update={"discord_sent": discord_sent})
+
+
+@router.post("/seller-daily-report", response_model=SellerDailyReportResponse)
+async def seller_daily_report(
+    payload: SellerDailyReportRequest,
+    service: Annotated[SellerDailyReportService, Depends(get_seller_report_service)],
+    commerce: Annotated[CommerceClient, Depends(get_commerce_client)],
+    notifier: Annotated[DiscordNotifier, Depends(get_discord_notifier)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> SellerDailyReportResponse:
+    await require_org_access(payload.org_id, authorization, commerce)
+    snapshot = await commerce.get_seller_daily_snapshot(payload.org_id, payload.date)
+    report = await run_in_threadpool(service.generate_report, snapshot)
+    discord_sent = False
+    if payload.send_discord and notifier.enabled:
+        message = f"**{report.org_name} · {report.date} 일일 리포트**\n\n{report.report}"
+        discord_sent = await run_in_threadpool(notifier.send, message)
     return report.model_copy(update={"discord_sent": discord_sent})

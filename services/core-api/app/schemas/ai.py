@@ -50,3 +50,21 @@ class MonthlyReportResponse(BaseModel):
     prompt_source: Literal["langfuse", "fallback"]
     prompt_version: str | None = None
     discord_sent: bool = False
+
+
+class SellerDailyReportRequest(BaseModel):
+    org_id: str = Field(min_length=1, max_length=64)
+    date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    send_discord: bool = False
+
+
+class SellerDailyReportResponse(BaseModel):
+    date: str
+    org_id: str
+    org_name: str
+    report: str
+    snapshot: dict[str, Any]
+    model: str
+    prompt_source: Literal["langfuse", "fallback"]
+    prompt_version: str | None = None
+    discord_sent: bool = False

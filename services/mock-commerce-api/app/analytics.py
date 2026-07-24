@@ -7,15 +7,30 @@ they exist (commerce-insight / commerce-monthly-report personas).
 
 import re
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 PERIOD_PATTERN = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 REVENUE_EVENT_TYPES = ("PAYMENT_CONFIRMED", "REFUND_COMPLETED")
 
 
 def current_period() -> str:
     return datetime.now(UTC).strftime("%Y-%m")
+
+
+def today() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%d")
+
+
+def is_valid_date(date: str) -> bool:
+    return bool(DATE_PATTERN.match(date))
+
+
+def _day_bounds(date: str) -> tuple[str, str]:
+    start = datetime.fromisoformat(date).replace(tzinfo=UTC)
+    end = start + timedelta(days=1)
+    return start.isoformat(), end.isoformat()
 
 
 def is_valid_period(period: str) -> bool:
@@ -157,3 +172,96 @@ def product_breakdown(connection: sqlite3.Connection, period: str) -> list[dict[
             }
         )
     return result
+
+
+def seller_daily_snapshot(
+    connection: sqlite3.Connection, org_id: str, date: str
+) -> dict[str, object]:
+    """One seller's single-day activity: views, sales, refunds, and current stock.
+
+    Feeds the daily-seller-report AI persona. Every product owned by the org
+    is included even with zero activity, so "아무도 안 본 상품" and "완전히
+    안 팔린 상품" show up instead of silently disappearing — that's exactly
+    the signal the AI feedback step is meant to react to.
+    """
+    start, end = _day_bounds(date)
+    org_row = connection.execute("SELECT * FROM organizations WHERE id = ?", (org_id,)).fetchone()
+    rows = connection.execute(
+        """
+        SELECT
+            p.id AS product_id, p.name AS product_name,
+            COALESCE(stock.total_stock, 0) AS stock,
+            COALESCE(views.view_count, 0) AS views,
+            COALESCE(sales.units_sold, 0) AS units_sold,
+            COALESCE(sales.revenue, 0) AS revenue,
+            COALESCE(refunds.refund_units, 0) AS refund_units,
+            COALESCE(refunds.refund_amount, 0) AS refund_amount
+        FROM products p
+        LEFT JOIN (
+            SELECT product_id, SUM(stock) AS total_stock FROM variants GROUP BY product_id
+        ) stock ON stock.product_id = p.id
+        LEFT JOIN (
+            SELECT product_id, COUNT(*) AS view_count FROM commerce_events
+            WHERE event_type = 'PRODUCT_VIEWED' AND occurred_at >= :start AND occurred_at < :end
+            GROUP BY product_id
+        ) views ON views.product_id = p.id
+        LEFT JOIN (
+            SELECT oi.product_id, SUM(oi.quantity) AS units_sold, SUM(oi.line_total) AS revenue
+            FROM order_items oi
+            JOIN commerce_events ce ON ce.order_id = oi.order_id
+                AND ce.event_type = 'PAYMENT_CONFIRMED'
+                AND ce.occurred_at >= :start AND ce.occurred_at < :end
+            GROUP BY oi.product_id
+        ) sales ON sales.product_id = p.id
+        LEFT JOIN (
+            SELECT oi.product_id, SUM(oi.quantity) AS refund_units,
+                   SUM(oi.line_total) AS refund_amount
+            FROM order_items oi
+            JOIN commerce_events ce ON ce.order_id = oi.order_id
+                AND ce.event_type = 'REFUND_COMPLETED'
+                AND ce.occurred_at >= :start AND ce.occurred_at < :end
+            GROUP BY oi.product_id
+        ) refunds ON refunds.product_id = p.id
+        WHERE p.org_id = :org_id
+        ORDER BY p.name
+        """,
+        {"start": start, "end": end, "org_id": org_id},
+    ).fetchall()
+
+    products = [dict(row) for row in rows]
+    order_count_row = connection.execute(
+        """
+        SELECT COUNT(DISTINCT order_id) AS order_count FROM commerce_events
+        WHERE org_id = ? AND event_type = 'PAYMENT_CONFIRMED'
+          AND occurred_at >= ? AND occurred_at < ?
+        """,
+        (org_id, start, end),
+    ).fetchone()
+
+    gross_revenue = sum(int(row["revenue"]) for row in products)
+    refund_amount = sum(int(row["refund_amount"]) for row in products)
+
+    viewed = [row for row in products if row["views"] > 0]
+    purchased = [row for row in products if row["units_sold"] > 0]
+    refunded = [row for row in products if row["refund_units"] > 0]
+
+    return {
+        "date": date,
+        "org_id": org_id,
+        "org_name": org_row["name"] if org_row else org_id,
+        "revenue": {
+            "gross_revenue": gross_revenue,
+            "refund_amount": refund_amount,
+            "net_revenue": gross_revenue - refund_amount,
+            "order_count": int(order_count_row["order_count"]),
+        },
+        "products": products,
+        "highlights": {
+            "most_viewed": max(viewed, key=lambda r: r["views"], default=None),
+            "least_viewed": min(products, key=lambda r: r["views"], default=None),
+            "most_purchased": max(purchased, key=lambda r: r["units_sold"], default=None),
+            "most_refunded": max(refunded, key=lambda r: r["refund_units"], default=None),
+            "out_of_stock": [row for row in products if row["stock"] == 0],
+            "low_stock": [row for row in products if 0 < row["stock"] <= 3],
+        },
+    }

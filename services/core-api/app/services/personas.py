@@ -107,6 +107,43 @@ COMMERCE_INSIGHT = Persona(
     },
 )
 
+DAILY_SELLER_REPORT = Persona(
+    fallback_text="""당신은 이 판매자 전담 커머스 어시스턴트입니다. 아래는 코드가 이미 계산한
+오늘 하루치 스냅샷입니다. 숫자를 다시 계산하지 말고 해석과 제안만 하세요.
+
+상점: {{org_name}}
+날짜: {{date}}
+
+매출 요약:
+{{revenue_json}}
+
+상품별 오늘 활동(조회수·판매수량·환불수량·현재 재고):
+{{products_json}}
+
+하이라이트(코드가 이미 계산함 — 그대로 인용하세요):
+{{highlights_json}}
+
+규칙:
+1. 제공된 숫자만 근거로 사용하세요. 새로운 수치를 만들어내지 마세요.
+2. 아래 순서로 한국어 불릿을 작성하세요: 오늘 요약 / 가장 많이·적게 본 상품 /
+   가장 많이 팔린·환불된 상품 / 재고 현황.
+3. 조회수는 높은데 재고가 부족하거나 0인 상품이 있으면 반드시 짚어주세요.
+4. 마지막 "AI 제안" 섹션에서 재고를 채워야 할 상품과 그 이유를 구체적으로
+   제안하세요(예: "조회수 대비 재고 부족" 또는 "품절로 판매 기회 손실").
+5. 근거 없는 원인 단정은 피하고 "~로 추정됩니다" 같은 표현을 사용하세요.
+""",
+    fallback_config={
+        "gateway": "openrouter",
+        "model": "~google/gemini-flash-latest",
+        "temperature": 0.2,
+        "max_tokens": 1400,
+        "provider": {
+            "allow_fallbacks": True,
+            "data_collection": "deny",
+        },
+    },
+)
+
 COMMERCE_MONTHLY_REPORT = Persona(
     fallback_text="""당신은 커머스 운영 리포트 편집자입니다. 아래 매출 지표와 AI 인사이트를
 하나의 월간 보고서로 정리하세요.

@@ -14,6 +14,7 @@ import ReactMarkdown from "react-markdown";
 
 import {
   checkIntegration,
+  ConsoleProfile,
   createDocument,
   generateMonthlyReport,
   getAuditLogs,
@@ -25,8 +26,11 @@ import {
   getIntegrations,
   getRevenueProducts,
   getRevenueSummary,
+  getSellerDailyReport,
   getWorkflows,
+  login,
   retryFailedJob,
+  SellerDailyReport,
   updateDocument,
   updateInquiry,
   updateWorkflow,
@@ -34,6 +38,7 @@ import {
 
 type Page =
   | "dashboard"
+  | "seller-dashboard"
   | "inquiries"
   | "workflows"
   | "knowledge"
@@ -43,7 +48,7 @@ type Page =
   | "revenue"
   | "report";
 
-const navigation: { id: Page; label: string }[] = [
+const ADMIN_NAVIGATION: { id: Page; label: string }[] = [
   { id: "dashboard", label: "대시보드" },
   { id: "inquiries", label: "문의" },
   { id: "revenue", label: "매출 분석" },
@@ -54,6 +59,27 @@ const navigation: { id: Page; label: string }[] = [
   { id: "failed", label: "실패 작업" },
   { id: "audit", label: "감사 로그" },
 ];
+
+const SELLER_NAVIGATION: { id: Page; label: string }[] = [
+  { id: "seller-dashboard", label: "대시보드" },
+  { id: "inquiries", label: "문의" },
+];
+
+const SESSION_KEY = "ops-console-session";
+
+interface Session {
+  token: string;
+  profile: ConsoleProfile;
+}
+
+function loadSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as Session) : null;
+  } catch {
+    return null;
+  }
+}
 
 const categoryLabel: Record<string, string> = {
   DELIVERY: "배송",
@@ -72,14 +98,79 @@ const statusLabel: Record<string, string> = {
 const currentPeriod = () => new Date().toISOString().slice(0, 7);
 
 export function App() {
+  const [session, setSession] = useState<Session | null>(loadSession);
+
+  const handleLogin = (next: Session) => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+    setSession(next);
+  };
+  const handleLogout = () => {
+    localStorage.removeItem(SESSION_KEY);
+    setSession(null);
+  };
+
+  if (!session) return <LoginPage onLogin={handleLogin} />;
+  if (session.profile.role !== "SELLER" && session.profile.role !== "ADMIN") {
+    return (
+      <div className="login-shell">
+        <div className="login-card">
+          <div className="brand"><span>AO</span><strong>AI Ops Studio</strong></div>
+          <p className="empty">판매자 또는 관리자 계정으로 로그인해주세요.</p>
+          <button className="outline" onClick={handleLogout}>다시 로그인</button>
+        </div>
+      </div>
+    );
+  }
+  return <ConsoleShell session={session} onLogout={handleLogout} />;
+}
+
+function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => login(email, password),
+    onSuccess: (data) => onLogin({ token: data.access_token, profile: data.customer }),
+    onError: (err: Error) => setError(err.message),
+  });
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    mutation.mutate();
+  };
+  return (
+    <div className="login-shell">
+      <form className="login-card" onSubmit={submit}>
+        <div className="brand"><span>AO</span><strong>AI Ops Studio</strong></div>
+        <p className="page-description">판매자 콘솔 · 관리자 콘솔 로그인</p>
+        <label>이메일<input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+        <label>비밀번호<input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+        {error && <p className="error">{error}</p>}
+        <button className="primary" disabled={mutation.isPending}>
+          {mutation.isPending ? "로그인 중…" : "로그인"}
+        </button>
+        <p className="empty">
+          테스트 계정: seller@test.com / test1234 (판매자) · admin@test.com / test1234 (관리자)
+        </p>
+      </form>
+    </div>
+  );
+}
+
+function ConsoleShell({ session, onLogout }: { session: Session; onLogout: () => void }) {
+  const { token, profile } = session;
+  const isAdmin = profile.role === "ADMIN";
+  const navigation = isAdmin ? ADMIN_NAVIGATION : SELLER_NAVIGATION;
   const queryClient = useQueryClient();
-  const [page, setPage] = useState<Page>("dashboard");
+  const [page, setPage] = useState<Page>(isAdmin ? "dashboard" : "seller-dashboard");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [period, setPeriod] = useState(currentPeriod);
+  const orgId = profile.organization?.id;
   const inquiries = useQuery({
-    queryKey: ["inquiries"],
-    queryFn: getInquiries,
+    queryKey: isAdmin ? ["inquiries"] : ["inquiries", orgId],
+    queryFn: () => getInquiries(isAdmin ? undefined : orgId, isAdmin ? undefined : token),
     refetchInterval: 10_000,
+    enabled: isAdmin || Boolean(orgId),
   });
   const workflows = useQuery({ queryKey: ["workflows"], queryFn: getWorkflows });
   const documents = useQuery({ queryKey: ["documents"], queryFn: getDocuments });
@@ -114,7 +205,18 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar page={page} counts={counts} onNavigate={setPage} />
+      <Sidebar
+        page={page}
+        counts={counts}
+        onNavigate={setPage}
+        navigation={navigation}
+        workspaceName={isAdmin ? "Everyday Market" : profile.organization?.name ?? profile.name}
+        workspaceMeta={isAdmin ? "관리자" : "판매자"}
+        onLogout={onLogout}
+      />
+      {page === "seller-dashboard" && orgId && (
+        <SellerDashboardPage token={token} orgId={orgId} />
+      )}
       {page === "dashboard" && (
         <Dashboard
           inquiries={inquiries.data ?? []}
@@ -175,10 +277,18 @@ function Sidebar({
   page,
   counts,
   onNavigate,
+  navigation,
+  workspaceName,
+  workspaceMeta,
+  onLogout,
 }: {
   page: Page;
   counts: { inquiries: number; failed: number };
   onNavigate: (page: Page) => void;
+  navigation: { id: Page; label: string }[];
+  workspaceName: string;
+  workspaceMeta: string;
+  onLogout: () => void;
 }) {
   return (
     <aside className="sidebar">
@@ -197,7 +307,8 @@ function Sidebar({
         ))}
       </nav>
       <div className="workspace">
-        <small>WORKSPACE</small><strong>Everyday Market</strong><span>Development</span>
+        <small>WORKSPACE</small><strong>{workspaceName}</strong><span>{workspaceMeta}</span>
+        <button className="outline" onClick={onLogout}>로그아웃</button>
       </div>
     </aside>
   );
@@ -487,6 +598,110 @@ function ReportPage({
           <p className="empty">버튼을 누르면 이번 기간의 인사이트를 먼저 생성한 뒤 리포트로 편집합니다.</p>
         )}
       </section>
+    </main>
+  );
+}
+
+function SellerDashboardPage({ token, orgId }: { token: string; orgId: string }) {
+  const query = useQuery({
+    queryKey: ["seller-daily-report", orgId],
+    queryFn: () => getSellerDailyReport(token, orgId, false),
+  });
+  const discordMutation = useMutation({
+    mutationFn: () => getSellerDailyReport(token, orgId, true),
+  });
+  const report: SellerDailyReport | undefined = discordMutation.data ?? query.data;
+  const snapshot = report?.snapshot;
+
+  return (
+    <main>
+      <PageHeader
+        eyebrow="AI · daily-seller-report"
+        title={report ? `${report.org_name} 오늘의 대시보드` : "오늘의 대시보드"}
+        description="어제까지의 조회·판매·환불·재고를 코드가 집계하고, AI가 마지막에 재입고 제안을 덧붙입니다."
+        action={
+          <button
+            className="primary"
+            disabled={discordMutation.isPending || query.isLoading}
+            onClick={() => discordMutation.mutate()}
+          >
+            {discordMutation.isPending ? "전송 중…" : "Discord로 전송"}
+          </button>
+        }
+      />
+      {query.isLoading && <p className="empty">오늘의 데이터를 불러오는 중…</p>}
+      {query.isError && <p className="empty">데이터를 불러오지 못했습니다.</p>}
+      {snapshot && (
+        <>
+          <section className="stats revenue">
+            <article><span>총결제액</span><strong>{formatWon(snapshot.revenue.gross_revenue)}</strong></article>
+            <article><span>환불액</span><strong>{formatWon(snapshot.revenue.refund_amount)}</strong></article>
+            <article><span>순매출</span><strong>{formatWon(snapshot.revenue.net_revenue)}</strong></article>
+            <article><span>주문 수</span><strong>{snapshot.revenue.order_count}건</strong></article>
+            <article><span>날짜</span><strong>{snapshot.date}</strong></article>
+          </section>
+          <section className="grid two" style={{ marginTop: 16 }}>
+            <div className="card">
+              <h3>오늘의 조회</h3>
+              <p>
+                최다 조회: <strong>{snapshot.highlights.most_viewed?.product_name ?? "없음"}</strong>
+                {snapshot.highlights.most_viewed && ` (${snapshot.highlights.most_viewed.views}회)`}
+              </p>
+              <p>
+                최소 조회: <strong>{snapshot.highlights.least_viewed?.product_name ?? "없음"}</strong>
+                {snapshot.highlights.least_viewed && ` (${snapshot.highlights.least_viewed.views}회)`}
+              </p>
+            </div>
+            <div className="card">
+              <h3>오늘의 판매·환불</h3>
+              <p>
+                최다 판매: <strong>{snapshot.highlights.most_purchased?.product_name ?? "없음"}</strong>
+                {snapshot.highlights.most_purchased && ` (${snapshot.highlights.most_purchased.units_sold}개)`}
+              </p>
+              <p>
+                최다 환불: <strong>{snapshot.highlights.most_refunded?.product_name ?? "없음"}</strong>
+                {snapshot.highlights.most_refunded && ` (${snapshot.highlights.most_refunded.refund_units}개)`}
+              </p>
+            </div>
+          </section>
+          {(snapshot.highlights.out_of_stock.length > 0 || snapshot.highlights.low_stock.length > 0) && (
+            <section className="callout-warning" style={{ marginTop: 16 }}>
+              {snapshot.highlights.out_of_stock.length > 0 && (
+                <p><strong>품절:</strong> {snapshot.highlights.out_of_stock.map((p) => p.product_name).join(", ")}</p>
+              )}
+              {snapshot.highlights.low_stock.length > 0 && (
+                <p><strong>재고 부족:</strong> {snapshot.highlights.low_stock.map((p) => `${p.product_name}(${p.stock}개)`).join(", ")}</p>
+              )}
+            </section>
+          )}
+          <section className="panel table-panel" style={{ marginTop: 16 }}>
+            <div className="panel-heading"><div><small>PRODUCTS</small><h2>상품별 오늘 활동</h2></div></div>
+            <div className="data-table">
+              <div className="data-row data-head">
+                <span>상품</span><span>조회</span><span>판매</span><span>환불</span><span>재고</span>
+              </div>
+              {snapshot.products.map((p) => (
+                <div className="data-row" key={p.product_id}>
+                  <span>{p.product_name}</span>
+                  <span>{p.views}회</span>
+                  <span>{p.units_sold}개 · {formatWon(p.revenue)}</span>
+                  <span>{p.refund_units}개</span>
+                  <span className={p.stock === 0 ? "refund-high" : ""}>{p.stock}개</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="panel insight-panel" style={{ marginTop: 16 }}>
+            <div className="panel-heading"><div><small>AI</small><h2>AI 리포트 · 재입고 제안</h2></div></div>
+            <div className="markdown-body"><ReactMarkdown>{report!.report}</ReactMarkdown></div>
+            <footer className="insight-footer">
+              {report!.model} · prompt {report!.prompt_source === "langfuse" ? report!.prompt_version ?? "langfuse" : "fallback"}
+              {" · "}
+              {report!.discord_sent ? "Discord 전송 완료" : "Discord 미전송"}
+            </footer>
+          </section>
+        </>
+      )}
     </main>
   );
 }

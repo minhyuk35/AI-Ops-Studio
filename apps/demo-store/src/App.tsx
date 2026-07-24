@@ -31,6 +31,7 @@ import {
   googleAuth,
   login,
   OrganizationSummary,
+  recordProductView,
   returnOrder,
   SellerProduct,
   SellerProductInput,
@@ -614,6 +615,9 @@ function ProductGrid({ products, onProduct }: { products: Product[]; onProduct: 
 }
 
 function ProductPage({ product, variantId, onVariant, onAdd, onBuy }: { product: ProductDetail; variantId: string; onVariant: (id: string) => void; onAdd: () => void; onBuy: () => void }) {
+  useEffect(() => {
+    recordProductView(product.id).catch(() => {});
+  }, [product.id]);
   return <main className="product-page"><div className="product-gallery"><img src={product.image} alt={product.name} /></div><div className="product-info"><small>{product.brand} · {product.category_name}</small><h1>{product.name}</h1><p className="rating">★ {product.rating} · 리뷰 {product.review_count}개</p><div className="product-price">{product.compare_at_price && <del>{won.format(product.compare_at_price)}</del>}<strong>{won.format(product.price)}</strong></div><p className="description">{product.description}</p><fieldset><legend>옵션 선택</legend>{product.variants.map((variant) => <button type="button" disabled={!variant.stock} className={variantId === variant.id ? "selected" : ""} key={variant.id} onClick={() => onVariant(variant.id)}>{variant.color} / {variant.size}{!variant.stock && " · 품절"}</button>)}</fieldset><div className="purchase-actions"><button onClick={onAdd}>장바구니</button><button className="dark" onClick={onBuy}>바로 구매</button></div><dl className="policy-list"><div><dt>배송</dt><dd>{product.shipping.estimated_days} · {won.format(product.shipping.fee)} · {won.format(product.shipping.free_threshold)} 이상 무료</dd></div><div><dt>반품</dt><dd>수령 후 {product.return_policy.window_days}일 이내 · 단순 변심 {won.format(product.return_policy.return_fee)}</dd></div><div><dt>소재</dt><dd>{product.material}</dd></div><div><dt>관리</dt><dd>{product.care}</dd></div></dl></div></main>;
 }
 

@@ -77,7 +77,12 @@ class InquiryStore:
                 """
             )
 
-    def save_exchange(self, request: AIReplyRequest, response: AIReplyResponse) -> tuple[str, str]:
+    def save_exchange(
+        self,
+        request: AIReplyRequest,
+        response: AIReplyResponse,
+        org_id: str | None = None,
+    ) -> tuple[str, str]:
         now = utc_now()
         inquiry_id = request.inquiry_id or f"inq_{uuid4().hex[:12]}"
         trace_id = response.trace_id or request.request_id
@@ -106,7 +111,7 @@ class InquiryStore:
                         request.channel,
                         request.question[:100],
                         request.session_id,
-                        request.organization_id,
+                        org_id or request.organization_id,
                         now,
                         now,
                     ),
@@ -182,10 +187,11 @@ class InquiryStore:
             connection.commit()
         return inquiry_id, conversation_id
 
-    def list_inquiries(self) -> list[dict[str, object]]:
+    def list_inquiries(self, org_id: str | None = None) -> list[dict[str, object]]:
+        where = "WHERE i.organization_id = ?" if org_id else ""
         with closing(self.connect()) as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT i.*,
                        (SELECT COUNT(*) FROM messages m
                         JOIN conversations c ON c.id = m.conversation_id
@@ -193,8 +199,9 @@ class InquiryStore:
                        (SELECT content FROM messages m
                         JOIN conversations c ON c.id = m.conversation_id
                         WHERE c.inquiry_id = i.id ORDER BY m.created_at DESC LIMIT 1) last_message
-                FROM inquiries i ORDER BY i.updated_at DESC
-                """
+                FROM inquiries i {where} ORDER BY i.updated_at DESC
+                """,
+                (org_id,) if org_id else (),
             ).fetchall()
             return [dict(row) for row in rows]
 

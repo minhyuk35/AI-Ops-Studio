@@ -12,6 +12,7 @@ import type {
 } from "@ai-ops/shared-types";
 
 const coreBaseUrl = import.meta.env.VITE_CORE_API_URL ?? "http://localhost:8000";
+const commerceBaseUrl = import.meta.env.VITE_COMMERCE_API_URL ?? "http://localhost:8001";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${coreBaseUrl}/api/v1${path}`, init);
@@ -22,13 +23,69 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-const json = (method: "POST" | "PATCH", body?: unknown): RequestInit => ({
+async function commerceRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${commerceBaseUrl}${path}`, init);
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? `요청에 실패했습니다. (${response.status})`);
+  }
+  return response.json() as Promise<T>;
+}
+
+const json = (method: "POST" | "PATCH", body?: unknown, token?: string): RequestInit => ({
   method,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  },
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 
-export const getInquiries = () => request<Inquiry[]>("/inquiries");
+const authGet = (path: string, token: string) =>
+  fetch(`${coreBaseUrl}/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } });
+
+export type ConsoleRole = "SELLER" | "ADMIN";
+
+export interface ConsoleOrganization {
+  id: string;
+  name: string;
+  category: string;
+  commission_rate: number;
+  status: string;
+}
+
+export interface ConsoleProfile {
+  id: string;
+  email: string;
+  name: string;
+  is_admin: boolean;
+  role: "CONSUMER" | ConsoleRole;
+  organization: ConsoleOrganization | null;
+}
+
+export interface AuthSession {
+  access_token: string;
+  token_type: string;
+  customer: ConsoleProfile;
+}
+
+export const login = (email: string, password: string) =>
+  commerceRequest<AuthSession>(
+    "/auth/login",
+    json("POST", { email, password }),
+  );
+
+export const getMyProfile = (token: string) =>
+  commerceRequest<ConsoleProfile>("/customers/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+export const getInquiries = (orgId?: string, token?: string) => {
+  const query = orgId ? `?org_id=${encodeURIComponent(orgId)}` : "";
+  return orgId && token
+    ? authGet(`/inquiries${query}`, token).then((r) => r.json() as Promise<Inquiry[]>)
+    : request<Inquiry[]>(`/inquiries${query}`);
+};
 export const getInquiry = (id: string) => request<Inquiry>(`/inquiries/${id}`);
 export const updateInquiry = (
   id: string,
@@ -79,4 +136,59 @@ export const generateMonthlyReport = (period: string, sendDiscord: boolean) =>
   request<MonthlyReport>(
     "/ai/monthly-report",
     json("POST", { period, send_discord: sendDiscord }),
+  );
+
+export interface SellerDailyProduct {
+  product_id: string;
+  product_name: string;
+  stock: number;
+  views: number;
+  units_sold: number;
+  revenue: number;
+  refund_units: number;
+  refund_amount: number;
+}
+
+export interface SellerDailySnapshot {
+  date: string;
+  org_id: string;
+  org_name: string;
+  revenue: {
+    gross_revenue: number;
+    refund_amount: number;
+    net_revenue: number;
+    order_count: number;
+  };
+  products: SellerDailyProduct[];
+  highlights: {
+    most_viewed: SellerDailyProduct | null;
+    least_viewed: SellerDailyProduct | null;
+    most_purchased: SellerDailyProduct | null;
+    most_refunded: SellerDailyProduct | null;
+    out_of_stock: SellerDailyProduct[];
+    low_stock: SellerDailyProduct[];
+  };
+}
+
+export interface SellerDailyReport {
+  date: string;
+  org_id: string;
+  org_name: string;
+  report: string;
+  snapshot: SellerDailySnapshot;
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+  discord_sent: boolean;
+}
+
+export const getSellerDailyReport = (
+  token: string,
+  orgId: string,
+  sendDiscord: boolean,
+  date?: string,
+) =>
+  request<SellerDailyReport>(
+    "/ai/seller-daily-report",
+    json("POST", { org_id: orgId, date, send_discord: sendDiscord }, token),
   );

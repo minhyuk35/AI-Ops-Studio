@@ -39,33 +39,33 @@ async def _pay_for_one_unit(client, variant_id: str, cart_id: str) -> dict[str, 
 async def test_revenue_summary_reflects_paid_orders_this_period(commerce_app) -> None:
     _db, main, _analytics = commerce_app
     async with await _client(main) as client:
-        order = await _pay_for_one_unit(client, "var_004_m", "cart_summary_a")
-
         period = datetime.now(UTC).strftime("%Y-%m")
+        # The daily-seller-report demo seed (org_test_seller2) already books
+        # revenue "today", so this period is never a clean-slate zero in a
+        # freshly initialized db — assert the delta this order adds instead.
+        baseline = (await client.get("/analytics/summary", params={"period": period})).json()
+        order = await _pay_for_one_unit(client, "var_004_m", "cart_summary_a")
         summary = (await client.get("/analytics/summary", params={"period": period})).json()
 
-        assert summary["gross_revenue"] == order["total"]
-        assert summary["refund_amount"] == 0
-        assert summary["net_revenue"] == order["total"]
-        assert summary["order_count"] == 1
-        assert summary["average_order_value"] == order["total"]
-        # No paid orders exist in the previous month in this isolated test db.
-        assert summary["change"]["gross_revenue_pct"] is None
+        assert summary["gross_revenue"] - baseline["gross_revenue"] == order["total"]
+        assert summary["refund_amount"] == baseline["refund_amount"]
+        assert summary["net_revenue"] - baseline["net_revenue"] == order["total"]
+        assert summary["order_count"] - baseline["order_count"] == 1
 
 
 @pytest.mark.asyncio
 async def test_revenue_summary_nets_out_a_same_month_cancellation(commerce_app) -> None:
     _db, main, _analytics = commerce_app
     async with await _client(main) as client:
+        period = datetime.now(UTC).strftime("%Y-%m")
+        baseline = (await client.get("/analytics/summary", params={"period": period})).json()
         order = await _pay_for_one_unit(client, "var_005_one", "cart_summary_b")
         await client.post(f"/orders/{order['id']}/cancel", json={"reason": "단순 변심"})
-
-        period = datetime.now(UTC).strftime("%Y-%m")
         summary = (await client.get("/analytics/summary", params={"period": period})).json()
 
-        assert summary["gross_revenue"] == order["total"]
-        assert summary["refund_amount"] == order["total"]
-        assert summary["net_revenue"] == 0
+        assert summary["gross_revenue"] - baseline["gross_revenue"] == order["total"]
+        assert summary["refund_amount"] - baseline["refund_amount"] == order["total"]
+        assert summary["net_revenue"] == baseline["net_revenue"]
 
 
 @pytest.mark.asyncio
@@ -97,7 +97,9 @@ async def test_product_breakdown_includes_zero_sale_products(commerce_app) -> No
 
 def test_revenue_summary_math_is_pure_sql_no_llm(commerce_app) -> None:
     db, _main, analytics = commerce_app
+    period = datetime.now(UTC).strftime("%Y-%m")
     with db.transaction() as connection:
+        baseline = analytics.revenue_summary(connection, period)
         db.record_event(
             connection,
             event_type="PAYMENT_CONFIRMED",
@@ -112,13 +114,11 @@ def test_revenue_summary_math_is_pure_sql_no_llm(commerce_app) -> None:
             order_id="ord_math",
             refund_amount=20_000,
         )
-        period = datetime.now(UTC).strftime("%Y-%m")
         result = analytics.revenue_summary(connection, period)
 
-    assert result["gross_revenue"] == 50_000
-    assert result["refund_amount"] == 20_000
-    assert result["net_revenue"] == 30_000
-    assert result["average_order_value"] == 30_000
+    assert result["gross_revenue"] - baseline["gross_revenue"] == 50_000
+    assert result["refund_amount"] - baseline["refund_amount"] == 20_000
+    assert result["net_revenue"] - baseline["net_revenue"] == 30_000
 
 
 def test_previous_period_wraps_across_year_boundary(commerce_app) -> None:
