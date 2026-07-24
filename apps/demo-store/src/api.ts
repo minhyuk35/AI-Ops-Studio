@@ -263,6 +263,39 @@ export const updateMyVariant = (
     json("PATCH", input, token),
   );
 
+export interface DiscordPlanChannel {
+  channel_key: string;
+  name: string;
+  persona: string | null;
+  topic: string;
+}
+
+export interface DiscordChannel {
+  channel_key: string;
+  channel_id: string;
+  channel_name: string;
+  webhook_url: string;
+}
+
+export interface DiscordStatus {
+  linked: boolean;
+  guild_id: string | null;
+  linked_at: string | null;
+  plan: string;
+  plan_channels: DiscordPlanChannel[];
+  channels: DiscordChannel[];
+  link_code?: string;
+}
+
+export const getDiscordStatus = (token: string) =>
+  request<DiscordStatus>(`${commerceBaseUrl}/sellers/me/discord`, authGet(token));
+
+export const createDiscordLinkCode = (token: string) =>
+  request<DiscordStatus>(
+    `${commerceBaseUrl}/sellers/me/discord/link-code`,
+    json("POST", undefined, token),
+  );
+
 export interface OrganizationSummary {
   id: string;
   owner_customer_id: string;

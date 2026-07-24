@@ -14,11 +14,14 @@ import {
   AuthResponse,
   cancelOrder,
   confirmPayment,
+  createDiscordLinkCode,
   createMyProduct,
   createOrder,
   deleteCartItem,
+  DiscordStatus,
   getCart,
   getCategories,
+  getDiscordStatus,
   getInquiries,
   getInquiry,
   getMe,
@@ -948,7 +951,7 @@ function SellerConsolePage({
   onError: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"dashboard" | "inquiries" | "products">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "inquiries" | "products" | "discord">("dashboard");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -1003,7 +1006,10 @@ function SellerConsolePage({
         <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>오늘의 대시보드</button>
         <button className={tab === "inquiries" ? "active" : ""} onClick={() => setTab("inquiries")}>문의</button>
         <button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}>상품 관리</button>
+        <button className={tab === "discord" ? "active" : ""} onClick={() => setTab("discord")}>디스코드 연동</button>
       </div>
+
+      {tab === "discord" && <SellerDiscordPanel token={auth.access_token} />}
 
       {tab === "dashboard" && orgId && <SellerDailyDashboard token={auth.access_token} orgId={orgId} />}
 
@@ -1063,6 +1069,122 @@ function SellerConsolePage({
         </>
       )}
     </main>
+  );
+}
+
+function SellerDiscordPanel({ token }: { token: string }) {
+  const queryClient = useQueryClient();
+  const inviteUrl = (import.meta.env.VITE_DISCORD_INVITE_URL as string | undefined) ?? "";
+  const status = useQuery({
+    queryKey: ["discord-status"],
+    queryFn: () => getDiscordStatus(token),
+  });
+  const issueCode = useMutation({
+    mutationFn: () => createDiscordLinkCode(token),
+    onSuccess: (data: DiscordStatus) => queryClient.setQueryData(["discord-status"], data),
+  });
+  const data = issueCode.data ?? status.data;
+  const linked = Boolean(data?.linked);
+  const code = issueCode.data?.link_code;
+
+  const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => undefined);
+
+  return (
+    <div className="console-panel">
+      <div className="console-panel-heading">
+        <p>
+          판매자는 <b>디스코드 연동이 필수</b>입니다. 봇을 서버에 초대하고 아래 코드로
+          연동하면, 요금제(<b>{data?.plan ?? "FREE"}</b>)에 맞는 채널과 웹훅이 자동으로
+          만들어지고 매출·조회수 리포트가 그 서버로 전달됩니다.
+        </p>
+      </div>
+
+      {!linked && (
+        <div
+          className="console-card"
+          style={{ borderLeft: "3px solid #f472b6", marginBottom: 16 }}
+        >
+          ⚠️ 아직 디스코드가 연동되지 않았습니다. 아래 3단계를 완료해주세요.
+        </div>
+      )}
+      {linked && (
+        <div
+          className="console-card"
+          style={{ borderLeft: "3px solid #4ade80", marginBottom: 16 }}
+        >
+          ✅ 연동 완료 · 서버 ID <code>{data?.guild_id}</code>
+        </div>
+      )}
+
+      <div className="console-grid-two">
+        <div className="console-card">
+          <h4>1 · 봇 초대</h4>
+          {inviteUrl ? (
+            <p>
+              <a className="primary dark" href={inviteUrl} target="_blank" rel="noreferrer"
+                 style={{ display: "inline-block", padding: "8px 14px", borderRadius: 10 }}>
+                디스코드 봇 초대하기
+              </a>
+            </p>
+          ) : (
+            <p className="empty">
+              관리자가 <code>VITE_DISCORD_INVITE_URL</code> 환경변수를 설정하면 초대 버튼이
+              표시됩니다.
+            </p>
+          )}
+          <p>봇에 <b>채널 관리·웹훅 관리·메시지 보내기</b> 권한이 필요합니다.</p>
+        </div>
+
+        <div className="console-card">
+          <h4>2 · 연동 코드 발급</h4>
+          <button
+            className="primary dark"
+            disabled={issueCode.isPending}
+            onClick={() => issueCode.mutate()}
+          >
+            {issueCode.isPending ? "발급 중…" : code ? "코드 다시 발급" : "연동 코드 발급"}
+          </button>
+          {code && (
+            <p style={{ marginTop: 10 }}>
+              발급된 코드:{" "}
+              <code style={{ fontSize: "1.1em", letterSpacing: "0.1em" }}>{code}</code>{" "}
+              <button className="ghost" onClick={() => copy(code)}>복사</button>
+              <br />
+              <small>서버에서 <code>/연동 코드:{code}</code> 를 입력하세요. (1회용)</small>
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="console-card" style={{ marginTop: 16 }}>
+        <h4>3 · 서버에서 <code>/생성</code> 실행 → 아래 채널이 자동 생성됩니다</h4>
+        {status.isLoading && <p className="empty">불러오는 중…</p>}
+        <ul>
+          {(data?.plan_channels ?? []).map((channel) => (
+            <li key={channel.channel_key}>
+              <b>#{channel.name}</b>
+              {channel.persona ? (
+                <>
+                  {" "}— <code>{channel.persona}</code> 페르소나
+                </>
+              ) : (
+                <> — 봇 명령용</>
+              )}
+              <br />
+              <small>{channel.topic}</small>
+            </li>
+          ))}
+        </ul>
+        {data?.channels?.length ? (
+          <p>
+            <small>
+              현재 생성된 채널 {data.channels.length}개 (웹훅{" "}
+              {data.channels.filter((c) => c.webhook_url).length}개 등록됨)
+            </small>
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
