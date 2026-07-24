@@ -3,8 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import ai, health, inquiries, ops, revenue
-from app.config import get_settings
+from app.api.routes import ai, cron, health, inquiries, ops, revenue
+from app.config import get_settings, running_on_vercel
 from app.services.commerce_ai import (
     PlatformTrafficService,
     SellerDailyReportService,
@@ -51,13 +51,20 @@ market_share_scheduler = SellerMarketShareScheduler(
 async def lifespan(_: FastAPI):
     inquiry_store.initialize()
     ops.ops_store.initialize()
-    seller_report_scheduler.start()
-    platform_traffic_scheduler.start()
-    market_share_scheduler.start()
+    # On Vercel, a Function only exists for the lifetime of one request --
+    # an asyncio.create_task loop started here would be orphaned the moment
+    # this invocation suspends and never wake back up. Vercel Cron Jobs call
+    # app/api/routes/cron.py instead (see vercel.json); everywhere else
+    # (local dev, Render/Railway/Fly.io) these background loops run as usual.
+    if not running_on_vercel():
+        seller_report_scheduler.start()
+        platform_traffic_scheduler.start()
+        market_share_scheduler.start()
     yield
-    seller_report_scheduler.stop()
-    platform_traffic_scheduler.stop()
-    market_share_scheduler.stop()
+    if not running_on_vercel():
+        seller_report_scheduler.stop()
+        platform_traffic_scheduler.stop()
+        market_share_scheduler.stop()
     langfuse = get_shared_langfuse(settings)
     if langfuse is not None:
         try:
@@ -91,3 +98,4 @@ app.include_router(ai.router, prefix=settings.api_v1_prefix)
 app.include_router(inquiries.router, prefix=settings.api_v1_prefix)
 app.include_router(ops.router, prefix=settings.api_v1_prefix)
 app.include_router(revenue.router, prefix=settings.api_v1_prefix)
+app.include_router(cron.router)

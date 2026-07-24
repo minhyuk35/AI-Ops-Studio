@@ -68,9 +68,16 @@ class PostgresConnection:
         return cursor
 
     def executescript(self, script: str) -> None:
+        # sqlite3.Connection.executescript() implicitly commits (its own
+        # documented behavior, independent of the connection's normal
+        # transaction control) -- callers like InquiryStore.initialize()
+        # rely on that and never call .commit() themselves. Match it here,
+        # or the CREATE TABLE statements stay in an uncommitted transaction
+        # and vanish the moment the connection is closed.
         cursor = self._conn.cursor()
         for statement in _split_statements(script):
             cursor.execute(_rewrite_sql(statement))
+        self._conn.commit()
 
     def commit(self) -> None:
         self._conn.commit()

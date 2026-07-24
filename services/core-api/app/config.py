@@ -1,7 +1,30 @@
+import os
 from functools import lru_cache
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def running_on_vercel() -> bool:
+    """True inside a Vercel Function (build or runtime) -- see
+    docs/vercel-deployment.md. Used to skip the asyncio background-loop
+    schedulers (which never wake back up between serverless invocations)
+    in favor of Vercel Cron Jobs hitting app/api/routes/cron.py instead.
+    """
+    return bool(os.getenv("VERCEL"))
+
+
+def _default_mock_commerce_api_url() -> str:
+    """On Vercel, core-api and mock-commerce-api are two services in the
+    same deployment (see vercel.json) -- reach the commerce service through
+    this deployment's own domain under /api/commerce rather than hardcoding
+    a URL that wouldn't exist for preview deployments. Explicitly setting
+    MOCK_COMMERCE_API_URL still overrides this.
+    """
+    vercel_url = os.getenv("VERCEL_URL")
+    if running_on_vercel() and vercel_url:
+        return f"https://{vercel_url}/api/commerce"
+    return "http://localhost:8001"
 
 
 class Settings(BaseSettings):
@@ -47,12 +70,17 @@ class Settings(BaseSettings):
     # this field doesn't silently diverge from .env.example's default.
     database_url: str = ""
     redis_url: str = "redis://localhost:6379/0"
-    mock_commerce_api_url: str = "http://localhost:8001"
+    mock_commerce_api_url: str = Field(default_factory=_default_mock_commerce_api_url)
     mock_commerce_timeout_seconds: float = Field(default=10, ge=1, le=60)
 
     discord_webhook_url: str = ""
     admin_discord_webhook_url: str = ""
     discord_timeout_seconds: float = Field(default=10, ge=1, le=30)
+
+    # Verifies Vercel Cron requests to app/api/routes/cron.py (Authorization:
+    # Bearer <this>). Empty means those endpoints refuse everything -- see
+    # docs/vercel-deployment.md.
+    cron_secret: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

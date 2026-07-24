@@ -80,9 +80,15 @@ class PostgresConnection:
         return cursor
 
     def executescript(self, script: str) -> None:
+        # sqlite3.Connection.executescript() implicitly commits (its own
+        # documented behavior, independent of the connection's normal
+        # transaction control) -- match that here, or DDL run through this
+        # method stays in an uncommitted transaction and vanishes the
+        # moment the connection is closed.
         cursor = self._conn.cursor()
         for statement in _split_statements(script):
             cursor.execute(_rewrite_sql(statement))
+        self._conn.commit()
 
     def commit(self) -> None:
         self._conn.commit()
