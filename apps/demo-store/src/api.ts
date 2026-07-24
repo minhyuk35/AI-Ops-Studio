@@ -20,11 +20,77 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-const json = (method: string, body?: unknown): RequestInit => ({
+const json = (method: string, body?: unknown, token?: string): RequestInit => ({
   method,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  },
   body: body === undefined ? undefined : JSON.stringify(body),
 });
+
+const authGet = (token: string): RequestInit => ({
+  headers: { Authorization: `Bearer ${token}` },
+});
+
+export type MarketplaceRole = "CONSUMER" | "SELLER" | "ADMIN";
+
+export interface Organization {
+  id: string;
+  name: string;
+  category: string;
+  commission_rate: number;
+  status: string;
+}
+
+export interface AuthCustomer {
+  id: string;
+  email: string;
+  name: string;
+  phone: string;
+  is_admin: boolean;
+  role: MarketplaceRole;
+  organization: Organization | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  customer: AuthCustomer;
+}
+
+export interface SignupInput {
+  email: string;
+  password: string;
+  name: string;
+  phone: string;
+  as_seller?: boolean;
+  shop_name?: string;
+  shop_category?: string;
+}
+
+export const signup = (input: SignupInput) =>
+  request<AuthResponse>(`${commerceBaseUrl}/auth/signup`, json("POST", input));
+
+export const login = (email: string, password: string) =>
+  request<AuthResponse>(`${commerceBaseUrl}/auth/login`, json("POST", { email, password }));
+
+export const googleAuth = (
+  idToken: string,
+  extra?: { as_seller?: boolean; shop_name?: string; shop_category?: string },
+) =>
+  request<AuthResponse>(
+    `${commerceBaseUrl}/auth/google`,
+    json("POST", { id_token: idToken, ...extra }),
+  );
+
+export const getMe = (token: string) =>
+  request<AuthCustomer>(`${commerceBaseUrl}/customers/me`, authGet(token));
+
+export const activateSeller = (
+  token: string,
+  input: { shop_name: string; shop_category: string },
+) => request<AuthCustomer>(`${commerceBaseUrl}/sellers/activate`, json("POST", input, token));
 
 export const getCategories = () => request<Category[]>(`${commerceBaseUrl}/categories`);
 
@@ -72,11 +138,13 @@ export interface CheckoutInput {
   address2: string;
   delivery_memo: string;
   coupon_code?: string;
-  customer_id: string;
 }
 
-export const createOrder = (input: CheckoutInput) =>
-  request<Order>(`${commerceBaseUrl}/checkout/orders`, json("POST", input));
+// customer_id is never sent by the client — the server derives it from the
+// Authorization token (or leaves the order unattributed for a guest
+// checkout). See services/mock-commerce-api/app/main.py's create_order.
+export const createOrder = (input: CheckoutInput, token?: string) =>
+  request<Order>(`${commerceBaseUrl}/checkout/orders`, json("POST", input, token));
 
 export const confirmPayment = (orderId: string, amount: number, method: "CARD" | "EASY_PAY") =>
   request<{ order: Order }>(`${commerceBaseUrl}/payments/confirm`, json("POST", {
@@ -85,7 +153,8 @@ export const confirmPayment = (orderId: string, amount: number, method: "CARD" |
     method,
   }));
 
-export const getOrders = () => request<Order[]>(`${commerceBaseUrl}/customers/me/orders`);
+export const getOrders = (token: string) =>
+  request<Order[]>(`${commerceBaseUrl}/customers/me/orders`, authGet(token));
 export const getOrder = (orderId: string) =>
   request<Order>(`${commerceBaseUrl}/customers/me/orders/${orderId}`);
 export const cancelOrder = (orderId: string, reason: string) =>
@@ -93,8 +162,8 @@ export const cancelOrder = (orderId: string, reason: string) =>
 export const returnOrder = (orderId: string, reason: string) =>
   request<{ order: Order }>(`${commerceBaseUrl}/orders/${orderId}/returns`, json("POST", { reason }));
 
-export const getInquiries = () =>
-  request<Inquiry[]>(`${coreBaseUrl}/api/v1/inquiries?customer_id=cus_demo`);
+export const getInquiries = (customerId: string) =>
+  request<Inquiry[]>(`${coreBaseUrl}/api/v1/inquiries?customer_id=${encodeURIComponent(customerId)}`);
 export const getInquiry = (inquiryId: string) =>
   request<Inquiry>(`${coreBaseUrl}/api/v1/inquiries/${inquiryId}`);
 
@@ -104,6 +173,7 @@ export const askSupport = (input: {
   product?: Product | ProductDetail | null;
   inquiryId?: string | null;
   sessionId: string;
+  customerId: string;
 }) =>
   request<AIReply>(`${coreBaseUrl}/api/v1/ai/reply`, json("POST", {
     question: input.question,
@@ -125,7 +195,7 @@ export const askSupport = (input: {
     policy_context:
       "상품 준비 중에는 주문 취소가 가능합니다. 배송 완료 후 7일 이내 미사용 상품은 반품을 신청할 수 있으며 단순 변심 반품비는 3,000원입니다.",
     session_id: input.sessionId,
-    user_id: "cus_demo",
+    user_id: input.customerId,
     organization_id: "everyday-market",
     request_id: crypto.randomUUID().replaceAll("-", ""),
     channel: "demo-store",

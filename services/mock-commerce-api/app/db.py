@@ -7,7 +7,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+from app.auth import hash_password
+
 DEFAULT_ORG_ID = "org_demo"
+DEMO_CUSTOMER_PASSWORD = "demo1234"
 
 
 def utc_now() -> str:
@@ -51,6 +54,18 @@ CREATE TABLE IF NOT EXISTS customers (
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     phone TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL DEFAULT '',
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id TEXT PRIMARY KEY,
+    owner_customer_id TEXT NOT NULL UNIQUE REFERENCES customers(id),
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    commission_rate REAL NOT NULL DEFAULT 0.08,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
     created_at TEXT NOT NULL
 );
 
@@ -314,12 +329,45 @@ PRODUCTS = [
 ]
 
 
+def _ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    """Add columns missing from a pre-existing local dev DB.
+
+    CREATE TABLE IF NOT EXISTS is a no-op once a table already exists, so a
+    local data/commerce.db created before a schema change never gets new
+    columns without this. There's no real migration framework here, so this
+    is a deliberately minimal stand-in for one.
+    """
+    existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+    for name, ddl_type in columns.items():
+        if name not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl_type}")
+
+
 def initialize_database() -> None:
     with transaction() as connection:
         connection.executescript(SCHEMA)
+        _ensure_columns(
+            connection,
+            "customers",
+            {"password_hash": "TEXT NOT NULL DEFAULT ''", "is_admin": "INTEGER NOT NULL DEFAULT 0"},
+        )
         connection.execute(
-            "INSERT OR IGNORE INTO customers(id, email, name, phone, created_at) VALUES(?,?,?,?,?)",
-            ("cus_demo", "demo@example.com", "김민지", "010-0000-0000", utc_now()),
+            """
+            INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
+            VALUES(?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+                password_hash = CASE WHEN customers.password_hash = '' THEN excluded.password_hash
+                                      ELSE customers.password_hash END
+            """,
+            (
+                "cus_demo",
+                "demo@example.com",
+                "김민지",
+                "010-0000-0000",
+                hash_password(DEMO_CUSTOMER_PASSWORD),
+                0,
+                utc_now(),
+            ),
         )
         connection.executemany(
             """

@@ -19,7 +19,7 @@ redis>=6,<7
 
 # Security and operations
 PyJWT>=2.10,<3
-passlib[bcrypt]>=1.7,<2
+bcrypt>=4.1,<5
 email-validator>=2.2,<3
 structlog>=25,<26
 sentry-sdk[fastapi]>=2.33,<3

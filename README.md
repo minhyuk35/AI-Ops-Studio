@@ -52,6 +52,14 @@ Copy-Item .env.example .env
 
 `.env`에 `OPENROUTER_API_KEY`를 입력합니다. Langfuse를 사용하려면 Japan 리전 프로젝트의 `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`를 입력하고 `LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com`을 유지합니다. 실제 모델·temperature·max tokens는 Langfuse prompt `config`에서 가져오며 `.env`의 `OPENROUTER_DEFAULT_MODEL`은 Langfuse를 사용할 수 없을 때의 fallback입니다.
 
+`AUTH_SECRET_KEY`(로그인 토큰 서명)는 개발용 기본값이 코드에 있어 비워둬도 실행됩니다. 실제 배포 시에는 반드시 무작위 값으로 교체하세요.
+
+**구글 로그인(선택)**: 비워두면 로그인·회원가입 화면에 "구글 로그인은 설정되면 활성화됩니다" 안내만 표시되고 이메일·비밀번호 로그인은 그대로 동작합니다. 실제로 켜려면:
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → API 및 서비스 → 사용자 인증 정보에서 OAuth 클라이언트 ID(웹 애플리케이션)를 만듭니다.
+2. 승인된 자바스크립트 원본에 `http://localhost:5174`(고객 쇼핑몰)를 등록합니다.
+3. 발급된 클라이언트 ID를 `.env`의 `GOOGLE_CLIENT_ID`와 `VITE_GOOGLE_CLIENT_ID`에 동일하게 넣습니다.
+
 ### 2. Python 설치
 
 ```powershell
@@ -88,6 +96,8 @@ pnpm dev:web        # 고객 쇼핑몰 + Ops Console만
 - 쇼핑몰 API 문서: http://localhost:8001/docs
 
 `http://localhost:8000`과 `http://localhost:8001`은 API 상태와 문서 주소를 JSON으로 보여줍니다. 실제 화면은 5173/5174 포트입니다.
+
+고객 쇼핑몰에는 데모 로그인 계정(`demo@example.com` / `demo1234`)이 시드돼 있습니다. 회원가입 화면에서 "판매자로 시작하기"를 선택하거나, 로그인 후 마이페이지에서 "비즈니스로 가입하기"를 눌러 판매자로 전환할 수 있습니다.
 
 ## 검증
 

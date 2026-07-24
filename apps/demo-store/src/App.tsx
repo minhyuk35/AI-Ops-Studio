@@ -1,11 +1,13 @@
 import type { Cart, Inquiry, Order, Product, ProductDetail } from "@ai-ops/shared-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import {
+  activateSeller,
   addCartItem,
   askSupport,
+  AuthResponse,
   cancelOrder,
   confirmPayment,
   createOrder,
@@ -14,18 +16,35 @@ import {
   getCategories,
   getInquiries,
   getInquiry,
+  getMe,
   getOrder,
   getOrders,
   getProduct,
   getProducts,
+  googleAuth,
+  login,
   returnOrder,
+  signup,
+  SignupInput,
   updateCartItem,
 } from "./api";
 
-type View = "home" | "catalog" | "product" | "cart" | "checkout" | "orders" | "order" | "inquiries";
+type View =
+  | "home"
+  | "catalog"
+  | "product"
+  | "cart"
+  | "checkout"
+  | "orders"
+  | "order"
+  | "inquiries"
+  | "login"
+  | "signup"
+  | "profile";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const won = new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW", maximumFractionDigits: 0 });
+const AUTH_STORAGE_KEY = "everyday-auth";
 
 function persistentId(key: string, prefix: string) {
   const existing = localStorage.getItem(key);
@@ -35,8 +54,23 @@ function persistentId(key: string, prefix: string) {
   return value;
 }
 
+function loadStoredAuth(): AuthResponse | null {
+  const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthResponse;
+  } catch {
+    return null;
+  }
+}
+
 const cartId = persistentId("everyday-cart-id", "cart");
 const supportSessionId = persistentId("everyday-support-session", "session");
+// Anonymous browsers still get their own (unauthenticated) inquiry history
+// instead of everyone sharing one identity.
+const guestId = persistentId("everyday-guest-id", "guest");
+
+const roleLabel: Record<string, string> = { CONSUMER: "소비자", SELLER: "판매자", ADMIN: "총관리자" };
 
 const statusLabel: Record<string, string> = {
   PENDING_PAYMENT: "결제 대기",
@@ -62,6 +96,20 @@ export function App() {
   const [couponCode, setCouponCode] = useState<string | undefined>();
   const [notice, setNotice] = useState("");
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
+  const [auth, setAuth] = useState<AuthResponse | null>(loadStoredAuth);
+
+  const identityId = auth?.customer.id ?? guestId;
+  const persistAuth = (next: AuthResponse | null) => {
+    setAuth(next);
+    if (next) localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+    else localStorage.removeItem(AUTH_STORAGE_KEY);
+  };
+  const logout = () => {
+    persistAuth(null);
+    setView("home");
+    queryClient.invalidateQueries({ queryKey: ["orders"] });
+    queryClient.invalidateQueries({ queryKey: ["inquiries"] });
+  };
 
   const categories = useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const products = useQuery({
@@ -77,13 +125,20 @@ export function App() {
     queryKey: ["cart", cartId, couponCode],
     queryFn: () => getCart(cartId, couponCode),
   });
-  const orders = useQuery({ queryKey: ["orders"], queryFn: getOrders });
+  const orders = useQuery({
+    queryKey: ["orders", auth?.customer.id],
+    queryFn: () => getOrders(auth!.access_token),
+    enabled: Boolean(auth),
+  });
   const order = useQuery({
     queryKey: ["order", orderId],
     queryFn: () => getOrder(orderId!),
     enabled: Boolean(orderId),
   });
-  const inquiries = useQuery({ queryKey: ["inquiries", "customer"], queryFn: getInquiries });
+  const inquiries = useQuery({
+    queryKey: ["inquiries", identityId],
+    queryFn: () => getInquiries(identityId),
+  });
   const inquiry = useQuery({
     queryKey: ["inquiry", selectedInquiryId],
     queryFn: () => getInquiry(selectedInquiryId!),
@@ -140,7 +195,14 @@ export function App() {
           <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="상품 검색" aria-label="상품 검색" />
           <button>검색</button>
         </form>
-        <button className="cart-button" onClick={() => setView("cart")}>BAG <b>{cart.data?.item_count ?? 0}</b></button>
+        <div className="header-actions">
+          {auth ? (
+            <button className="account-button" onClick={() => setView("profile")}>{auth.customer.name}</button>
+          ) : (
+            <button className="account-button" onClick={() => setView("login")}>로그인</button>
+          )}
+          <button className="cart-button" onClick={() => setView("cart")}>BAG <b>{cart.data?.item_count ?? 0}</b></button>
+        </div>
       </header>
 
       {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice("")}>닫기</button></div>}
@@ -191,6 +253,8 @@ export function App() {
         <CheckoutPage
           cart={cart.data}
           couponCode={couponCode}
+          token={auth?.access_token}
+          defaultEmail={auth?.customer.email}
           onBack={() => setView("cart")}
           onComplete={(completedOrder) => {
             setOrderId(completedOrder.id);
@@ -228,8 +292,30 @@ export function App() {
           onSelect={setSelectedInquiryId}
         />
       )}
+      {view === "login" && (
+        <LoginPage
+          onLoggedIn={(response) => { persistAuth(response); setView("profile"); }}
+          onGoToSignup={() => setView("signup")}
+          onError={setNotice}
+        />
+      )}
+      {view === "signup" && (
+        <SignupPage
+          onSignedUp={(response) => { persistAuth(response); setView("profile"); }}
+          onGoToLogin={() => setView("login")}
+          onError={setNotice}
+        />
+      )}
+      {view === "profile" && auth && (
+        <ProfilePage
+          auth={auth}
+          onUpdated={persistAuth}
+          onLogout={logout}
+          onError={setNotice}
+        />
+      )}
 
-      <SupportChat order={order.data ?? null} product={product.data ?? null} onSaved={() => {
+      <SupportChat order={order.data ?? null} product={product.data ?? null} customerId={identityId} onSaved={() => {
         queryClient.invalidateQueries({ queryKey: ["inquiries"] });
       }} />
 
@@ -282,10 +368,10 @@ function CartPage({ cart, couponInput, onCouponInput, onApplyCoupon, onQuantity,
   return <main className="store-section cart-page"><SectionTitle eyebrow="SHOPPING BAG" title={`장바구니 ${cart.item_count}개`} /><div className="cart-layout"><div>{cart.items.map((item) => <article className="cart-item" key={item.id}><img src={item.image} alt="" /><div><small>{item.brand}</small><h3>{item.name}</h3><p>{item.color} / {item.size}</p><div className="quantity"><button disabled={item.quantity <= 1} onClick={() => onQuantity(item.id, item.quantity - 1)}>−</button><span>{item.quantity}</span><button disabled={item.quantity >= item.stock} onClick={() => onQuantity(item.id, item.quantity + 1)}>+</button></div></div><div><b>{won.format(item.line_total)}</b><button className="link" onClick={() => onRemove(item.id)}>삭제</button></div></article>)}</div><aside className="summary"><h2>주문 요약</h2><div className="coupon"><input value={couponInput} onChange={(e) => onCouponInput(e.target.value)} placeholder="WELCOME10" /><button onClick={onApplyCoupon}>적용</button></div>{cart.coupon_message && <small>{cart.coupon_message}</small>}<p><span>상품금액</span><b>{won.format(cart.subtotal)}</b></p><p><span>할인</span><b>−{won.format(cart.discount)}</b></p><p><span>배송비</span><b>{won.format(cart.shipping_fee)}</b></p><p className="total"><span>결제 예정금액</span><strong>{won.format(cart.total)}</strong></p><button className="primary dark block" disabled={!cart.valid} onClick={onCheckout}>주문하기</button></aside></div></main>;
 }
 
-function CheckoutPage({ cart, couponCode, onBack, onComplete, onError }: { cart: Cart; couponCode?: string; onBack: () => void; onComplete: (order: Order) => void; onError: (message: string) => void }) {
-  const [form, setForm] = useState({ email: "demo@example.com", recipient: "김민지", phone: "010-0000-0000", postal_code: "04524", address1: "서울특별시 중구 세종대로 110", address2: "101호", delivery_memo: "문 앞에 놓아주세요." });
+function CheckoutPage({ cart, couponCode, token, defaultEmail, onBack, onComplete, onError }: { cart: Cart; couponCode?: string; token?: string; defaultEmail?: string; onBack: () => void; onComplete: (order: Order) => void; onError: (message: string) => void }) {
+  const [form, setForm] = useState({ email: defaultEmail ?? "demo@example.com", recipient: "김민지", phone: "010-0000-0000", postal_code: "04524", address1: "서울특별시 중구 세종대로 110", address2: "101호", delivery_memo: "문 앞에 놓아주세요." });
   const [method, setMethod] = useState<"CARD" | "EASY_PAY">("CARD");
-  const mutation = useMutation({ mutationFn: async () => { const pending = await createOrder({ ...form, cart_id: cart.id, coupon_code: couponCode, customer_id: "cus_demo" }); const paid = await confirmPayment(pending.id, pending.total, method); return paid.order; }, onSuccess: onComplete, onError: (error: Error) => onError(error.message) });
+  const mutation = useMutation({ mutationFn: async () => { const pending = await createOrder({ ...form, cart_id: cart.id, coupon_code: couponCode }, token); const paid = await confirmPayment(pending.id, pending.total, method); return paid.order; }, onSuccess: onComplete, onError: (error: Error) => onError(error.message) });
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
   return <main className="store-section checkout-page"><SectionTitle eyebrow="CHECKOUT" title="주문서" /><form onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}><section><h2>배송 정보</h2><div className="form-grid"><label>이메일<input type="email" required value={form.email} onChange={(e) => update("email", e.target.value)} /></label><label>받는 분<input required value={form.recipient} onChange={(e) => update("recipient", e.target.value)} /></label><label>연락처<input required value={form.phone} onChange={(e) => update("phone", e.target.value)} /></label><label>우편번호<input required value={form.postal_code} onChange={(e) => update("postal_code", e.target.value)} /></label><label className="wide">기본주소<input required value={form.address1} onChange={(e) => update("address1", e.target.value)} /></label><label className="wide">상세주소<input value={form.address2} onChange={(e) => update("address2", e.target.value)} /></label><label className="wide">배송 메모<input value={form.delivery_memo} onChange={(e) => update("delivery_memo", e.target.value)} /></label></div></section><section><h2>결제수단</h2><div className="payment-methods"><label><input type="radio" checked={method === "CARD"} onChange={() => setMethod("CARD")} /> 신용·체크카드</label><label><input type="radio" checked={method === "EASY_PAY"} onChange={() => setMethod("EASY_PAY")} /> 간편결제</label></div><p className="demo-note">포트폴리오 데모 결제로 실제 금액은 청구되지 않습니다.</p></section><section className="checkout-total"><p>최종 결제금액 <strong>{won.format(cart.total)}</strong></p><label><input type="checkbox" required /> 주문 내용과 배송·취소·반품 정책을 확인했으며 결제에 동의합니다.</label></section><div className="checkout-actions"><button type="button" onClick={onBack}>장바구니로</button><button className="primary dark" disabled={mutation.isPending}>{mutation.isPending ? "결제 처리 중…" : `${won.format(cart.total)} 결제하기`}</button></div></form></main>;
 }
@@ -296,14 +382,272 @@ function OrderPage({ order, onCancel, onReturn }: { order: Order; onCancel: () =
 
 function InquiryPage({ inquiries, selected, onSelect }: { inquiries: Inquiry[]; selected?: Inquiry; onSelect: (id: string) => void }) { return <main className="store-section"><SectionTitle eyebrow="SUPPORT" title="문의 내역" /><div className="inquiry-layout"><div className="inquiry-list">{inquiries.map((item) => <button key={item.id} onClick={() => onSelect(item.id)}><span>{item.category}</span><div><b>{item.subject}</b><small>{item.status} · 메시지 {item.message_count ?? 0}개</small></div></button>)}{!inquiries.length && <div className="empty">아직 문의 내역이 없습니다. 오른쪽 아래 AI 고객지원을 이용해보세요.</div>}</div>{selected && <section className="conversation"><h2>{selected.subject}</h2>{selected.messages?.map((message) => <div className={`bubble ${message.role}`} key={message.id}><b>{message.role === "user" ? "나" : "AI 고객지원"}</b><div className="markdown-body"><ReactMarkdown>{message.content}</ReactMarkdown></div><small>{new Date(message.created_at).toLocaleString("ko-KR")}</small></div>)}</section>}</div></main>; }
 
-function SupportChat({ order, product, onSaved }: { order: Order | null; product: ProductDetail | null; onSaved: () => void }) {
+function SupportChat({ order, product, customerId, onSaved }: { order: Order | null; product: ProductDetail | null; customerId: string; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [inquiryId, setInquiryId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: "assistant", content: "안녕하세요. 상품, 배송, 취소·반품에 대해 물어보세요." }]);
   const context = useMemo(() => order ? `주문 ${order.id}` : product ? product.name : "일반 문의", [order, product]);
-  const support = useMutation({ mutationFn: (text: string) => askSupport({ question: text, order, product, inquiryId, sessionId: supportSessionId }), onSuccess: (data) => { setInquiryId(data.inquiry_id); setMessages((current) => [...current, { role: "assistant", content: data.answer }]); onSaved(); }, onError: (error: Error) => setMessages((current) => [...current, { role: "assistant", content: error.message }]) });
+  const support = useMutation({ mutationFn: (text: string) => askSupport({ question: text, order, product, inquiryId, sessionId: supportSessionId, customerId }), onSuccess: (data) => { setInquiryId(data.inquiry_id); setMessages((current) => [...current, { role: "assistant", content: data.answer }]); onSaved(); }, onError: (error: Error) => setMessages((current) => [...current, { role: "assistant", content: error.message }]) });
   const submit = (event: FormEvent) => { event.preventDefault(); const text = question.trim(); if (!text) return; setMessages((current) => [...current, { role: "user", content: text }]); setQuestion(""); support.mutate(text); };
   if (!open) return <button className="chat-launcher" onClick={() => setOpen(true)} aria-label="AI 고객지원 열기">AI</button>;
   return <aside className="chat"><header><div><b>AI 고객지원</b><small>{context}</small></div><button onClick={() => setOpen(false)}>닫기</button></header><div className="messages">{messages.map((message, index) => <div className={`message ${message.role}`} key={index}><div className="markdown-body"><ReactMarkdown>{message.content}</ReactMarkdown></div></div>)}{support.isPending && <div className="message assistant">답변을 확인하고 있습니다…</div>}</div><form onSubmit={submit}><input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="문의 내용을 입력하세요" /><button disabled={support.isPending}>전송</button></form></aside>;
+}
+
+// Google Identity Services loads as a plain <script> tag (no npm package),
+// so this augments the ambient Window type just enough to call it typed.
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: { theme?: string; size?: string; text?: string; width?: number },
+          ) => void;
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
+const GOOGLE_SCRIPT_ID = "google-identity-services";
+
+function GoogleSignInButton({
+  asSeller,
+  shopName,
+  shopCategory,
+  onSuccess,
+  onError,
+}: {
+  asSeller?: boolean;
+  shopName?: string;
+  shopCategory?: string;
+  onSuccess: (auth: AuthResponse) => void;
+  onError: (message: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const render = () => {
+      if (!window.google || !container) return;
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (response) => {
+          googleAuth(
+            response.credential,
+            asSeller ? { as_seller: true, shop_name: shopName, shop_category: shopCategory } : undefined,
+          )
+            .then(onSuccess)
+            .catch((error: Error) => onError(error.message));
+        },
+      });
+      container.innerHTML = "";
+      window.google.accounts.id.renderButton(container, {
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        width: 320,
+      });
+    };
+
+    if (window.google) {
+      render();
+      return;
+    }
+    const existing = document.getElementById(GOOGLE_SCRIPT_ID);
+    if (existing) {
+      existing.addEventListener("load", render);
+      return () => existing.removeEventListener("load", render);
+    }
+    const script = document.createElement("script");
+    script.id = GOOGLE_SCRIPT_ID;
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.onload = render;
+    document.head.appendChild(script);
+  }, [asSeller, shopName, shopCategory, onError, onSuccess]);
+
+  if (!GOOGLE_CLIENT_ID) {
+    return (
+      <p className="google-signin-disabled">
+        구글 로그인은 관리자가 GOOGLE_CLIENT_ID 환경변수를 설정하면 활성화됩니다.
+      </p>
+    );
+  }
+  return <div ref={containerRef} className="google-signin-button" />;
+}
+
+function LoginPage({
+  onLoggedIn,
+  onGoToSignup,
+  onError,
+}: {
+  onLoggedIn: (auth: AuthResponse) => void;
+  onGoToSignup: () => void;
+  onError: (message: string) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const mutation = useMutation({
+    mutationFn: () => login(email, password),
+    onSuccess: onLoggedIn,
+    onError: (error: Error) => onError(error.message),
+  });
+  return (
+    <main className="store-section auth-page">
+      <SectionTitle eyebrow="ACCOUNT" title="로그인" />
+      <form className="auth-form" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
+        <label>이메일<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+        <label>비밀번호<input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+        <button className="primary dark block" disabled={mutation.isPending}>{mutation.isPending ? "로그인 중…" : "로그인"}</button>
+      </form>
+      <div className="auth-divider"><span>또는</span></div>
+      <GoogleSignInButton onSuccess={onLoggedIn} onError={onError} />
+      <p className="auth-switch">아직 계정이 없으신가요? <button className="link" onClick={onGoToSignup}>회원가입</button></p>
+      <p className="demo-note">데모 계정: demo@example.com / demo1234</p>
+    </main>
+  );
+}
+
+function SignupPage({
+  onSignedUp,
+  onGoToLogin,
+  onError,
+}: {
+  onSignedUp: (auth: AuthResponse) => void;
+  onGoToLogin: () => void;
+  onError: (message: string) => void;
+}) {
+  const [form, setForm] = useState({ email: "", password: "", name: "", phone: "" });
+  const [asSeller, setAsSeller] = useState(false);
+  const [shopName, setShopName] = useState("");
+  const [shopCategory, setShopCategory] = useState("패션");
+  const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const mutation = useMutation({
+    mutationFn: () =>
+      signup({
+        ...form,
+        as_seller: asSeller,
+        shop_name: asSeller ? shopName : undefined,
+        shop_category: asSeller ? shopCategory : undefined,
+      } satisfies SignupInput),
+    onSuccess: onSignedUp,
+    onError: (error: Error) => onError(error.message),
+  });
+  return (
+    <main className="store-section auth-page">
+      <SectionTitle eyebrow="ACCOUNT" title="회원가입" />
+      <form className="auth-form" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
+        <label>이메일<input type="email" required value={form.email} onChange={(e) => update("email", e.target.value)} /></label>
+        <label>비밀번호(8자 이상)<input type="password" required minLength={8} value={form.password} onChange={(e) => update("password", e.target.value)} /></label>
+        <label>이름<input required value={form.name} onChange={(e) => update("name", e.target.value)} /></label>
+        <label>연락처<input required value={form.phone} onChange={(e) => update("phone", e.target.value)} /></label>
+        <label className="seller-toggle">
+          <input type="checkbox" checked={asSeller} onChange={(e) => setAsSeller(e.target.checked)} />
+          판매자로 시작하기 (본인 상품을 등록하고 판매 수수료를 냅니다)
+        </label>
+        {asSeller && (
+          <div className="form-grid seller-fields">
+            <label>상점명<input required={asSeller} value={shopName} onChange={(e) => setShopName(e.target.value)} /></label>
+            <label>카테고리
+              <select value={shopCategory} onChange={(e) => setShopCategory(e.target.value)}>
+                <option value="패션">패션</option>
+                <option value="가방·잡화">가방·잡화</option>
+                <option value="슈즈·액세서리">슈즈·액세서리</option>
+                <option value="기타">기타</option>
+              </select>
+            </label>
+          </div>
+        )}
+        <button className="primary dark block" disabled={mutation.isPending}>{mutation.isPending ? "가입 처리 중…" : "회원가입"}</button>
+      </form>
+      <div className="auth-divider"><span>또는</span></div>
+      <GoogleSignInButton asSeller={asSeller} shopName={shopName} shopCategory={shopCategory} onSuccess={onSignedUp} onError={onError} />
+      <p className="auth-switch">이미 계정이 있으신가요? <button className="link" onClick={onGoToLogin}>로그인</button></p>
+    </main>
+  );
+}
+
+function ProfilePage({
+  auth,
+  onUpdated,
+  onLogout,
+  onError,
+}: {
+  auth: AuthResponse;
+  onUpdated: (auth: AuthResponse) => void;
+  onLogout: () => void;
+  onError: (message: string) => void;
+}) {
+  const [shopName, setShopName] = useState("");
+  const [shopCategory, setShopCategory] = useState("패션");
+  const refreshMe = useMutation({
+    mutationFn: () => getMe(auth.access_token),
+    onSuccess: (customer) => onUpdated({ ...auth, customer }),
+    onError: (error: Error) => onError(error.message),
+  });
+  const activate = useMutation({
+    mutationFn: () => activateSeller(auth.access_token, { shop_name: shopName, shop_category: shopCategory }),
+    onSuccess: (customer) => onUpdated({ ...auth, customer }),
+    onError: (error: Error) => onError(error.message),
+  });
+  const { customer } = auth;
+  return (
+    <main className="store-section profile-page">
+      <SectionTitle eyebrow="MY ACCOUNT" title="마이페이지" />
+      <div className="profile-card">
+        <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
+        <h2>{customer.name}</h2>
+        <p>{customer.email} · {customer.phone}</p>
+        <div className="profile-actions">
+          <button className="link" onClick={() => refreshMe.mutate()} disabled={refreshMe.isPending}>정보 새로고침</button>
+          <button className="link" onClick={onLogout}>로그아웃</button>
+        </div>
+      </div>
+
+      {customer.role === "CONSUMER" && (
+        <div className="seller-activate-card">
+          <h3>비즈니스로 가입하기</h3>
+          <p>본인 상품(옷, 신발 등)을 등록해 판매하고 싶다면 판매자로 전환하세요. 판매 건마다 플랫폼 수수료가 차감됩니다.</p>
+          <div className="form-grid">
+            <label>상점명<input required value={shopName} onChange={(e) => setShopName(e.target.value)} /></label>
+            <label>카테고리
+              <select value={shopCategory} onChange={(e) => setShopCategory(e.target.value)}>
+                <option value="패션">패션</option>
+                <option value="가방·잡화">가방·잡화</option>
+                <option value="슈즈·액세서리">슈즈·액세서리</option>
+                <option value="기타">기타</option>
+              </select>
+            </label>
+          </div>
+          <button
+            className="primary dark"
+            disabled={activate.isPending || !shopName.trim()}
+            onClick={() => activate.mutate()}
+          >
+            {activate.isPending ? "처리 중…" : "판매자로 활성화"}
+          </button>
+        </div>
+      )}
+
+      {customer.organization && (
+        <div className="seller-activate-card">
+          <h3>판매자 상점</h3>
+          <p><b>{customer.organization.name}</b> · {customer.organization.category}</p>
+          <p>플랫폼 수수료율 {Math.round(customer.organization.commission_rate * 100)}% · 상태 {customer.organization.status}</p>
+          <p className="demo-note">판매자 콘솔(상품 등록·매출 관리)은 다음 단계에서 제공될 예정입니다.</p>
+        </div>
+      )}
+    </main>
+  );
 }

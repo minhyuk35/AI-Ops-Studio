@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
@@ -13,7 +13,17 @@ from app.analytics import (
     product_breakdown,
     revenue_summary_with_comparison,
 )
+from app.auth import (
+    GoogleTokenError,
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_google_id_token,
+    verify_password,
+)
 from app.db import connect, initialize_database, record_event, row_to_dict, transaction, utc_now
+
+DEFAULT_COMMISSION_RATE = 0.08
 
 FREE_SHIPPING_THRESHOLD = 100_000
 STANDARD_SHIPPING_FEE = 3_000
@@ -59,7 +69,6 @@ class CheckoutRequest(BaseModel):
     address2: str = Field(default="", max_length=200)
     delivery_memo: str = Field(default="", max_length=200)
     coupon_code: str | None = Field(default=None, max_length=30)
-    customer_id: str | None = "cus_demo"
 
 
 class PaymentConfirm(BaseModel):
@@ -75,6 +84,28 @@ class OrderAction(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=4, max_length=100)
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=100)
+    name: str = Field(min_length=1, max_length=50)
+    phone: str = Field(min_length=9, max_length=20)
+    as_seller: bool = False
+    shop_name: str | None = Field(default=None, max_length=80)
+    shop_category: str | None = Field(default=None, max_length=40)
+
+
+class SellerActivateRequest(BaseModel):
+    shop_name: str = Field(min_length=2, max_length=80)
+    shop_category: str = Field(min_length=2, max_length=40)
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str = Field(min_length=10)
+    as_seller: bool = False
+    shop_name: str | None = Field(default=None, max_length=80)
+    shop_category: str | None = Field(default=None, max_length=40)
 
 
 def fetch_product(connection, identifier: str) -> dict[str, object]:
@@ -202,6 +233,50 @@ def order_payload(connection, order_id: str) -> dict[str, object]:
     return result
 
 
+def customer_profile(connection, customer_row) -> dict[str, object]:
+    """Customer row + derived marketplace role (see docs/ai-ops-studio-master-prd.html#personas).
+
+    GUEST has no row at all (caller just gets None back). Everyone with an
+    account is CONSUMER unless they own an organization (SELLER) or carry
+    the platform is_admin flag (ADMIN).
+    """
+    customer = dict(customer_row)
+    customer.pop("password_hash", None)
+    organization = row_to_dict(
+        connection.execute(
+            "SELECT * FROM organizations WHERE owner_customer_id = ?", (customer["id"],)
+        ).fetchone()
+    )
+    if customer.get("is_admin"):
+        role = "ADMIN"
+    elif organization is not None:
+        role = "SELLER"
+    else:
+        role = "CONSUMER"
+    customer["is_admin"] = bool(customer.get("is_admin"))
+    customer["role"] = role
+    customer["organization"] = organization
+    return customer
+
+
+def authenticate(connection, authorization: str | None) -> dict[str, object] | None:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    customer_id = decode_access_token(token)
+    if not customer_id:
+        return None
+    row = connection.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    return dict(row) if row is not None else None
+
+
+def require_customer(connection, authorization: str | None) -> dict[str, object]:
+    customer = authenticate(connection, authorization)
+    if customer is None:
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+    return customer
+
+
 @app.get("/")
 async def root() -> dict[str, str]:
     return {"service": "Everyday Market Commerce API", "docs": "/docs"}
@@ -276,28 +351,168 @@ async def get_product(identifier: str) -> dict[str, object]:
         return fetch_product(connection, identifier)
 
 
+@app.post("/auth/signup", status_code=201)
+async def signup(payload: SignupRequest) -> dict[str, object]:
+    if payload.as_seller and not (payload.shop_name and payload.shop_category):
+        raise HTTPException(
+            status_code=400, detail="판매자로 가입하려면 상점명과 카테고리가 필요합니다."
+        )
+    with transaction() as connection:
+        existing = connection.execute(
+            "SELECT id FROM customers WHERE email = ?", (payload.email,)
+        ).fetchone()
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
+        customer_id = f"cus_{uuid4().hex[:12]}"
+        now = utc_now()
+        connection.execute(
+            """
+            INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
+            VALUES(?,?,?,?,?,0,?)
+            """,
+            (
+                customer_id,
+                payload.email,
+                payload.name,
+                payload.phone,
+                hash_password(payload.password),
+                now,
+            ),
+        )
+        if payload.as_seller:
+            connection.execute(
+                """
+                INSERT INTO organizations(
+                    id, owner_customer_id, name, category, commission_rate, status, created_at
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    f"org_{uuid4().hex[:12]}",
+                    customer_id,
+                    payload.shop_name,
+                    payload.shop_category,
+                    DEFAULT_COMMISSION_RATE,
+                    "ACTIVE",
+                    now,
+                ),
+            )
+        customer_row = connection.execute(
+            "SELECT * FROM customers WHERE id = ?", (customer_id,)
+        ).fetchone()
+        profile = customer_profile(connection, customer_row)
+    return {
+        "access_token": create_access_token(customer_id),
+        "token_type": "bearer",
+        "customer": profile,
+    }
+
+
 @app.post("/auth/login")
 async def login(payload: LoginRequest) -> dict[str, object]:
     with closing(connect()) as connection:
-        customer = connection.execute(
-            "SELECT id, email, name, phone FROM customers WHERE email = ?", (payload.email,)
+        customer_row = connection.execute(
+            "SELECT * FROM customers WHERE email = ?", (payload.email,)
         ).fetchone()
-    if customer is None:
-        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호를 확인해주세요.")
+        if customer_row is None or not verify_password(
+            payload.password, customer_row["password_hash"]
+        ):
+            raise HTTPException(status_code=401, detail="이메일 또는 비밀번호를 확인해주세요.")
+        profile = customer_profile(connection, customer_row)
     return {
-        "access_token": "demo-customer-token",
+        "access_token": create_access_token(profile["id"]),
         "token_type": "bearer",
-        "customer": dict(customer),
+        "customer": profile,
+    }
+
+
+@app.post("/auth/google")
+async def google_auth(payload: GoogleAuthRequest) -> dict[str, object]:
+    try:
+        claims = verify_google_id_token(payload.id_token)
+    except GoogleTokenError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    email = str(claims["email"])
+    name = str(claims.get("name") or email.split("@")[0])
+    with transaction() as connection:
+        customer_row = connection.execute(
+            "SELECT * FROM customers WHERE email = ?", (email,)
+        ).fetchone()
+        if customer_row is None:
+            customer_id = f"cus_{uuid4().hex[:12]}"
+            now = utc_now()
+            connection.execute(
+                """
+                INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
+                VALUES(?,?,?,?,?,0,?)
+                """,
+                (customer_id, email, name, "", "", now),
+            )
+            if payload.as_seller and payload.shop_name and payload.shop_category:
+                connection.execute(
+                    """
+                    INSERT INTO organizations(
+                        id, owner_customer_id, name, category, commission_rate, status, created_at
+                    ) VALUES(?,?,?,?,?,?,?)
+                    """,
+                    (
+                        f"org_{uuid4().hex[:12]}",
+                        customer_id,
+                        payload.shop_name,
+                        payload.shop_category,
+                        DEFAULT_COMMISSION_RATE,
+                        "ACTIVE",
+                        now,
+                    ),
+                )
+            customer_row = connection.execute(
+                "SELECT * FROM customers WHERE id = ?", (customer_id,)
+            ).fetchone()
+        profile = customer_profile(connection, customer_row)
+    return {
+        "access_token": create_access_token(profile["id"]),
+        "token_type": "bearer",
+        "customer": profile,
     }
 
 
 @app.get("/customers/me")
-async def current_customer() -> dict[str, object]:
+async def current_customer(authorization: str | None = Header(default=None)) -> dict[str, object]:
     with closing(connect()) as connection:
-        customer = connection.execute(
-            "SELECT id, email, name, phone FROM customers WHERE id = 'cus_demo'"
+        customer = require_customer(connection, authorization)
+        return customer_profile(connection, customer)
+
+
+@app.post("/sellers/activate", status_code=201)
+async def activate_seller(
+    payload: SellerActivateRequest, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        existing_org = connection.execute(
+            "SELECT id FROM organizations WHERE owner_customer_id = ?", (customer["id"],)
         ).fetchone()
-    return dict(customer) if customer else {}
+        if existing_org is not None:
+            raise HTTPException(status_code=409, detail="이미 판매자로 활성화된 계정입니다.")
+        connection.execute(
+            """
+            INSERT INTO organizations(
+                id, owner_customer_id, name, category, commission_rate, status, created_at
+            ) VALUES(?,?,?,?,?,?,?)
+            """,
+            (
+                f"org_{uuid4().hex[:12]}",
+                customer["id"],
+                payload.shop_name,
+                payload.shop_category,
+                DEFAULT_COMMISSION_RATE,
+                "ACTIVE",
+                utc_now(),
+            ),
+        )
+        updated = connection.execute(
+            "SELECT * FROM customers WHERE id = ?", (customer["id"],)
+        ).fetchone()
+        return customer_profile(connection, updated)
 
 
 @app.get("/carts/{cart_id}")
@@ -377,8 +592,13 @@ async def validate_checkout(payload: CheckoutRequest) -> dict[str, object]:
 
 
 @app.post("/checkout/orders", status_code=201)
-async def create_order(payload: CheckoutRequest) -> dict[str, object]:
+async def create_order(
+    payload: CheckoutRequest, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
     with transaction() as connection:
+        # Identity comes from the token, never from the request body — a guest
+        # checkout (no/invalid token) still works and is just left unattributed.
+        customer = authenticate(connection, authorization)
         cart = cart_payload(connection, payload.cart_id, payload.coupon_code)
         if not cart["valid"]:
             raise HTTPException(
@@ -405,7 +625,7 @@ async def create_order(payload: CheckoutRequest) -> dict[str, object]:
             """,
             (
                 order_id,
-                payload.customer_id,
+                customer["id"] if customer else None,
                 payload.email,
                 payload.recipient,
                 payload.phone,
@@ -523,11 +743,21 @@ async def confirm_payment(payload: PaymentConfirm) -> dict[str, object]:
 
 
 @app.get("/orders")
-@app.get("/customers/me/orders")
 async def list_orders() -> list[dict[str, object]]:
     with closing(connect()) as connection:
+        ids = connection.execute("SELECT id FROM orders ORDER BY ordered_at DESC").fetchall()
+        return [order_payload(connection, row["id"]) for row in ids]
+
+
+@app.get("/customers/me/orders")
+async def list_my_orders(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        customer = require_customer(connection, authorization)
         ids = connection.execute(
-            "SELECT id FROM orders WHERE customer_id = 'cus_demo' ORDER BY ordered_at DESC"
+            "SELECT id FROM orders WHERE customer_id = ? ORDER BY ordered_at DESC",
+            (customer["id"],),
         ).fetchall()
         return [order_payload(connection, row["id"]) for row in ids]
 
