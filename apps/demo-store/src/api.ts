@@ -287,3 +287,124 @@ export const updateOrganizationStatus = (
     `${commerceBaseUrl}/admin/organizations/${orgId}`,
     json("PATCH", { status }, token),
   );
+
+export const getOrgInquiries = (token: string, orgId: string) =>
+  request<Inquiry[]>(
+    `${coreBaseUrl}/api/v1/inquiries?org_id=${encodeURIComponent(orgId)}`,
+    authGet(token),
+  );
+
+export interface SellerDailyProduct {
+  product_id: string;
+  product_name: string;
+  stock: number;
+  views: number;
+  units_sold: number;
+  revenue: number;
+  refund_units: number;
+  refund_amount: number;
+}
+
+export interface SellerDailySnapshot {
+  date: string;
+  org_id: string;
+  org_name: string;
+  revenue: { gross_revenue: number; refund_amount: number; net_revenue: number; order_count: number };
+  products: SellerDailyProduct[];
+  highlights: {
+    most_viewed: SellerDailyProduct | null;
+    least_viewed: SellerDailyProduct | null;
+    most_purchased: SellerDailyProduct | null;
+    most_refunded: SellerDailyProduct | null;
+    out_of_stock: SellerDailyProduct[];
+    low_stock: SellerDailyProduct[];
+  };
+}
+
+export interface SellerDailyReport {
+  date: string;
+  org_id: string;
+  org_name: string;
+  report: string;
+  snapshot: SellerDailySnapshot;
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+  discord_sent: boolean;
+}
+
+export const getSellerDailyReport = (token: string, orgId: string, sendDiscord: boolean) =>
+  request<SellerDailyReport>(
+    `${coreBaseUrl}/api/v1/ai/seller-daily-report`,
+    json("POST", { org_id: orgId, send_discord: sendDiscord }, token),
+  );
+
+export interface PlatformTrafficProduct {
+  product_id: string;
+  product_name: string;
+  org_name: string;
+  views: number;
+}
+
+export interface PlatformTrafficSnapshot {
+  date: string;
+  total_views: number;
+  top_products: PlatformTrafficProduct[];
+  least_viewed_products: PlatformTrafficProduct[];
+  store_ranking: { org_name: string; views: number }[];
+}
+
+export interface PlatformTrafficReport {
+  date: string;
+  report: string;
+  snapshot: PlatformTrafficSnapshot;
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+  discord_sent: boolean;
+}
+
+export const getPlatformDailyTraffic = (token: string, sendDiscord: boolean) =>
+  request<PlatformTrafficReport>(
+    `${coreBaseUrl}/api/v1/ai/platform-daily-traffic`,
+    json("POST", { send_discord: sendDiscord }, token),
+  );
+
+export interface SellerMarketShareRow {
+  org_id: string;
+  org_name: string;
+  plan: "FREE" | "BASIC" | "PRO" | "BUSINESS";
+  gross_revenue: number;
+  refund_amount: number;
+  net_revenue: number;
+  commission_revenue: number;
+  plan_fee: number;
+  platform_contribution: number;
+  share_pct: number | null;
+  previous_share_pct: number | null;
+}
+
+export interface SellerMarketShareSnapshot {
+  period: string;
+  previous_period: string;
+  total_platform_revenue: number;
+  platform_default_revenue: number;
+  platform_default_share_pct: number | null;
+  sellers: SellerMarketShareRow[];
+}
+
+export interface SellerMarketShareReport {
+  period: string;
+  report: string;
+  snapshot: SellerMarketShareSnapshot;
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+  discord_sent: boolean;
+}
+
+export const getSellerMarketShare = (token: string, sendDiscord: boolean) =>
+  request<SellerMarketShareReport>(
+    `${coreBaseUrl}/api/v1/ai/seller-market-share`,
+    json("POST", { send_discord: sendDiscord }, token),
+  );

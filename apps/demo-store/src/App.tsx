@@ -26,13 +26,20 @@ import {
   getOrder,
   getOrders,
   getOrganizations,
+  getOrgInquiries,
+  getPlatformDailyTraffic,
   getProduct,
   getProducts,
+  getSellerDailyReport,
+  getSellerMarketShare,
   googleAuth,
   login,
   OrganizationSummary,
+  PlatformTrafficReport,
   recordProductView,
   returnOrder,
+  SellerDailyReport,
+  SellerMarketShareReport,
   SellerProduct,
   SellerProductInput,
   signup,
@@ -155,6 +162,13 @@ const statusLabel: Record<string, string> = {
   DELIVERED: "배송 완료",
   CANCELLED: "주문 취소",
   RETURN_REQUESTED: "반품 접수",
+};
+const inquiryStatusLabel: Record<string, string> = {
+  RECEIVED: "접수",
+  AI_PROCESSING: "AI 처리 중",
+  AUTO_RESOLVED: "AI 자동 해결",
+  ESCALATED: "상담원 이관",
+  RESOLVED: "해결",
 };
 
 export function App() {
@@ -934,6 +948,7 @@ function SellerConsolePage({
   onError: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<"dashboard" | "inquiries" | "products">("dashboard");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -944,9 +959,11 @@ function SellerConsolePage({
     size: "",
     stock: "1",
   });
+  const orgId = auth.customer.organization?.id;
   const products = useQuery({
     queryKey: ["seller-products", auth.customer.id],
     queryFn: () => getMyProducts(auth.access_token),
+    enabled: tab === "products",
   });
   const create = useMutation({
     mutationFn: () =>
@@ -975,63 +992,159 @@ function SellerConsolePage({
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   return (
-    <main className="store-section profile-page">
+    <main className="store-section profile-page console-page">
       <PageHeader
         eyebrow="SELLER CONSOLE"
         title={auth.customer.organization?.name ?? "판매자 콘솔"}
         onBack={onBack}
-        action={<button className="primary dark" onClick={() => setShowForm((value) => !value)}>{showForm ? "취소" : "상품 등록"}</button>}
+        action={tab === "products" ? <button className="primary dark" onClick={() => setShowForm((value) => !value)}>{showForm ? "취소" : "상품 등록"}</button> : undefined}
       />
-      {showForm && (
-        <form
-          className="auth-form seller-product-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create.mutate();
-          }}
-        >
-          <label>상품명<input required value={form.name} onChange={(e) => update("name", e.target.value)} /></label>
-          <label>카테고리
-            <select value={form.category_id} onChange={(e) => update("category_id", e.target.value)}>
-              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-            </select>
-          </label>
-          <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
-          <label>가격(원)<input required type="number" min={1} value={form.price} onChange={(e) => update("price", e.target.value)} /></label>
-          <label>색상<input required value={form.color} onChange={(e) => update("color", e.target.value)} /></label>
-          <label>사이즈<input required value={form.size} onChange={(e) => update("size", e.target.value)} /></label>
-          <label>초기 재고<input required type="number" min={0} value={form.stock} onChange={(e) => update("stock", e.target.value)} /></label>
-          <button className="primary dark block" disabled={create.isPending}>{create.isPending ? "등록 중…" : "상품 등록"}</button>
-        </form>
+      <div className="console-tabs">
+        <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>오늘의 대시보드</button>
+        <button className={tab === "inquiries" ? "active" : ""} onClick={() => setTab("inquiries")}>문의</button>
+        <button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}>상품 관리</button>
+      </div>
+
+      {tab === "dashboard" && orgId && <SellerDailyDashboard token={auth.access_token} orgId={orgId} />}
+
+      {tab === "inquiries" && orgId && <SellerInquiriesPanel token={auth.access_token} orgId={orgId} />}
+
+      {tab === "products" && (
+        <>
+          {showForm && (
+            <form
+              className="auth-form seller-product-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                create.mutate();
+              }}
+            >
+              <label>상품명<input required value={form.name} onChange={(e) => update("name", e.target.value)} /></label>
+              <label>카테고리
+                <select value={form.category_id} onChange={(e) => update("category_id", e.target.value)}>
+                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              </label>
+              <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
+              <label>가격(원)<input required type="number" min={1} value={form.price} onChange={(e) => update("price", e.target.value)} /></label>
+              <label>색상<input required value={form.color} onChange={(e) => update("color", e.target.value)} /></label>
+              <label>사이즈<input required value={form.size} onChange={(e) => update("size", e.target.value)} /></label>
+              <label>초기 재고<input required type="number" min={0} value={form.stock} onChange={(e) => update("stock", e.target.value)} /></label>
+              <button className="primary dark block" disabled={create.isPending}>{create.isPending ? "등록 중…" : "상품 등록"}</button>
+            </form>
+          )}
+          <div className="seller-product-list">
+            {products.isLoading && <p className="empty">불러오는 중…</p>}
+            {products.data?.map((product) => (
+              <article className="seller-product-row" key={product.id}>
+                <img src={product.image} alt={product.name} />
+                <div>
+                  <h3>{product.name}</h3>
+                  <small>{product.variants[0]?.color} / {product.variants[0]?.size} · {won.format(product.price)}</small>
+                </div>
+                <label className="seller-stock-field">
+                  재고
+                  <input
+                    type="number"
+                    min={0}
+                    defaultValue={product.variants[0]?.stock ?? 0}
+                    onBlur={(event) => {
+                      const stock = Number(event.target.value);
+                      if (!Number.isNaN(stock) && stock !== product.variants[0]?.stock) {
+                        updateStock.mutate({ product, stock });
+                      }
+                    }}
+                  />
+                </label>
+              </article>
+            ))}
+            {!products.isLoading && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
+          </div>
+        </>
       )}
-      <div className="seller-product-list">
-        {products.isLoading && <p className="empty">불러오는 중…</p>}
-        {products.data?.map((product) => (
-          <article className="seller-product-row" key={product.id}>
-            <img src={product.image} alt={product.name} />
-            <div>
-              <h3>{product.name}</h3>
-              <small>{product.variants[0]?.color} / {product.variants[0]?.size} · {won.format(product.price)}</small>
+    </main>
+  );
+}
+
+function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }) {
+  const query = useQuery({
+    queryKey: ["seller-daily-report", orgId],
+    queryFn: () => getSellerDailyReport(token, orgId, false),
+  });
+  const discordMutation = useMutation({
+    mutationFn: () => getSellerDailyReport(token, orgId, true),
+  });
+  const report: SellerDailyReport | undefined = discordMutation.data ?? query.data;
+  const snapshot = report?.snapshot;
+
+  return (
+    <div className="console-panel">
+      <div className="console-panel-heading">
+        <p>어제까지의 조회·판매·환불·재고를 코드가 집계하고, AI가 마지막에 재입고 제안을 덧붙입니다.</p>
+        <button className="primary dark" disabled={discordMutation.isPending || query.isLoading} onClick={() => discordMutation.mutate()}>
+          {discordMutation.isPending ? "전송 중…" : "Discord로 전송"}
+        </button>
+      </div>
+      {query.isLoading && <p className="empty">오늘의 데이터를 불러오는 중…</p>}
+      {query.isError && <p className="empty">데이터를 불러오지 못했습니다.</p>}
+      {snapshot && (
+        <>
+          <div className="console-stats">
+            <article><span>총결제액</span><strong>{won.format(snapshot.revenue.gross_revenue)}</strong></article>
+            <article><span>환불액</span><strong>{won.format(snapshot.revenue.refund_amount)}</strong></article>
+            <article><span>순매출</span><strong>{won.format(snapshot.revenue.net_revenue)}</strong></article>
+            <article><span>주문 수</span><strong>{snapshot.revenue.order_count}건</strong></article>
+            <article><span>날짜</span><strong>{snapshot.date}</strong></article>
+          </div>
+          <div className="console-grid-two">
+            <div className="console-card">
+              <h4>오늘의 조회</h4>
+              <p>최다 조회: <b>{snapshot.highlights.most_viewed?.product_name ?? "없음"}</b>{snapshot.highlights.most_viewed && ` (${snapshot.highlights.most_viewed.views}회)`}</p>
+              <p>최소 조회: <b>{snapshot.highlights.least_viewed?.product_name ?? "없음"}</b>{snapshot.highlights.least_viewed && ` (${snapshot.highlights.least_viewed.views}회)`}</p>
             </div>
-            <label className="seller-stock-field">
-              재고
-              <input
-                type="number"
-                min={0}
-                defaultValue={product.variants[0]?.stock ?? 0}
-                onBlur={(event) => {
-                  const stock = Number(event.target.value);
-                  if (!Number.isNaN(stock) && stock !== product.variants[0]?.stock) {
-                    updateStock.mutate({ product, stock });
-                  }
-                }}
-              />
-            </label>
+            <div className="console-card">
+              <h4>오늘의 판매·환불</h4>
+              <p>최다 판매: <b>{snapshot.highlights.most_purchased?.product_name ?? "없음"}</b>{snapshot.highlights.most_purchased && ` (${snapshot.highlights.most_purchased.units_sold}개)`}</p>
+              <p>최다 환불: <b>{snapshot.highlights.most_refunded?.product_name ?? "없음"}</b>{snapshot.highlights.most_refunded && ` (${snapshot.highlights.most_refunded.refund_units}개)`}</p>
+            </div>
+          </div>
+          {(snapshot.highlights.out_of_stock.length > 0 || snapshot.highlights.low_stock.length > 0) && (
+            <div className="console-warning">
+              {snapshot.highlights.out_of_stock.length > 0 && <p><b>품절:</b> {snapshot.highlights.out_of_stock.map((p) => p.product_name).join(", ")}</p>}
+              {snapshot.highlights.low_stock.length > 0 && <p><b>재고 부족:</b> {snapshot.highlights.low_stock.map((p) => `${p.product_name}(${p.stock}개)`).join(", ")}</p>}
+            </div>
+          )}
+          <div className="console-card">
+            <h4>AI 리포트 · 재입고 제안</h4>
+            <div className="markdown-body"><ReactMarkdown>{report!.report}</ReactMarkdown></div>
+            <footer className="console-footnote">{report!.model} · {report!.prompt_source === "langfuse" ? report!.prompt_version ?? "langfuse" : "fallback"} · {report!.discord_sent ? "Discord 전송 완료" : "Discord 미전송"}</footer>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SellerInquiriesPanel({ token, orgId }: { token: string; orgId: string }) {
+  const query = useQuery({
+    queryKey: ["seller-inquiries", orgId],
+    queryFn: () => getOrgInquiries(token, orgId),
+  });
+  return (
+    <div className="console-panel">
+      {query.isLoading && <p className="empty">불러오는 중…</p>}
+      {!query.isLoading && !query.data?.length && <p className="empty">아직 이 상점 상품과 관련된 문의가 없습니다.</p>}
+      <div className="seller-product-list">
+        {query.data?.map((inquiry) => (
+          <article className="seller-product-row" key={inquiry.id}>
+            <div>
+              <h3>{inquiry.subject}</h3>
+              <small>{inquiry.customer_name} · {inquiry.order_id ?? "일반 문의"} · {inquiryStatusLabel[inquiry.status] ?? inquiry.status}</small>
+            </div>
           </article>
         ))}
-        {!products.isLoading && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -1045,9 +1158,11 @@ function AdminConsolePage({
   onError: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<"orgs" | "traffic" | "share">("orgs");
   const organizations = useQuery({
     queryKey: ["admin-organizations"],
     queryFn: () => getOrganizations(auth.access_token),
+    enabled: tab === "orgs",
   });
   const toggleStatus = useMutation({
     mutationFn: (org: OrganizationSummary) =>
@@ -1057,29 +1172,139 @@ function AdminConsolePage({
   });
 
   return (
-    <main className="store-section profile-page admin-console">
-      <PageHeader eyebrow="ADMIN CONSOLE" title="판매자 관리" onBack={onBack} />
-      {organizations.isLoading && <p className="empty">불러오는 중…</p>}
-      <div className="admin-org-list">
-        {organizations.data?.map((org) => (
-          <article className="admin-org-row" key={org.id}>
-            <div>
-              <span className={`state ${org.status === "ACTIVE" ? "active" : "disconnected"}`}>{org.status}</span>
-              <h3>{org.name}</h3>
-              <small>{org.category} · 상품 {org.product_count}개 · 대표 {org.owner?.name} ({org.owner?.email})</small>
-            </div>
-            <button
-              className={org.status === "ACTIVE" ? "danger-button" : "primary dark"}
-              disabled={toggleStatus.isPending}
-              onClick={() => toggleStatus.mutate(org)}
-            >
-              {org.status === "ACTIVE" ? "정지" : "활성화"}
-            </button>
-          </article>
-        ))}
-        {!organizations.isLoading && !organizations.data?.length && <p className="empty">입점한 판매자가 없습니다.</p>}
+    <main className="store-section profile-page admin-console console-page">
+      <PageHeader eyebrow="ADMIN CONSOLE" title="총관리자 콘솔" onBack={onBack} />
+      <div className="console-tabs">
+        <button className={tab === "orgs" ? "active" : ""} onClick={() => setTab("orgs")}>판매자 관리</button>
+        <button className={tab === "traffic" ? "active" : ""} onClick={() => setTab("traffic")}>플랫폼 트래픽</button>
+        <button className={tab === "share" ? "active" : ""} onClick={() => setTab("share")}>매출 비교</button>
       </div>
+
+      {tab === "orgs" && (
+        <>
+          {organizations.isLoading && <p className="empty">불러오는 중…</p>}
+          <div className="admin-org-list">
+            {organizations.data?.map((org) => (
+              <article className="admin-org-row" key={org.id}>
+                <div>
+                  <span className={`state ${org.status === "ACTIVE" ? "active" : "disconnected"}`}>{org.status}</span>
+                  <h3>{org.name}</h3>
+                  <small>{org.category} · 상품 {org.product_count}개 · 대표 {org.owner?.name} ({org.owner?.email})</small>
+                </div>
+                <button
+                  className={org.status === "ACTIVE" ? "danger-button" : "primary dark"}
+                  disabled={toggleStatus.isPending}
+                  onClick={() => toggleStatus.mutate(org)}
+                >
+                  {org.status === "ACTIVE" ? "정지" : "활성화"}
+                </button>
+              </article>
+            ))}
+            {!organizations.isLoading && !organizations.data?.length && <p className="empty">입점한 판매자가 없습니다.</p>}
+          </div>
+        </>
+      )}
+
+      {tab === "traffic" && <PlatformTrafficPanel token={auth.access_token} />}
+      {tab === "share" && <MarketSharePanel token={auth.access_token} />}
     </main>
+  );
+}
+
+function PlatformTrafficPanel({ token }: { token: string }) {
+  const query = useQuery({
+    queryKey: ["platform-daily-traffic"],
+    queryFn: () => getPlatformDailyTraffic(token, false),
+  });
+  const discordMutation = useMutation({
+    mutationFn: () => getPlatformDailyTraffic(token, true),
+  });
+  const report: PlatformTrafficReport | undefined = discordMutation.data ?? query.data;
+  const snapshot = report?.snapshot;
+
+  return (
+    <div className="console-panel">
+      <div className="console-panel-heading">
+        <p>사이트 전체(모든 판매자 상품 포함) 오늘 조회수입니다. 판매자 콘솔에는 노출되지 않는 관리자 전용 데이터입니다.</p>
+        <button className="primary dark" disabled={discordMutation.isPending || query.isLoading} onClick={() => discordMutation.mutate()}>
+          {discordMutation.isPending ? "전송 중…" : "Discord로 전송"}
+        </button>
+      </div>
+      {query.isLoading && <p className="empty">불러오는 중…</p>}
+      {snapshot && (
+        <>
+          <div className="console-stats">
+            <article><span>전체 조회수</span><strong>{snapshot.total_views}</strong></article>
+            <article><span>날짜</span><strong>{snapshot.date}</strong></article>
+          </div>
+          <div className="console-grid-two">
+            <div className="console-card">
+              <h4>상점별 조회수 순위</h4>
+              {snapshot.store_ranking.slice(0, 8).map((row) => <p key={row.org_name}>{row.org_name}: <b>{row.views}회</b></p>)}
+            </div>
+            <div className="console-card">
+              <h4>가장 적게 조회된 상품</h4>
+              {snapshot.least_viewed_products.slice(0, 5).map((row) => <p key={row.product_id}>{row.product_name} ({row.org_name}): <b>{row.views}회</b></p>)}
+            </div>
+          </div>
+          <div className="console-card">
+            <h4>AI 리포트</h4>
+            <div className="markdown-body"><ReactMarkdown>{report!.report}</ReactMarkdown></div>
+            <footer className="console-footnote">{report!.model} · {report!.prompt_source === "langfuse" ? report!.prompt_version ?? "langfuse" : "fallback"} · {report!.discord_sent ? "Discord 전송 완료" : "Discord 미전송"}</footer>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MarketSharePanel({ token }: { token: string }) {
+  const query = useQuery({
+    queryKey: ["seller-market-share"],
+    queryFn: () => getSellerMarketShare(token, false),
+  });
+  const discordMutation = useMutation({
+    mutationFn: () => getSellerMarketShare(token, true),
+  });
+  const report: SellerMarketShareReport | undefined = discordMutation.data ?? query.data;
+  const snapshot = report?.snapshot;
+  const planLabel: Record<string, string> = { FREE: "무료 입점", BASIC: "Basic", PRO: "Pro", BUSINESS: "Business" };
+
+  return (
+    <div className="console-panel">
+      <div className="console-panel-heading">
+        <p>판매자 매출액이 아니라, 수수료+플랜 요금으로 이 사이트가 실제로 버는 돈을 판매자별로 비교합니다.</p>
+        <button className="primary dark" disabled={discordMutation.isPending || query.isLoading} onClick={() => discordMutation.mutate()}>
+          {discordMutation.isPending ? "전송 중…" : "Discord로 전송"}
+        </button>
+      </div>
+      {query.isLoading && <p className="empty">불러오는 중…</p>}
+      {snapshot && (
+        <>
+          <div className="console-stats">
+            <article><span>플랫폼 전체 매출</span><strong>{won.format(snapshot.total_platform_revenue)}</strong></article>
+            <article><span>플랫폼 기본 상품 비중</span><strong>{snapshot.platform_default_share_pct ?? "—"}%</strong></article>
+            <article><span>이번 달</span><strong>{snapshot.period}</strong></article>
+          </div>
+          <div className="seller-product-list">
+            {snapshot.sellers.map((seller) => (
+              <article className="seller-product-row" key={seller.org_id}>
+                <div>
+                  <h3>{seller.org_name} · {planLabel[seller.plan] ?? seller.plan}</h3>
+                  <small>판매액 {won.format(seller.gross_revenue)} · 수수료+플랜 {won.format(seller.platform_contribution)}</small>
+                </div>
+                <strong>{seller.share_pct ?? "—"}%</strong>
+              </article>
+            ))}
+          </div>
+          <div className="console-card">
+            <h4>AI 리포트</h4>
+            <div className="markdown-body"><ReactMarkdown>{report!.report}</ReactMarkdown></div>
+            <footer className="console-footnote">{report!.model} · {report!.prompt_source === "langfuse" ? report!.prompt_version ?? "langfuse" : "fallback"} · {report!.discord_sent ? "Discord 전송 완료" : "Discord 미전송"}</footer>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
