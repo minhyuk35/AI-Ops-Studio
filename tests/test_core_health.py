@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import pytest
-from app.api.routes.ai import get_ai_service
+from app.api.routes.ai import get_ai_service, get_discord_notifier
 from app.config import Settings
 from app.main import app
+from app.services.discord import DiscordNotifier
 from app.services.inquiry_store import inquiry_store
 from app.services.openrouter import OpenRouterSupportService
 from app.services.prompts import PromptRepository
@@ -31,6 +32,10 @@ async def test_ai_reply_without_api_key_falls_back_to_human(tmp_path: Path) -> N
     )
     service = OpenRouterSupportService(settings, PromptRepository(settings))
     app.dependency_overrides[get_ai_service] = lambda: service
+    # This test always drives requires_human=True (no API key), which would
+    # otherwise post a real escalation message to whatever DISCORD_WEBHOOK_URL
+    # happens to be configured in the local .env on every test run.
+    app.dependency_overrides[get_discord_notifier] = lambda: DiscordNotifier("")
 
     try:
         transport = ASGITransport(app=app)
@@ -61,6 +66,7 @@ async def test_ai_reply_without_api_key_falls_back_to_human(tmp_path: Path) -> N
             )
     finally:
         app.dependency_overrides.pop(get_ai_service, None)
+        app.dependency_overrides.pop(get_discord_notifier, None)
 
     assert response.status_code == 200
     assert response.json()["requires_human"] is True
