@@ -80,6 +80,63 @@ const roleLabel: Record<string, string> = { CONSUMER: "소비자", SELLER: "판�
 // it's code-split into its own chunk instead of bloating every route.
 const ThreeHero = lazy(() => import("./ThreeHero").then((module) => ({ default: module.ThreeHero })));
 
+function Marquee({ text }: { text: string }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.to(trackRef.current, { xPercent: -50, duration: 16, ease: "none", repeat: -1 });
+    });
+    return () => ctx.revert();
+  }, []);
+  return (
+    <div className="marquee">
+      <div className="marquee-track" ref={trackRef}>
+        <span>{text.repeat(4)}</span>
+        <span aria-hidden="true">{text.repeat(4)}</span>
+      </div>
+    </div>
+  );
+}
+
+function MagneticButton({
+  className,
+  onClick,
+  children,
+}: {
+  className?: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const moveX = useRef<gsap.QuickToFunc | null>(null);
+  const moveY = useRef<gsap.QuickToFunc | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    moveX.current = gsap.quickTo(ref.current, "x", { duration: 0.45, ease: "power3" });
+    moveY.current = gsap.quickTo(ref.current, "y", { duration: 0.45, ease: "power3" });
+  }, []);
+
+  return (
+    <button
+      ref={ref}
+      className={className}
+      onClick={onClick}
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        moveX.current?.((event.clientX - rect.left - rect.width / 2) * 0.4);
+        moveY.current?.((event.clientY - rect.top - rect.height / 2) * 0.55);
+      }}
+      onMouseLeave={() => {
+        moveX.current?.(0);
+        moveY.current?.(0);
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 const statusLabel: Record<string, string> = {
   PENDING_PAYMENT: "결제 대기",
   PREPARING: "상품 준비 중",
@@ -213,6 +270,8 @@ export function App() {
         </div>
       </header>
 
+      <Marquee text="NEW SEASON — MINIMAL SILHOUETTE — MONOCHROME — EVERYDAY MARKET — " />
+
       {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice("")}>닫기</button></div>}
 
       {view === "home" && <Home products={products.data ?? []} onShop={() => setView("catalog")} onProduct={openProduct} />}
@@ -340,15 +399,17 @@ export function App() {
 
 function Home({ products, onShop, onProduct }: { products: Product[]; onShop: () => void; onProduct: (p: Product) => void }) {
   const heroRef = useRef<HTMLDivElement>(null);
+  const editorialRef = useRef<HTMLDivElement>(null);
+  const statementRef = useRef<HTMLDivElement>(null);
   const benefitsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
-      gsap.set(".hero-reveal", { opacity: 0, y: 26 });
+      gsap.set(".hero-reveal", { opacity: 0, y: 34 });
       gsap.to(".hero-reveal", {
         opacity: 1,
         y: 0,
-        duration: 0.9,
+        duration: 1.1,
         ease: "power3.out",
         stagger: 0.12,
         delay: 0.15,
@@ -370,6 +431,40 @@ function Home({ products, onShop, onProduct }: { products: Product[]; onShop: ()
   useEffect(() => {
     const ctx = gsap.context(() => {
       gsap.fromTo(
+        ".editorial-feature, .editorial-side .product-card",
+        { opacity: 0, y: 34 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.8,
+          ease: "power2.out",
+          stagger: 0.12,
+          scrollTrigger: { trigger: editorialRef.current, start: "top 85%" },
+        },
+      );
+    }, editorialRef);
+    return () => ctx.revert();
+  }, [products]);
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".statement-image",
+        { scale: 1.18 },
+        { scale: 1, duration: 1.6, ease: "power2.out", scrollTrigger: { trigger: statementRef.current, start: "top 80%" } },
+      );
+      gsap.fromTo(
+        ".statement-text",
+        { opacity: 0, y: 30 },
+        { opacity: 1, y: 0, duration: 1, ease: "power3.out", scrollTrigger: { trigger: statementRef.current, start: "top 70%" } },
+      );
+    }, statementRef);
+    return () => ctx.revert();
+  }, []);
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
         ".benefit-card",
         { opacity: 0, y: 24 },
         {
@@ -385,6 +480,8 @@ function Home({ products, onShop, onProduct }: { products: Product[]; onShop: ()
     return () => ctx.revert();
   }, []);
 
+  const [featured, ...rest] = products;
+
   return <main>
     <section className="hero" ref={heroRef}>
       <Suspense fallback={null}>
@@ -394,12 +491,54 @@ function Home({ products, onShop, onProduct }: { products: Product[]; onShop: ()
         <p className="eyebrow hero-reveal">NEW SEASON · 2026</p>
         <h1 className="hero-heading hero-reveal">매일의 옷을<br />조금 더 선명하게.</h1>
         <p className="hero-reveal">오래 입을 수 있는 소재와 절제된 실루엣을 고릅니다.</p>
-        <button className="primary hero-reveal" onClick={onShop}>컬렉션 보기</button>
+        <MagneticButton className="primary hero-reveal" onClick={onShop}>컬렉션 보기</MagneticButton>
+      </div>
+      <div className="hero-index hero-reveal" aria-hidden="true"><span>SHOP</span><span>·</span><span>SS 26</span></div>
+    </section>
+
+    <section className="store-section editorial-section" ref={editorialRef}>
+      <SectionTitle eyebrow="EDITOR'S PICK" title="이번 주 에디터 추천" />
+      <div className="editorial-grid">
+        {featured && (
+          <button className="editorial-feature" onClick={() => onProduct(featured)}>
+            <div className="product-image">
+              <img src={featured.image} alt={featured.name} loading="lazy" />
+              {!featured.in_stock && <span>품절</span>}
+            </div>
+            <div className="editorial-feature-meta">
+              <small>{featured.brand}</small>
+              <h3>{featured.name}</h3>
+              <div className="price">{featured.compare_at_price && <del>{won.format(featured.compare_at_price)}</del>}<b>{won.format(featured.price)}</b></div>
+            </div>
+          </button>
+        )}
+        <div className="editorial-side">
+          {rest.slice(0, 2).map((item) => (
+            <button className="product-card" key={item.id} onClick={() => onProduct(item)}>
+              <div className="product-image">
+                <img src={item.image} alt={item.name} loading="lazy" />
+                {!item.in_stock && <span>품절</span>}
+              </div>
+              <small>{item.brand}</small>
+              <h3>{item.name}</h3>
+              <div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div>
+            </button>
+          ))}
+        </div>
       </div>
     </section>
-    <section className="store-section"><SectionTitle eyebrow="EDITOR'S PICK" title="이번 주 에디터 추천" />
-      <ProductGrid products={products.slice(0, 3)} onProduct={onProduct} />
+
+    <section className="statement" ref={statementRef}>
+      <img
+        className="statement-image"
+        src="https://images.unsplash.com/photo-1598033129183-c4f50c736f10?auto=format&fit=crop&w=1800&q=85"
+        alt=""
+        aria-hidden="true"
+      />
+      <div className="statement-overlay" />
+      <p className="statement-text">재질부터<br />다시 생각합니다.</p>
     </section>
+
     <section className="benefits" ref={benefitsRef}><article className="benefit-card"><b>10만원 이상 무료배송</b><span>평균 2~3영업일 내 도착</span></article><article className="benefit-card"><b>7일 이내 반품 신청</b><span>주문 상세에서 간편 접수</span></article><article className="benefit-card"><b>AI 고객지원</b><span>주문 문맥을 연결한 빠른 답변</span></article></section>
   </main>;
 }
