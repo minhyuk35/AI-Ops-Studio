@@ -23,29 +23,27 @@ def running_on_vercel() -> bool:
 def _default_mock_commerce_api_url() -> str:
     """On Vercel, core-api and mock-commerce-api are two services in the
     same deployment (see vercel.json) -- reach the commerce service through
-    this deployment's own domain under /api/commerce rather than hardcoding
-    a URL that wouldn't exist for preview deployments. Explicitly setting
+    this deployment's own domain under /api/commerce. Explicitly setting
     MOCK_COMMERCE_API_URL still overrides this.
 
-    VERCEL_URL is only populated when the project has "Automatically expose
-    System Environment Variables" turned on -- if that toggle is off,
-    VERCEL_URL (and VERCEL itself) are silently missing even in production,
-    and every AI endpoint that talks to the commerce API fails fast against
-    a localhost:8001 that doesn't exist inside the function.
-    AWS_LAMBDA_FUNCTION_NAME is injected by the underlying Lambda runtime
-    Vercel's Python functions run on, independent of that toggle, so it's a
-    reliable "are we actually deployed" signal even when VERCEL_URL isn't.
-    CORS_ORIGINS already has to carry the real production domain for the
-    browser to work at all, so reuse its first https origin in that case.
+    Prefer CORS_ORIGINS' first https origin (the stable custom/production
+    domain, which already has to be correct there for the browser to work
+    at all) over VERCEL_URL. VERCEL_URL is the unique per-deployment hash
+    domain (e.g. my-app-<hash>-<team>.vercel.app) -- when Vercel's
+    Deployment Protection is on, that URL 302-redirects unauthenticated
+    requests (including our own server-to-server call) to a login page
+    instead of serving the function, which breaks every AI endpoint that
+    talks to the commerce API. VERCEL_URL is only used as a fallback for
+    preview deployments, which have no fixed domain to put in CORS_ORIGINS.
     """
-    vercel_url = os.getenv("VERCEL_URL")
-    if running_on_vercel() and vercel_url:
-        return f"https://{vercel_url}/api/commerce"
     if running_on_vercel():
         for origin in os.getenv("CORS_ORIGINS", "").split(","):
             origin = origin.strip()
             if origin.startswith("https://"):
                 return f"{origin}/api/commerce"
+        vercel_url = os.getenv("VERCEL_URL")
+        if vercel_url:
+            return f"https://{vercel_url}/api/commerce"
     return "http://localhost:8001"
 
 
