@@ -17,6 +17,12 @@ def utc_now() -> str:
 
 class OpsStore:
     def __init__(self) -> None:
+        # See InquiryStore.__init__ -- same fix, same reason (Vercel's
+        # read-only deployed code directory crashed this mkdir on every
+        # request even when Postgres was correctly configured).
+        self.path = Path("data/support.db")
+        if is_postgres():
+            return
         configured = os.getenv("SUPPORT_DB_PATH", "data/support.db")
         self.path = Path(configured)
         if not self.path.is_absolute():

@@ -15,6 +15,14 @@ def utc_now() -> str:
 
 class InquiryStore:
     def __init__(self) -> None:
+        # When DATABASE_URL points at Postgres, this local path is never
+        # used -- skip computing/creating it entirely. On Vercel the deployed
+        # code directory is read-only, so this mkdir crashed the whole
+        # module import (and therefore the whole app) on every request even
+        # though Postgres was correctly configured.
+        self.path = Path("data/support.db")
+        if is_postgres():
+            return
         configured = os.getenv("SUPPORT_DB_PATH", "data/support.db")
         self.path = Path(configured)
         if not self.path.is_absolute():

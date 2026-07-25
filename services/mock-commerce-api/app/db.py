@@ -491,8 +491,21 @@ def initialize_database() -> None:
         _seed_orders(connection)  # type: ignore[arg-type]
         _sync_seed_orders(connection)  # type: ignore[arg-type]
         _seed_test_accounts(connection)  # type: ignore[arg-type]
-        _seed_seller_daily_demo(connection)  # type: ignore[arg-type]
-        _seed_market_share_demo_sellers(connection)  # type: ignore[arg-type]
+        # These two seed demo sellers with hundreds of individual
+        # PRODUCT_VIEWED/order events (one INSERT per view, per catalog
+        # entry). On a persistent host that cost is paid once at process
+        # startup; on Vercel, initialize_database() reruns on every cold
+        # start, and replaying hundreds of round trips to Postgres blew past
+        # the 30s function timeout even though every insert was a no-op
+        # after the first run (504s on /api/commerce/*). Skip the whole
+        # cascade once the demo orgs already exist -- cheap existence check
+        # instead of hundreds of idempotent-but-still-a-round-trip inserts.
+        demo_seeded = connection.execute(
+            "SELECT 1 FROM organizations WHERE id = ?", ("org_test_seller2",)
+        ).fetchone()
+        if not demo_seeded:
+            _seed_seller_daily_demo(connection)  # type: ignore[arg-type]
+            _seed_market_share_demo_sellers(connection)  # type: ignore[arg-type]
 
 
 def _seed_test_accounts(connection: sqlite3.Connection) -> None:
