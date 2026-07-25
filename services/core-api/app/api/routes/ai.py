@@ -109,12 +109,19 @@ async def create_reply(
     # never the LLM. Only for the exact case that's already safe by the
     # site's own rules: PENDING_PAYMENT/PREPARING orders can already be
     # self-service cancelled, this just skips the click.
+    #
+    # Deliberately NOT gated on `not response.requires_human`: the answer
+    # persona is instructed (customer-support-answer.md rule 4) to say a
+    # human handoff is needed whenever cancel/refund *execution* needs
+    # approval -- which is exactly this case, so requires_human is almost
+    # always already true here via _answer_promises_handoff(). Auto-
+    # cancelling *is* that approval, so on success this overrides
+    # requires_human back to false instead of being blocked by it.
     order_status = str(payload.order_context.get("status") or "") if payload.order_context else ""
     auto_cancelled = False
     if (
         response.category == "CANCEL"
         and response.risk == "LOW"
-        and not response.requires_human
         and payload.order_id
         and order_status in _CANCELLABLE_ORDER_STATUSES
     ):
@@ -127,7 +134,8 @@ async def create_reply(
             response = response.model_copy(
                 update={
                     "answer": response.answer
-                    + "\n\n✅ 배송 전 상태로 확인되어 주문이 자동으로 취소·환불 처리되었습니다."
+                    + "\n\n✅ 배송 전 상태로 확인되어 주문이 자동으로 취소·환불 처리되었습니다.",
+                    "requires_human": False,
                 }
             )
 
