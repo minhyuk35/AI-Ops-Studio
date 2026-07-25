@@ -9,6 +9,7 @@ from app.schemas.ai import (
     CommerceInsightResponse,
     MonthlyReportResponse,
     PlatformTrafficResponse,
+    ProductStyleTagResponse,
     SellerDailyReportResponse,
     SellerMarketShareResponse,
 )
@@ -19,6 +20,155 @@ from app.services.prompts import PromptRepository
 
 def _dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+_COLOR_FAMILIES = ("뉴트럴", "데님/인디고", "어스톤", "파스텔", "비비드")
+_STYLE_MOODS = ("미니멀", "캐주얼", "스트릿·힙", "러블리·청순", "포멀", "스포티")
+
+
+def _parse_style_tag_json(raw: str) -> tuple[str, list[str]] | None:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        text = text.split("\n", 1)[-1] if "\n" in text else text
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        data = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    color_family = str(data.get("color_family", ""))
+    if color_family not in _COLOR_FAMILIES:
+        return None
+    raw_tags = data.get("style_tags", [])
+    if not isinstance(raw_tags, list):
+        return None
+    style_tags = [str(tag) for tag in raw_tags if str(tag) in _STYLE_MOODS]
+    if not style_tags:
+        return None
+    return color_family, style_tags[:2]
+
+
+def _keyword_style_tags(name: str, description: str, color: str) -> tuple[str, list[str]]:
+    """Offline fallback when Langfuse/OpenRouter is unavailable -- keeps the
+    "code computes, AI narrates" contract intact even in degraded mode,
+    same posture as OpenRouterSupportService._keyword_triage.
+    """
+    text = f"{name} {description} {color}"
+    if any(word in text for word in ("데님", "청", "인디고")):
+        color_family = "데님/인디고"
+    elif any(word in text for word in ("카키", "브라운", "올리브", "카멜", "베이지")):
+        color_family = "어스톤"
+    elif any(word in text for word in ("레드", "옐로우", "오렌지", "핑크", "원색")):
+        color_family = "비비드"
+    else:
+        color_family = "뉴트럴"
+    if any(word in text for word in ("정장", "슬랙스", "재킷", "코트", "테일러드")):
+        style_tags = ["포멀", "미니멀"]
+    elif any(word in text for word in ("후드", "스트릿", "볼캡", "데님")):
+        style_tags = ["캐주얼", "스트릿·힙"]
+    elif any(word in text for word in ("스포츠", "트레이닝", "조거")):
+        style_tags = ["스포티", "캐주얼"]
+    else:
+        style_tags = ["캐주얼"]
+    return color_family, style_tags
+
+
+class ProductStyleTaggerService:
+    """product-style-tagger persona: AI tags a product ONCE with color_family/
+    style_tags at creation time (docs/ai-recommendation-plan.html#s3, B-1).
+
+    Never scores a product pair -- that's app.recommendation's job in
+    mock-commerce-api, a deterministic pure function. This service only does
+    the one-time interpretive step (색상 계열/스타일 무드 분류) that the
+    combo-scoring code then reuses for every future pairing.
+    """
+
+    def __init__(self, settings: Settings, prompts: PromptRepository) -> None:
+        self.settings = settings
+        self.prompts = prompts
+        self.client = build_openrouter_client(settings)
+
+    def tag_product(
+        self,
+        product_id: str,
+        *,
+        name: str,
+        category_name: str,
+        description: str,
+        material: str,
+        color: str,
+    ) -> ProductStyleTagResponse:
+        langfuse = self.prompts.langfuse
+        attributes_context: Any = nullcontext()
+        if langfuse is not None:
+            attributes_context = propagate_attributes(
+                session_id=f"product-tag-{product_id}",
+                tags=["product-style-tagger"],
+                environment=self.settings.app_env,
+            )
+
+        with attributes_context:
+            root_context: Any = nullcontext()
+            if langfuse is not None:
+                root_context = langfuse.start_as_current_observation(
+                    as_type="span",
+                    name="tag-product-style",
+                    input={"product_id": product_id, "name": name},
+                )
+            with root_context as root_span:
+                compiled = self.prompts.compile(
+                    prompt_name=self.settings.langfuse_product_style_tagger_prompt_name,
+                    fallback_text=personas.PRODUCT_STYLE_TAGGER.fallback_text,
+                    fallback_config=personas.PRODUCT_STYLE_TAGGER.fallback_config,
+                    variables={
+                        "name": name,
+                        "category_name": category_name,
+                        "description": description,
+                        "material": material,
+                        "color": color,
+                    },
+                )
+
+                parsed: tuple[str, list[str]] | None = None
+                if self.client is not None:
+                    try:
+                        completion = self.client.chat.completions.create(
+                            model=compiled.model,
+                            messages=[{"role": "user", "content": compiled.text}],
+                            extra_body=compiled.routing_parameters or None,
+                            **compiled.completion_parameters,
+                            name="tag-product-style",
+                            metadata={
+                                "feature": "product-style-tagger",
+                                "prompt_name": compiled.name,
+                                "prompt_source": compiled.source,
+                                "product_id": product_id,
+                            },
+                        )
+                        raw = completion.choices[0].message.content or ""
+                        parsed = _parse_style_tag_json(raw)
+                    except Exception:
+                        parsed = None
+
+                if parsed is None:
+                    parsed = _keyword_style_tags(name, description, color)
+
+                color_family, style_tags = parsed
+                if root_span is not None:
+                    root_span.update(
+                        output={"color_family": color_family, "style_tags": style_tags}
+                    )
+
+                return ProductStyleTagResponse(
+                    product_id=product_id,
+                    color_family=color_family,
+                    style_tags=style_tags,
+                    model=compiled.model,
+                    prompt_source=compiled.source,
+                    prompt_version=compiled.version,
+                )
 
 
 class CommerceInsightService:

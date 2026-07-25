@@ -12,6 +12,7 @@ export interface Category {
   slug: string;
   name: string;
   sort_order: number;
+  parent_id: string | null;
 }
 
 export interface Product {
@@ -31,6 +32,8 @@ export interface Product {
   rating: number;
   review_count: number;
   in_stock: boolean;
+  color_family: string | null;
+  style_tags: string | null;
 }
 
 export interface ProductVariant {

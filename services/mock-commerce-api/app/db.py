@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
     slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    sort_order INTEGER NOT NULL DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    parent_id TEXT REFERENCES categories(id)
 );
 
 CREATE TABLE IF NOT EXISTS products (
@@ -101,7 +102,9 @@ CREATE TABLE IF NOT EXISTS products (
     compare_at_price INTEGER,
     rating REAL NOT NULL DEFAULT 0,
     review_count INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    color_family TEXT,
+    style_tags TEXT
 );
 
 CREATE TABLE IF NOT EXISTS variants (
@@ -203,6 +206,7 @@ CREATE TABLE IF NOT EXISTS commerce_events (
     order_id TEXT,
     product_id TEXT,
     variant_id TEXT,
+    customer_id TEXT,
     quantity INTEGER NOT NULL DEFAULT 0,
     amount INTEGER NOT NULL DEFAULT 0,
     discount INTEGER NOT NULL DEFAULT 0,
@@ -228,20 +232,54 @@ CREATE TABLE IF NOT EXISTS discord_channels (
 );
 
 CREATE INDEX IF NOT EXISTS idx_discord_channels_org ON discord_channels(org_id);
+
+CREATE TABLE IF NOT EXISTS combo_signals (
+    id TEXT PRIMARY KEY,
+    external_event_id TEXT NOT NULL UNIQUE,
+    product_a_id TEXT NOT NULL,
+    product_b_id TEXT NOT NULL,
+    signal_type TEXT NOT NULL,
+    org_id TEXT,
+    occurred_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_combo_signals_pair ON combo_signals(product_a_id, product_b_id);
 """
 
 
+# 2-tier consumer-facing catalog taxonomy (parent_id NULL = 대분류). Separate
+# from organizations.category (the seller's own store category, e.g. "패션"),
+# which stays untouched — see docs/ai-recommendation-plan.html#s2. "신발" has
+# no subcategories, so products are filed directly under the parent.
 CATEGORIES = [
-    ("cat_fashion", "fashion", "의류", 1),
-    ("cat_bags", "bags", "가방·잡화", 2),
-    ("cat_accessories", "accessories", "슈즈·액세서리", 3),
+    ("cat_top", "top", "상의", 1, None),
+    ("cat_top_sweat", "top-sweatshirt", "맨투맨", 1, "cat_top"),
+    ("cat_top_shirt", "top-shirt", "셔츠", 2, "cat_top"),
+    ("cat_top_tee", "top-tee", "티셔츠", 3, "cat_top"),
+    ("cat_top_knit", "top-knit", "니트", 4, "cat_top"),
+    ("cat_bottom", "bottom", "하의", 2, None),
+    ("cat_bottom_denim", "bottom-denim", "데님", 1, "cat_bottom"),
+    ("cat_bottom_slacks", "bottom-slacks", "슬랙스", 2, "cat_bottom"),
+    ("cat_bottom_cargo", "bottom-cargo", "카고", 3, "cat_bottom"),
+    ("cat_bottom_shorts", "bottom-shorts", "숏팬츠", 4, "cat_bottom"),
+    ("cat_outer", "outer", "아우터", 3, None),
+    ("cat_outer_jacket", "outer-jacket", "자켓", 1, "cat_outer"),
+    ("cat_outer_coat", "outer-coat", "코트", 2, "cat_outer"),
+    ("cat_outer_hoodzip", "outer-hoodzip", "후드집업", 3, "cat_outer"),
+    ("cat_shoes", "shoes", "신발", 4, None),
+    ("cat_acc", "accessories", "악세사리", 5, None),
+    ("cat_acc_bag", "accessories-bag", "가방", 1, "cat_acc"),
+    ("cat_acc_belt", "accessories-belt", "벨트", 2, "cat_acc"),
+    ("cat_acc_cap", "accessories-cap", "모자", 3, "cat_acc"),
+    ("cat_acc_jewelry", "accessories-jewelry", "주얼리", 4, "cat_acc"),
 ]
 
 PRODUCTS = [
     {
         "id": "prd_001",
         "slug": "everyday-hoodie",
-        "category_id": "cat_fashion",
+        "category_id": "cat_outer_hoodzip",
         "brand": "EVERYDAY",
         "name": "Everyday Hoodie",
         "description": "매일 편안하게 입을 수 있는 탄탄한 코튼 후디입니다.",
@@ -252,6 +290,8 @@ PRODUCTS = [
         "compare_at_price": 79000,
         "rating": 4.8,
         "review_count": 128,
+        "color_family": "뉴트럴",
+        "style_tags": "캐주얼,스트릿·힙",
         "variants": [
             ("var_001_s", "EV-HOODIE-GR-S", "그레이", "S", 69000, 8),
             ("var_001_m", "EV-HOODIE-GR-M", "그레이", "M", 69000, 12),
@@ -261,7 +301,7 @@ PRODUCTS = [
     {
         "id": "prd_002",
         "slug": "canvas-daily-bag",
-        "category_id": "cat_bags",
+        "category_id": "cat_acc_bag",
         "brand": "EVERYDAY",
         "name": "Canvas Daily Bag",
         "description": "노트북과 일상용품을 넉넉하게 담는 캔버스 숄더백입니다.",
@@ -272,6 +312,8 @@ PRODUCTS = [
         "compare_at_price": None,
         "rating": 4.6,
         "review_count": 74,
+        "color_family": "뉴트럴",
+        "style_tags": "미니멀,캐주얼",
         "variants": [
             ("var_002_iv", "EV-BAG-IVORY", "아이보리", "FREE", 42000, 16),
             ("var_002_nv", "EV-BAG-NAVY", "네이비", "FREE", 42000, 7),
@@ -280,7 +322,7 @@ PRODUCTS = [
     {
         "id": "prd_003",
         "slug": "minimal-leather-sneakers",
-        "category_id": "cat_accessories",
+        "category_id": "cat_shoes",
         "brand": "FORM",
         "name": "Minimal Leather Sneakers",
         "description": "절제된 실루엣과 쿠셔닝을 갖춘 데일리 레더 스니커즈입니다.",
@@ -291,6 +333,8 @@ PRODUCTS = [
         "compare_at_price": 99000,
         "rating": 4.9,
         "review_count": 51,
+        "color_family": "뉴트럴",
+        "style_tags": "미니멀,캐주얼",
         "variants": [
             ("var_003_260", "FM-SNEAKER-WH-260", "오프화이트", "260", 89000, 9),
             ("var_003_270", "FM-SNEAKER-WH-270", "오프화이트", "270", 89000, 3),
@@ -299,7 +343,7 @@ PRODUCTS = [
     {
         "id": "prd_004",
         "slug": "soft-cotton-shirt",
-        "category_id": "cat_fashion",
+        "category_id": "cat_top_shirt",
         "brand": "FORM",
         "name": "Soft Cotton Shirt",
         "description": "사계절 활용하기 좋은 여유로운 실루엣의 코튼 셔츠입니다.",
@@ -310,6 +354,8 @@ PRODUCTS = [
         "compare_at_price": None,
         "rating": 4.7,
         "review_count": 39,
+        "color_family": "뉴트럴",
+        "style_tags": "미니멀,캐주얼",
         "variants": [
             ("var_004_m", "FM-SHIRT-WH-M", "화이트", "M", 54000, 10),
             ("var_004_l", "FM-SHIRT-WH-L", "화이트", "L", 54000, 6),
@@ -318,7 +364,7 @@ PRODUCTS = [
     {
         "id": "prd_005",
         "slug": "washed-ball-cap",
-        "category_id": "cat_accessories",
+        "category_id": "cat_acc_cap",
         "brand": "EVERYDAY",
         "name": "Washed Ball Cap",
         "description": "자연스럽게 워싱된 코튼과 깊은 크라운이 특징인 볼캡입니다.",
@@ -329,12 +375,14 @@ PRODUCTS = [
         "compare_at_price": 40000,
         "rating": 4.5,
         "review_count": 22,
+        "color_family": "뉴트럴",
+        "style_tags": "캐주얼,스트릿·힙",
         "variants": [("var_005_one", "EV-CAP-NAVY", "네이비", "FREE", 36000, 14)],
     },
     {
         "id": "prd_006",
         "slug": "compact-cross-bag",
-        "category_id": "cat_bags",
+        "category_id": "cat_acc_bag",
         "brand": "FORM",
         "name": "Compact Cross Bag",
         "description": "필수품을 가볍게 수납하는 생활 방수 크로스백입니다.",
@@ -345,6 +393,8 @@ PRODUCTS = [
         "compare_at_price": None,
         "rating": 4.4,
         "review_count": 18,
+        "color_family": "어스톤",
+        "style_tags": "캐주얼,스트릿·힙",
         "variants": [
             ("var_006_bk", "FM-CROSS-BLACK", "블랙", "FREE", 49000, 0),
             ("var_006_ol", "FM-CROSS-OLIVE", "올리브", "FREE", 49000, 4),
@@ -391,6 +441,11 @@ def initialize_database() -> None:
         }
         _ensure_columns(connection, "customers", customer_columns)  # type: ignore[arg-type]
         _ensure_columns(connection, "products", {"org_id": "TEXT"})  # type: ignore[arg-type]
+        product_style_columns = {"color_family": "TEXT", "style_tags": "TEXT"}
+        _ensure_columns(connection, "products", product_style_columns)  # type: ignore[arg-type]
+        _ensure_columns(connection, "categories", {"parent_id": "TEXT"})  # type: ignore[arg-type]
+        event_columns = {"customer_id": "TEXT"}
+        _ensure_columns(connection, "commerce_events", event_columns)  # type: ignore[arg-type]
         organization_columns = {
             "plan": "TEXT NOT NULL DEFAULT 'FREE'",
             # Discord 봇 연동: 판매자 서버(guild) ↔ 조직 바인딩과 1회용 링크 코드.
@@ -437,11 +492,12 @@ def initialize_database() -> None:
             )
             connection.executemany(
                 """
-                INSERT INTO categories(id, slug, name, sort_order) VALUES(?,?,?,?)
+                INSERT INTO categories(id, slug, name, sort_order, parent_id) VALUES(?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     slug = excluded.slug,
                     name = excluded.name,
-                    sort_order = excluded.sort_order
+                    sort_order = excluded.sort_order,
+                    parent_id = excluded.parent_id
                 """,
                 CATEGORIES,
             )
@@ -450,8 +506,9 @@ def initialize_database() -> None:
                     """
                     INSERT INTO products(
                         id, slug, category_id, brand, name, description, material, care,
-                        image, price, compare_at_price, rating, review_count, created_at
-                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        image, price, compare_at_price, rating, review_count, created_at,
+                        color_family, style_tags
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(id) DO UPDATE SET
                         slug = excluded.slug,
                         category_id = excluded.category_id,
@@ -464,7 +521,9 @@ def initialize_database() -> None:
                         price = excluded.price,
                         compare_at_price = excluded.compare_at_price,
                         rating = excluded.rating,
-                        review_count = excluded.review_count
+                        review_count = excluded.review_count,
+                        color_family = excluded.color_family,
+                        style_tags = excluded.style_tags
                     """,
                     (
                         product["id"],
@@ -481,6 +540,8 @@ def initialize_database() -> None:
                         product["rating"],
                         product["review_count"],
                         utc_now(),
+                        product["color_family"],
+                        product["style_tags"],
                     ),
                 )
                 variant_ids = [variant[0] for variant in product["variants"]]
@@ -503,9 +564,10 @@ def initialize_database() -> None:
                     """,
                     [(v[0], product["id"], *v[1:]) for v in product["variants"]],
                 )
-            connection.execute(
-                "DELETE FROM categories WHERE id NOT IN (SELECT DISTINCT category_id FROM products)"
-            )
+            # No pruning here anymore: CATEGORIES is now a fixed, curated
+            # 2-tier taxonomy (parents have no product pointing at them
+            # directly -- only their leaf children do), not something
+            # derived from whatever products happen to exist.
             _seed_orders(connection)  # type: ignore[arg-type]
             _sync_seed_orders(connection)  # type: ignore[arg-type]
             _seed_test_accounts(connection)  # type: ignore[arg-type]
@@ -565,7 +627,7 @@ def _seed_test_accounts(connection: sqlite3.Connection) -> None:
         {
             "id": "prd_seller_001",
             "slug": "test-store-graphic-tee",
-            "category_id": "cat_fashion",
+            "category_id": "cat_top_tee",
             "brand": "TEST STORE",
             "name": "Test Store Graphic Tee",
             "description": "테스트 판매자 계정이 등록한 샘플 상품입니다.",
@@ -573,12 +635,14 @@ def _seed_test_accounts(connection: sqlite3.Connection) -> None:
             "care": "찬물 세탁, 그늘 건조",
             "image": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=1200&q=85",
             "price": 39000,
+            "color_family": "뉴트럴",
+            "style_tags": "캐주얼,스트릿·힙",
             "variant": ("var_seller_001_m", "TEST-TEE-WH-M", "화이트", "M", 39000, 15),
         },
         {
             "id": "prd_seller_002",
             "slug": "test-store-canvas-tote",
-            "category_id": "cat_bags",
+            "category_id": "cat_acc_bag",
             "brand": "TEST STORE",
             "name": "Test Store Canvas Tote",
             "description": "테스트 판매자 계정이 등록한 샘플 상품입니다.",
@@ -586,6 +650,8 @@ def _seed_test_accounts(connection: sqlite3.Connection) -> None:
             "care": "오염 부위만 부분 세탁",
             "image": "https://images.unsplash.com/photo-1591561954557-26941169b49e?auto=format&fit=crop&w=1200&q=85",
             "price": 27000,
+            "color_family": "뉴트럴",
+            "style_tags": "미니멀,캐주얼",
             "variant": ("var_seller_002_free", "TEST-TOTE-BK-FREE", "블랙", "FREE", 27000, 9),
         },
     ]
@@ -594,8 +660,9 @@ def _seed_test_accounts(connection: sqlite3.Connection) -> None:
             """
             INSERT INTO products(
                 id, slug, category_id, org_id, brand, name, description, material, care,
-                image, price, compare_at_price, rating, review_count, created_at
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                image, price, compare_at_price, rating, review_count, created_at,
+                color_family, style_tags
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO NOTHING
             """,
             (
@@ -614,6 +681,8 @@ def _seed_test_accounts(connection: sqlite3.Connection) -> None:
                 0,
                 0,
                 now,
+                product["color_family"],
+                product["style_tags"],
             ),
         )
         variant_id, sku, color, size, price, stock = product["variant"]
@@ -748,33 +817,47 @@ def _seed_seller_daily_demo(connection: sqlite3.Connection) -> None:
 
     # id, slug, category_id, name, price, image-slug, sku, color, size,
     # stock, views, sold_qty, refunded_qty (refunded_qty is part of sold_qty
-    # — a refund happens to an order that was already counted as paid).
+    # — a refund happens to an order that was already counted as paid),
+    # color_family, style_tags (AI 추천 코디 조합 엔진 속성 태그 — see
+    # docs/ai-recommendation-plan.html#s3).
     catalog = [
-        ("prd_s2_01", "mood-oversized-wool-knit", "cat_fashion", "오버사이즈 울 니트", 68000,
-         "1576871337622-98d48d1cf531", "MS-KNIT-CHAR-FR", "차콜", "FREE", 12, 45, 8, 0),
-        ("prd_s2_02", "mood-straight-denim-pants", "cat_fashion", "스트레이트 데님 팬츠", 59000,
-         "1541099649105-f69ad21f3246", "MS-DENIM-BLU-30", "블루", "30", 6, 30, 5, 0),
-        ("prd_s2_03", "mood-cotton-long-sleeve-tee", "cat_fashion", "코튼 롱슬리브 티셔츠", 29000,
-         "1521572163474-6864f9cf17ab", "MS-TEE-WHT-M", "화이트", "M", 15, 22, 4, 1),
-        ("prd_s2_04", "mood-block-check-shirt", "cat_fashion", "블록 체크 셔츠", 49000,
-         "1598033129183-c4f50c736f10", "MS-SHIRT-CHK-L", "체크", "L", 9, 18, 3, 0),
-        ("prd_s2_05", "mood-wide-slacks", "cat_fashion", "와이드 슬랙스", 52000,
-         "1594633312681-425c7b97ccd1", "MS-SLACKS-BLK-M", "블랙", "M", 2, 15, 2, 0),
-        ("prd_s2_06", "mood-minimal-leather-belt", "cat_accessories", "미니멀 레더 벨트", 32000,
-         "1624222247344-550fb60583dc", "MS-BELT-BRN-FR", "브라운", "FREE", 25, 12, 2, 0),
-        ("prd_s2_07", "mood-wool-blend-coat", "cat_fashion", "울 블렌드 코트", 189000,
-         "1539533018447-63fcce2678e3", "MS-COAT-CAM-M", "카멜", "M", 0, 9, 1, 0),
-        ("prd_s2_08", "mood-basic-crewneck-sweat", "cat_fashion", "베이직 크루넥 스웨트", 39000,
-         "1556821840-3a63f95609a7", "MS-SWEAT-GRY-L", "그레이", "L", 10, 6, 1, 1),
-        ("prd_s2_09", "mood-corduroy-ball-cap", "cat_accessories", "코듀로이 볼캡", 27000,
-         "1588850561407-ed78c282e89b", "MS-CAP-BEIGE-FR", "베이지", "FREE", 14, 3, 0, 0),
-        ("prd_s2_10", "mood-tailored-jacket", "cat_fashion", "테일러드 재킷", 99000,
-         "1591047139829-d91aecb6caea", "MS-JACKET-NVY-M", "네이비", "M", 20, 0, 0, 0),
+        ("prd_s2_01", "mood-oversized-wool-knit", "cat_top_knit", "오버사이즈 울 니트", 68000,
+         "1576871337622-98d48d1cf531", "MS-KNIT-CHAR-FR", "차콜", "FREE", 12, 45, 8, 0,
+         "뉴트럴", "미니멀,캐주얼"),
+        ("prd_s2_02", "mood-straight-denim-pants", "cat_bottom_denim",
+         "스트레이트 데님 팬츠", 59000,
+         "1541099649105-f69ad21f3246", "MS-DENIM-BLU-30", "블루", "30", 6, 30, 5, 0,
+         "데님/인디고", "캐주얼"),
+        ("prd_s2_03", "mood-cotton-long-sleeve-tee", "cat_top_tee", "코튼 롱슬리브 티셔츠", 29000,
+         "1521572163474-6864f9cf17ab", "MS-TEE-WHT-M", "화이트", "M", 15, 22, 4, 1,
+         "뉴트럴", "미니멀,캐주얼"),
+        ("prd_s2_04", "mood-block-check-shirt", "cat_top_shirt", "블록 체크 셔츠", 49000,
+         "1598033129183-c4f50c736f10", "MS-SHIRT-CHK-L", "체크", "L", 9, 18, 3, 0,
+         "어스톤", "캐주얼"),
+        ("prd_s2_05", "mood-wide-slacks", "cat_bottom_slacks", "와이드 슬랙스", 52000,
+         "1594633312681-425c7b97ccd1", "MS-SLACKS-BLK-M", "블랙", "M", 2, 15, 2, 0,
+         "뉴트럴", "미니멀,포멀"),
+        ("prd_s2_06", "mood-minimal-leather-belt", "cat_acc_belt", "미니멀 레더 벨트", 32000,
+         "1624222247344-550fb60583dc", "MS-BELT-BRN-FR", "브라운", "FREE", 25, 12, 2, 0,
+         "어스톤", "미니멀,포멀"),
+        ("prd_s2_07", "mood-wool-blend-coat", "cat_outer_coat", "울 블렌드 코트", 189000,
+         "1539533018447-63fcce2678e3", "MS-COAT-CAM-M", "카멜", "M", 0, 9, 1, 0,
+         "어스톤", "미니멀,포멀"),
+        ("prd_s2_08", "mood-basic-crewneck-sweat", "cat_top_sweat", "베이직 크루넥 스웨트", 39000,
+         "1556821840-3a63f95609a7", "MS-SWEAT-GRY-L", "그레이", "L", 10, 6, 1, 1,
+         "뉴트럴", "캐주얼,스트릿·힙"),
+        ("prd_s2_09", "mood-corduroy-ball-cap", "cat_acc_cap", "코듀로이 볼캡", 27000,
+         "1588850561407-ed78c282e89b", "MS-CAP-BEIGE-FR", "베이지", "FREE", 14, 3, 0, 0,
+         "뉴트럴", "캐주얼,스트릿·힙"),
+        ("prd_s2_10", "mood-tailored-jacket", "cat_outer_jacket", "테일러드 재킷", 99000,
+         "1591047139829-d91aecb6caea", "MS-JACKET-NVY-M", "네이비", "M", 20, 0, 0, 0,
+         "뉴트럴", "포멀,미니멀"),
     ]
 
     for (
         product_id, slug, category_id, name, price, image_slug,
         sku, color, size, stock, views, sold_qty, refunded_qty,
+        color_family, style_tags,
     ) in catalog:
         variant_id = f"var_{product_id[4:]}"
         image = f"https://images.unsplash.com/photo-{image_slug}?auto=format&fit=crop&w=1200&q=85"
@@ -782,14 +865,15 @@ def _seed_seller_daily_demo(connection: sqlite3.Connection) -> None:
             """
             INSERT INTO products(
                 id, slug, category_id, org_id, brand, name, description, material, care,
-                image, price, compare_at_price, rating, review_count, created_at
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                image, price, compare_at_price, rating, review_count, created_at,
+                color_family, style_tags
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO NOTHING
             """,
             (
                 product_id, slug, category_id, org_id, "MOOD STORY", name,
                 "무드 스토리가 소개하는 시즌 아이템입니다.", "상세 참고", "상세 참고",
-                image, price, None, 0, 0, now,
+                image, price, None, 0, 0, now, color_family, style_tags,
             ),
         )
         connection.execute(
@@ -851,11 +935,16 @@ MARKET_SHARE_SELLERS = [
         "phone": "010-6666-7777", "org_id": "org_test_seller3", "org_name": "라인 클로젯",
         "plan": "BUSINESS",
         "products": [
-            ("prd_s3_01", "실켓 코튼 셔츠", 45000, "화이트", "M", 10, 4, 0),
-            ("prd_s3_02", "테이퍼드 슬랙스", 58000, "블랙", "30", 8, 3, 1),
-            ("prd_s3_03", "니트 가디건", 72000, "베이지", "FREE", 6, 2, 0),
-            ("prd_s3_04", "레더 스니커즈", 120000, "브라운", "270", 5, 2, 0),
-            ("prd_s3_05", "캔버스 백팩", 68000, "카키", "FREE", 9, 3, 0),
+            ("prd_s3_01", "실켓 코튼 셔츠", 45000, "화이트", "M", 10, 4, 0,
+             "cat_top_shirt", "뉴트럴", "미니멀,포멀"),
+            ("prd_s3_02", "테이퍼드 슬랙스", 58000, "블랙", "30", 8, 3, 1,
+             "cat_bottom_slacks", "뉴트럴", "미니멀,포멀"),
+            ("prd_s3_03", "니트 가디건", 72000, "베이지", "FREE", 6, 2, 0,
+             "cat_top_knit", "뉴트럴", "미니멀,캐주얼"),
+            ("prd_s3_04", "레더 스니커즈", 120000, "브라운", "270", 5, 2, 0,
+             "cat_shoes", "어스톤", "캐주얼,미니멀"),
+            ("prd_s3_05", "캔버스 백팩", 68000, "카키", "FREE", 9, 3, 0,
+             "cat_acc_bag", "어스톤", "캐주얼,스트릿·힙"),
         ],
     },
     {
@@ -863,11 +952,16 @@ MARKET_SHARE_SELLERS = [
         "phone": "010-7777-8888", "org_id": "org_test_seller4", "org_name": "어반 무드",
         "plan": "BASIC",
         "products": [
-            ("prd_s4_01", "오버핏 후드", 49000, "그레이", "L", 12, 3, 0),
-            ("prd_s4_02", "와이드 데님", 65000, "블루", "32", 7, 2, 0),
-            ("prd_s4_03", "스트라이프 셔츠", 39000, "네이비", "M", 10, 2, 1),
-            ("prd_s4_04", "버킷햇", 25000, "블랙", "FREE", 15, 1, 0),
-            ("prd_s4_05", "크로스백", 47000, "브라운", "FREE", 8, 1, 0),
+            ("prd_s4_01", "오버핏 후드", 49000, "그레이", "L", 12, 3, 0,
+             "cat_outer_hoodzip", "뉴트럴", "캐주얼,스트릿·힙"),
+            ("prd_s4_02", "와이드 데님", 65000, "블루", "32", 7, 2, 0,
+             "cat_bottom_denim", "데님/인디고", "캐주얼,스트릿·힙"),
+            ("prd_s4_03", "스트라이프 셔츠", 39000, "네이비", "M", 10, 2, 1,
+             "cat_top_shirt", "뉴트럴", "캐주얼"),
+            ("prd_s4_04", "버킷햇", 25000, "블랙", "FREE", 15, 1, 0,
+             "cat_acc_cap", "뉴트럴", "스트릿·힙,스포티"),
+            ("prd_s4_05", "크로스백", 47000, "브라운", "FREE", 8, 1, 0,
+             "cat_acc_bag", "어스톤", "캐주얼,스트릿·힙"),
         ],
     },
     {
@@ -875,11 +969,16 @@ MARKET_SHARE_SELLERS = [
         "phone": "010-8888-9999", "org_id": "org_test_seller5", "org_name": "소프트 데일리",
         "plan": "FREE",
         "products": [
-            ("prd_s5_01", "베이직 티셔츠", 19000, "화이트", "M", 20, 8, 0),
-            ("prd_s5_02", "조거 팬츠", 39000, "그레이", "L", 14, 6, 1),
-            ("prd_s5_03", "플리스 자켓", 59000, "네이비", "M", 10, 4, 0),
-            ("prd_s5_04", "니트 비니", 15000, "블랙", "FREE", 18, 5, 0),
-            ("prd_s5_05", "에코백", 12000, "베이지", "FREE", 16, 6, 0),
+            ("prd_s5_01", "베이직 티셔츠", 19000, "화이트", "M", 20, 8, 0,
+             "cat_top_tee", "뉴트럴", "미니멀,캐주얼"),
+            ("prd_s5_02", "조거 팬츠", 39000, "그레이", "L", 14, 6, 1,
+             "cat_bottom_cargo", "뉴트럴", "스포티,캐주얼"),
+            ("prd_s5_03", "플리스 자켓", 59000, "네이비", "M", 10, 4, 0,
+             "cat_outer_jacket", "뉴트럴", "스포티,캐주얼"),
+            ("prd_s5_04", "니트 비니", 15000, "블랙", "FREE", 18, 5, 0,
+             "cat_acc_cap", "뉴트럴", "캐주얼,스트릿·힙"),
+            ("prd_s5_05", "에코백", 12000, "베이지", "FREE", 16, 6, 0,
+             "cat_acc_bag", "뉴트럴", "미니멀,캐주얼"),
         ],
     },
 ]
@@ -911,25 +1010,27 @@ def _seed_market_share_demo_sellers(connection: sqlite3.Connection) -> None:
                 0.08, "ACTIVE", seller["plan"], now,
             ),
         )
-        for product_id, name, price, color, size, stock, sold_qty, refunded_qty in seller[
-            "products"
-        ]:
+        for (
+            product_id, name, price, color, size, stock, sold_qty, refunded_qty,
+            category_id, color_family, style_tags,
+        ) in seller["products"]:
             slug = f"{seller['org_id']}-{product_id}".replace("_", "-")
             variant_id = f"var_{product_id[4:]}"
             connection.execute(
                 """
                 INSERT INTO products(
                     id, slug, category_id, org_id, brand, name, description, material, care,
-                    image, price, compare_at_price, rating, review_count, created_at
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    image, price, compare_at_price, rating, review_count, created_at,
+                    color_family, style_tags
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO NOTHING
                 """,
                 (
-                    product_id, slug, "cat_fashion", seller["org_id"], seller["org_name"],
+                    product_id, slug, category_id, seller["org_id"], seller["org_name"],
                     name, f"{seller['org_name']}의 시즌 아이템입니다.", "상세 참고", "상세 참고",
                     "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab"
                     "?auto=format&fit=crop&w=1200&q=85",
-                    price, None, 0, 0, now,
+                    price, None, 0, 0, now, color_family, style_tags,
                 ),
             )
             connection.execute(
@@ -1124,6 +1225,7 @@ def record_event(
     order_id: str | None = None,
     product_id: str | None = None,
     variant_id: str | None = None,
+    customer_id: str | None = None,
     quantity: int = 0,
     amount: int = 0,
     discount: int = 0,
@@ -1137,15 +1239,20 @@ def record_event(
     ``external_event_id`` is the dedupe key: retried requests (e.g. a client
     resubmitting a cancel call) must not double-count revenue or refunds, so
     inserts are idempotent via INSERT OR IGNORE on that unique column.
+    ``customer_id`` is optional (most event types don't need it -- it exists
+    mainly so PRODUCT_VIEWED can be tied to a logged-in customer for the AI
+    추천 엔진's browse-history taste profile; guests leave it NULL).
     """
     connection.execute(
         """
         INSERT OR IGNORE INTO commerce_events(
             id, external_event_id, event_type, org_id, order_id, product_id, variant_id,
-            quantity, amount, discount, shipping_fee, refund_amount, occurred_at, created_at
+            customer_id, quantity, amount, discount, shipping_fee, refund_amount,
+            occurred_at, created_at
         ) VALUES(
             :id, :external_event_id, :event_type, :org_id, :order_id, :product_id, :variant_id,
-            :quantity, :amount, :discount, :shipping_fee, :refund_amount, :occurred_at, :created_at
+            :customer_id, :quantity, :amount, :discount, :shipping_fee, :refund_amount,
+            :occurred_at, :created_at
         )
         """,
         {
@@ -1156,6 +1263,7 @@ def record_event(
             "order_id": order_id,
             "product_id": product_id,
             "variant_id": variant_id,
+            "customer_id": customer_id,
             "quantity": quantity,
             "amount": amount,
             "discount": discount,
@@ -1164,4 +1272,44 @@ def record_event(
             "occurred_at": occurred_at or utc_now(),
             "created_at": utc_now(),
         },
+    )
+
+
+def record_combo_signal(
+    connection: sqlite3.Connection,
+    *,
+    external_event_id: str,
+    product_a_id: str,
+    product_b_id: str,
+    signal_type: str,
+    org_id: str | None = None,
+    occurred_at: str | None = None,
+) -> None:
+    """Append one row to the pairwise behavioral-signal ledger (AI 추천 엔진).
+
+    Same idempotency pattern as record_event: external_event_id is the
+    dedupe key. Pair order is normalized (see app.recommendation.pair_key)
+    so (A,B) and (B,A) always land as the same pair regardless of which
+    product was added to the cart/order first.
+    """
+    from app.recommendation import pair_key
+
+    normalized_a, normalized_b = pair_key(product_a_id, product_b_id)
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO combo_signals(
+            id, external_event_id, product_a_id, product_b_id, signal_type,
+            org_id, occurred_at, created_at
+        ) VALUES(?,?,?,?,?,?,?,?)
+        """,
+        (
+            f"cbs_{uuid4().hex[:16]}",
+            external_event_id,
+            normalized_a,
+            normalized_b,
+            signal_type,
+            org_id,
+            occurred_at or utc_now(),
+            utc_now(),
+        ),
     )

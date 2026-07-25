@@ -36,12 +36,17 @@ import {
   getPlatformDailyTraffic,
   getProduct,
   getProducts,
+  getRecommendations,
   getSellerDailyReport,
   getSellerMarketShare,
+  getHomeRecommendations,
   googleAuth,
+  HomeRecommendations,
   login,
   OrganizationSummary,
   PlatformTrafficReport,
+  Recommendations,
+  RecommendedProduct,
   recordProductView,
   returnOrder,
   SellerDailyReport,
@@ -50,6 +55,7 @@ import {
   SellerProductInput,
   signup,
   SignupInput,
+  tagProductAttributes,
   updateCartItem,
   updateMyVariant,
   updateOrganizationStatus,
@@ -68,7 +74,8 @@ type View =
   | "signup"
   | "profile"
   | "seller"
-  | "admin";
+  | "admin"
+  | "recommendations";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const won = new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW", maximumFractionDigits: 0 });
@@ -274,7 +281,7 @@ export function App() {
     onSuccess: setCart,
   });
 
-  const openProduct = (item: Product) => {
+  const openProduct = (item: { slug: string }) => {
     setProductSlug(item.slug);
     setVariantId("");
     setView("product");
@@ -297,6 +304,7 @@ export function App() {
         <button className="wordmark" onClick={() => setView("home")}>EVERYDAY MARKET</button>
         <nav aria-label="주요 메뉴">
           <button onClick={() => setView("catalog")}>SHOP</button>
+          <button onClick={() => setView("recommendations")}>AI 추천</button>
           <button onClick={() => setView("orders")}>주문·배송</button>
           <button onClick={() => setView("inquiries")}>문의 내역</button>
         </nav>
@@ -318,7 +326,18 @@ export function App() {
 
       {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice("")}>닫기</button></div>}
 
-      {view === "home" && <Home products={products.data ?? []} onShop={() => setView("catalog")} onProduct={openProduct} />}
+      {view === "home" && (
+        <Home
+          products={products.data ?? []}
+          onShop={() => setView("catalog")}
+          onProduct={openProduct}
+          onMore={() => setView("recommendations")}
+          token={auth?.access_token}
+        />
+      )}
+      {view === "recommendations" && (
+        <AiRecommendationsPage onProduct={openProduct} token={auth?.access_token} />
+      )}
       {view === "catalog" && (
         <Catalog
           products={products.data ?? []}
@@ -337,6 +356,7 @@ export function App() {
         <ProductPage
           product={product.data}
           variantId={variantId}
+          customerId={auth?.customer.id}
           onVariant={setVariantId}
           onAdd={() => {
             if (!variantId) return setNotice("옵션을 선택해주세요.");
@@ -458,7 +478,7 @@ export function App() {
   );
 }
 
-function Home({ products, onShop, onProduct }: { products: Product[]; onShop: () => void; onProduct: (p: Product) => void }) {
+function Home({ products, onShop, onProduct, onMore, token }: { products: Product[]; onShop: () => void; onProduct: (p: { slug: string }) => void; onMore: () => void; token?: string }) {
   const heroRef = useRef<HTMLDivElement>(null);
   const editorialRef = useRef<HTMLDivElement>(null);
   const statementRef = useRef<HTMLDivElement>(null);
@@ -547,6 +567,8 @@ function Home({ products, onShop, onProduct }: { products: Product[]; onShop: ()
       <div className="hero-index hero-reveal" aria-hidden="true"><span>SHOP</span><span>·</span><span>SS 26</span></div>
     </section>
 
+    <AiRecommendationsStrip onProduct={onProduct} onMore={onMore} token={token} />
+
     <section className="store-section editorial-section" ref={editorialRef}>
       <SectionTitle eyebrow="EDITOR'S PICK" title="이번 주 에디터 추천" />
       <div className="editorial-grid">
@@ -594,9 +616,164 @@ function Home({ products, onShop, onProduct }: { products: Product[]; onShop: ()
   </main>;
 }
 
-function Catalog(props: { products: Product[]; categories: { slug: string; name: string }[]; selectedCategory: string; sort: string; inStock: boolean; search: string; onCategory: (v: string) => void; onSort: (v: string) => void; onInStock: (v: boolean) => void; onProduct: (p: Product) => void }) {
+// 마우스 휠(세로 스크롤)을 가로 스크롤로 변환 — 트랙패드는 이미 자연스러운
+// 가로 스크롤을 지원하므로, 세로 델타가 더 클 때만 가로로 바꿔치기한다.
+function useWheelToHorizontalScroll(rowRef: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      el.scrollLeft += event.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [rowRef]);
+}
+
+function AiRecChip({ item, onProduct }: { item: RecommendedProduct; onProduct: (p: { slug: string }) => void }) {
+  return (
+    <button className="ai-rec-chip" onClick={() => onProduct(item)}>
+      <div className="ai-rec-chip-image">
+        <img src={item.image} alt={item.name} loading="lazy" />
+        {!item.in_stock && <span>품절</span>}
+      </div>
+      <small>{item.brand}</small>
+      <h4>{item.name}</h4>
+      <div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div>
+    </button>
+  );
+}
+
+function AiRecRow({ items, onProduct }: { items: RecommendedProduct[]; onProduct: (p: { slug: string }) => void }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  useWheelToHorizontalScroll(rowRef);
+  return (
+    <div className="ai-rec-row" ref={rowRef}>
+      {items.map((item) => <AiRecChip item={item} onProduct={onProduct} key={item.id} />)}
+    </div>
+  );
+}
+
+function AiRecommendationsStrip({ onProduct, onMore, token }: { onProduct: (p: { slug: string }) => void; onMore: () => void; token?: string }) {
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const recs = useQuery({
+    queryKey: ["home-recommendations", cartId, token],
+    queryFn: () => getHomeRecommendations(cartId, token),
+  });
+
+  useEffect(() => {
+    if (!recs.data?.items.length) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".ai-rec-chip",
+        { opacity: 0, y: 24 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          ease: "power2.out",
+          stagger: 0.08,
+          scrollTrigger: { trigger: sectionRef.current, start: "top 88%" },
+        },
+      );
+    }, sectionRef);
+    return () => ctx.revert();
+  }, [recs.data]);
+
+  if (!recs.data?.items.length) return null;
+  const { tier, basis_product_name, items } = recs.data;
+  const eyebrow = tier >= 2 ? "AI 추천 · 맞춤 코디" : "AI 추천 · 베스트 조합";
+  const heading =
+    tier >= 2 && basis_product_name ? (
+      <>이번에 <b>{basis_product_name}</b>{tier === 3 ? " 구매하셨군요!" : " 보셨군요!"}</>
+    ) : (
+      "처음 오셨나봐요! 저희 쇼핑몰엔 이런게 있어요!"
+    );
+
+  return (
+    <section className="store-section ai-recs-section" ref={sectionRef}>
+      <div className="section-title ai-recs-title">
+        <div>
+          <p>{eyebrow}</p>
+          <h2>{heading}</h2>
+        </div>
+        <button className="link" onClick={onMore}>더보기 →</button>
+      </div>
+      <AiRecRow items={items} onProduct={onProduct} />
+    </section>
+  );
+}
+
+function AiRecommendationsPage({ onProduct, token }: { onProduct: (p: { slug: string }) => void; token?: string }) {
+  const pageRef = useRef<HTMLDivElement>(null);
+  const recs = useQuery({
+    queryKey: ["recommendations", cartId, token],
+    queryFn: () => getRecommendations(cartId, token),
+  });
+
+  useEffect(() => {
+    if (!recs.data?.sections.length) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".ai-rec-chip",
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power2.out", stagger: 0.06 },
+      );
+    }, pageRef);
+    return () => ctx.revert();
+  }, [recs.data]);
+
+  const basis = recs.data?.basis_product_name;
+  const tier = recs.data?.tier ?? 1;
+
+  return (
+    <main className="store-section ai-recommendations-page" ref={pageRef}>
+      <SectionTitle eyebrow="AI 추천" title="AI에게 추천받기" />
+      <p className="ai-recs-basis">
+        {tier >= 2 && basis
+          ? <>최근 보신 <b>{basis}</b>과 잘 어울리는 코디예요</>
+          : "지금 가장 많이 함께 구매된 베스트 조합이에요"}
+      </p>
+      {recs.isLoading && <p className="empty">추천을 불러오는 중…</p>}
+      {!recs.isLoading && !recs.data?.sections.length && (
+        <div className="empty"><h2>아직 추천할 상품이 부족해요.</h2></div>
+      )}
+      {recs.data?.sections.map((section) => (
+        <div className="ai-rec-section-group" key={section.category_id}>
+          <h3>{section.category_name}</h3>
+          <AiRecRow items={section.items} onProduct={onProduct} />
+        </div>
+      ))}
+    </main>
+  );
+}
+
+function Catalog(props: { products: Product[]; categories: Category[]; selectedCategory: string; sort: string; inStock: boolean; search: string; onCategory: (v: string) => void; onSort: (v: string) => void; onInStock: (v: boolean) => void; onProduct: (p: Product) => void }) {
+  // 2단 카테고리: 대분류(부모) 탭 + 선택한 대분류에 속한 소분류 탭.
+  // selectedCategory는 대분류 slug(그 대분류 전체) 또는 소분류 slug(단일 소분류) 둘 다 될 수 있음.
+  const parents = props.categories.filter((c) => !c.parent_id);
+  const selected = props.categories.find((c) => c.slug === props.selectedCategory);
+  const activeParentSlug = !props.selectedCategory
+    ? ""
+    : selected && !selected.parent_id
+      ? selected.slug
+      : (props.categories.find((c) => c.id === selected?.parent_id)?.slug ?? "");
+  const activeParent = props.categories.find((c) => c.slug === activeParentSlug);
+  const children = activeParent ? props.categories.filter((c) => c.parent_id === activeParent.id) : [];
+
   return <main className="store-section catalog-page"><SectionTitle eyebrow="SHOP" title={props.search ? `“${props.search}” 검색 결과` : "전체 상품"} />
-    <div className="catalog-tools"><div className="category-tabs"><button className={!props.selectedCategory ? "active" : ""} onClick={() => props.onCategory("")}>전체</button>{props.categories.map((item) => <button className={props.selectedCategory === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}</div>
+    <div className="catalog-tools">
+      <div>
+        <div className="category-tabs"><button className={!activeParentSlug ? "active" : ""} onClick={() => props.onCategory("")}>전체</button>{parents.map((item) => <button className={activeParentSlug === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}</div>
+        {children.length > 0 && (
+          <div className="subcategory-tabs">
+            <button className={props.selectedCategory === activeParentSlug ? "active" : ""} onClick={() => props.onCategory(activeParentSlug)}>전체</button>
+            {children.map((item) => <button className={props.selectedCategory === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}
+          </div>
+        )}
+      </div>
       <div className="filters"><label><input type="checkbox" checked={props.inStock} onChange={(event) => props.onInStock(event.target.checked)} /> 재고 있음</label><select value={props.sort} onChange={(event) => props.onSort(event.target.value)} aria-label="상품 정렬"><option value="recommended">추천순</option><option value="newest">신상품순</option><option value="price_asc">낮은 가격순</option><option value="price_desc">높은 가격순</option><option value="reviews">리뷰순</option></select></div></div>
     {props.products.length ? <ProductGrid products={props.products} onProduct={props.onProduct} /> : <div className="empty"><h2>조건에 맞는 상품이 없습니다.</h2><button onClick={() => props.onCategory("")}>필터 초기화</button></div>}
   </main>;
@@ -640,10 +817,10 @@ function ProductGrid({ products, onProduct }: { products: Product[]; onProduct: 
   return <div className="product-grid" ref={gridRef}>{products.map((item) => <button className="product-card" key={item.id} onClick={() => onProduct(item)}><div className="product-image"><img src={item.image} alt={item.name} loading="lazy" />{!item.in_stock && <span>품절</span>}</div><small>{item.brand}</small><h3>{item.name}</h3><div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div><p>★ {item.rating.toFixed(1)} <span>({item.review_count})</span></p></button>)}</div>;
 }
 
-function ProductPage({ product, variantId, onVariant, onAdd, onBuy }: { product: ProductDetail; variantId: string; onVariant: (id: string) => void; onAdd: () => void; onBuy: () => void }) {
+function ProductPage({ product, variantId, customerId, onVariant, onAdd, onBuy }: { product: ProductDetail; variantId: string; customerId?: string; onVariant: (id: string) => void; onAdd: () => void; onBuy: () => void }) {
   useEffect(() => {
-    recordProductView(product.id).catch(() => {});
-  }, [product.id]);
+    recordProductView(product.id, customerId).catch(() => {});
+  }, [product.id, customerId]);
   return <main className="product-page"><div className="product-gallery"><img src={product.image} alt={product.name} /></div><div className="product-info"><small>{product.brand} · {product.category_name}</small><h1>{product.name}</h1><p className="rating">★ {product.rating} · 리뷰 {product.review_count}개</p><div className="product-price">{product.compare_at_price && <del>{won.format(product.compare_at_price)}</del>}<strong>{won.format(product.price)}</strong></div><p className="description">{product.description}</p><fieldset><legend>옵션 선택</legend>{product.variants.map((variant) => <button type="button" disabled={!variant.stock} className={variantId === variant.id ? "selected" : ""} key={variant.id} onClick={() => onVariant(variant.id)}>{variant.color} / {variant.size}{!variant.stock && " · 품절"}</button>)}</fieldset><div className="purchase-actions"><button onClick={onAdd}>장바구니</button><button className="dark" onClick={onBuy}>바로 구매</button></div><dl className="policy-list"><div><dt>배송</dt><dd>{product.shipping.estimated_days} · {won.format(product.shipping.fee)} · {won.format(product.shipping.free_threshold)} 이상 무료</dd></div><div><dt>반품</dt><dd>수령 후 {product.return_policy.window_days}일 이내 · 단순 변심 {won.format(product.return_policy.return_fee)}</dd></div><div><dt>소재</dt><dd>{product.material}</dd></div><div><dt>관리</dt><dd>{product.care}</dd></div></dl></div></main>;
 }
 
@@ -969,9 +1146,12 @@ function SellerConsolePage({
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<"dashboard" | "orders" | "inquiries" | "products" | "discord">("dashboard");
   const [showForm, setShowForm] = useState(false);
+  // 상품은 항상 소분류(leaf)에 등록 — 대분류는 상품 필터링용일 뿐 상품이 직접 속하지 않음.
+  // leaf = 이 카테고리를 parent로 둔 다른 카테고리가 없는 카테고리(소분류, 또는 소분류가 없는 "신발" 자신).
+  const leafCategories = categories.filter((c) => !categories.some((other) => other.parent_id === c.id));
   const [form, setForm] = useState({
     name: "",
-    category_id: categories[0]?.id ?? "cat_fashion",
+    category_id: leafCategories[0]?.id ?? "",
     description: "",
     price: "",
     color: "",
@@ -995,10 +1175,12 @@ function SellerConsolePage({
         size: form.size,
         stock: Number(form.stock),
       } satisfies SellerProductInput),
-    onSuccess: () => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["seller-products", auth.customer.id] });
       setShowForm(false);
-      setForm({ name: "", category_id: categories[0]?.id ?? "cat_fashion", description: "", price: "", color: "", size: "", stock: "1" });
+      setForm({ name: "", category_id: leafCategories[0]?.id ?? "", description: "", price: "", color: "", size: "", stock: "1" });
+      // AI 추천 엔진용 색상/스타일 태깅 — best-effort, 실패해도 상품 등록은 이미 끝난 상태.
+      tagProductAttributes(created.id).catch(() => {});
     },
     onError: (error: Error) => onError(error.message),
   });
@@ -1047,7 +1229,11 @@ function SellerConsolePage({
               <label>상품명<input required value={form.name} onChange={(e) => update("name", e.target.value)} /></label>
               <label>카테고리
                 <select value={form.category_id} onChange={(e) => update("category_id", e.target.value)}>
-                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  {categories.filter((c) => !c.parent_id).map((parent) => {
+                    const kids = leafCategories.filter((c) => c.parent_id === parent.id);
+                    const options = kids.length ? kids : leafCategories.filter((c) => c.id === parent.id);
+                    return <optgroup key={parent.id} label={parent.name}>{options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>;
+                  })}
                 </select>
               </label>
               <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>

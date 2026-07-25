@@ -130,6 +130,31 @@ class CommerceClient:
             response.raise_for_status()
             return response.json()
 
+    async def get_product(self, product_id: str) -> dict[str, object]:
+        """Public product detail lookup -- used by the AI 추천 tagger to read
+        a product's name/description/material before classifying it (no
+        auth needed, same endpoint the storefront's product page calls).
+        """
+        return await self._get(f"/products/{product_id}", None)
+
+    async def tag_product_attributes(
+        self, product_id: str, *, color_family: str, style_tags: list[str]
+    ) -> None:
+        """Writes back the AI 추천 tagger's one-time classification
+        (docs/ai-recommendation-plan.html#s3). Internal-token authed, same
+        posture as the Discord internal endpoints -- this isn't something a
+        seller's own bearer token should be able to call directly.
+        """
+        if not self._internal_token:
+            return
+        async with httpx.AsyncClient(base_url=self._base_url, timeout=self._timeout) as client:
+            response = await client.patch(
+                f"/internal/products/{product_id}/attributes",
+                json={"color_family": color_family, "style_tags": style_tags},
+                headers={"X-Internal-Token": self._internal_token},
+            )
+            response.raise_for_status()
+
     async def _get(self, path: str, params: dict[str, str] | None) -> Any:
         async with httpx.AsyncClient(base_url=self._base_url, timeout=self._timeout) as client:
             response = await client.get(path, params=params)

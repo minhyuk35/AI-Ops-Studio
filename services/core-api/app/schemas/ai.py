@@ -98,3 +98,16 @@ class SellerMarketShareResponse(BaseModel):
     prompt_source: Literal["langfuse", "fallback"]
     prompt_version: str | None = None
     discord_sent: bool = False
+
+
+class ProductStyleTagRequest(BaseModel):
+    product_id: str = Field(min_length=1, max_length=64)
+
+
+class ProductStyleTagResponse(BaseModel):
+    product_id: str
+    color_family: str
+    style_tags: list[str]
+    model: str
+    prompt_source: Literal["langfuse", "fallback"]
+    prompt_version: str | None = None

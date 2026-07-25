@@ -45,7 +45,7 @@ async def _create_product(client, token: str, name: str, price: int, stock: int)
         "/sellers/me/products",
         json={
             "name": name,
-            "category_id": "cat_fashion",
+            "category_id": "cat_top_tee",
             "description": "테스트 상품",
             "price": price,
             "color": "블랙",

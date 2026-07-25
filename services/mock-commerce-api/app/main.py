@@ -37,11 +37,13 @@ from app.db import (
     connect,
     infer_order_org_id,
     initialize_database,
+    record_combo_signal,
     record_event,
     row_to_dict,
     transaction,
     utc_now,
 )
+from app.recommendation import combo_score, pair_key
 
 DEFAULT_COMMISSION_RATE = 0.08
 
@@ -434,8 +436,14 @@ async def list_products(
         term = f"%{q.strip()}%"
         parameters.extend([term, term, term])
     if category:
-        clauses.append("(c.slug = ? OR c.id = ?)")
-        parameters.extend([category, category])
+        # `category` can be a leaf slug/id (직접 매칭) or a parent slug/id --
+        # in the latter case match any leaf whose parent_id resolves to it,
+        # so picking a 대분류 (e.g. "상의") shows every 소분류 under it.
+        clauses.append(
+            "(c.slug = ? OR c.id = ? OR c.parent_id = "
+            "(SELECT id FROM categories WHERE slug = ? OR id = ?))"
+        )
+        parameters.extend([category, category, category, category])
     if in_stock:
         clauses.append(
             "EXISTS(SELECT 1 FROM variants sv WHERE sv.product_id = p.id AND sv.stock > 0)"
@@ -807,7 +815,7 @@ async def add_cart_item(cart_id: str, payload: CartItemCreate) -> dict[str, obje
     with transaction() as connection:
         ensure_cart(connection, cart_id)
         variant = connection.execute(
-            "SELECT stock FROM variants WHERE id = ?", (payload.variant_id,)
+            "SELECT stock, product_id FROM variants WHERE id = ?", (payload.variant_id,)
         ).fetchone()
         if variant is None:
             raise HTTPException(status_code=404, detail="상품 옵션을 찾을 수 없습니다.")
@@ -820,6 +828,7 @@ async def add_cart_item(cart_id: str, payload: CartItemCreate) -> dict[str, obje
             raise HTTPException(
                 status_code=409, detail=f"구매 가능한 수량은 {variant['stock']}개입니다."
             )
+        is_new_to_cart = current is None
         if current:
             connection.execute(
                 "UPDATE cart_items SET quantity = ? WHERE id = ?", (next_quantity, current["id"])
@@ -830,6 +839,10 @@ async def add_cart_item(cart_id: str, payload: CartItemCreate) -> dict[str, obje
                 (f"ci_{uuid4().hex[:12]}", cart_id, payload.variant_id, payload.quantity),
             )
         connection.execute("UPDATE carts SET updated_at = ? WHERE id = ?", (utc_now(), cart_id))
+        if is_new_to_cart:
+            # AI 추천 엔진의 CO_CART 신호 — 처음으로 이 상품이 이 장바구니에 담긴 순간에만
+            # 기록(수량만 늘어나는 경우는 새로운 "같이 담아봄" 신호가 아님).
+            _record_cart_combo_signals(connection, cart_id, str(variant["product_id"]))
         return cart_payload(connection, cart_id)
 
 
@@ -1025,6 +1038,13 @@ async def confirm_payment(payload: PaymentConfirm) -> dict[str, object]:
             occurred_at=now,
             org_id=order_org_id,
         )
+        _record_order_combo_signals(
+            connection,
+            order_id=payload.order_id,
+            org_id=order_org_id,
+            occurred_at=now,
+            signal_type="CO_PURCHASED",
+        )
         _notify_new_order(connection, payload.order_id, order_org_id)
         return {"payment": payment, "order": order_payload(connection, payload.order_id)}
 
@@ -1143,6 +1163,13 @@ async def cancel_order(order_id: str, payload: OrderAction) -> dict[str, object]
             refund_amount=claim["refund_amount"],
             occurred_at=now,
             org_id=order_org_id,
+        )
+        _record_order_combo_signals(
+            connection,
+            order_id=order_id,
+            org_id=order_org_id,
+            occurred_at=now,
+            signal_type="REFUND_NEGATIVE",
         )
         return order_payload(connection, order_id)
 
@@ -1274,6 +1301,7 @@ async def analytics_seller_market_share(
 
 class ProductViewEvent(BaseModel):
     product_id: str = Field(min_length=1, max_length=64)
+    customer_id: str | None = Field(default=None, max_length=64)
 
 
 @app.post("/events/product-view", status_code=202)
@@ -1289,6 +1317,7 @@ async def record_product_view(payload: ProductViewEvent) -> dict[str, object]:
             event_type="PRODUCT_VIEWED",
             external_event_id=f"view_{uuid4().hex}",
             product_id=payload.product_id,
+            customer_id=payload.customer_id,
             org_id=product["org_id"] or DEFAULT_ORG_ID,
         )
     return {"status": "recorded"}
@@ -1333,6 +1362,314 @@ def _org_by_guild(connection, guild_id: str) -> dict[str, object] | None:
         "SELECT * FROM organizations WHERE discord_guild_id = ?", (guild_id,)
     ).fetchone()
     return dict(row) if row is not None else None
+
+
+def _record_cart_combo_signals(connection, cart_id: str, new_product_id: str) -> None:
+    """CO_CART: pair a newly-cart-added product against every other distinct
+    product already in the same cart (docs/ai-recommendation-plan.html#s3).
+    """
+    rows = connection.execute(
+        """
+        SELECT DISTINCT v.product_id FROM cart_items ci
+        JOIN variants v ON v.id = ci.variant_id
+        WHERE ci.cart_id = ? AND v.product_id != ?
+        """,
+        (cart_id, new_product_id),
+    ).fetchall()
+    now = utc_now()
+    for row in rows:
+        other_product_id = str(row["product_id"])
+        record_combo_signal(
+            connection,
+            external_event_id=f"cart:{cart_id}:{new_product_id}:{other_product_id}",
+            product_a_id=new_product_id,
+            product_b_id=other_product_id,
+            signal_type="CO_CART",
+            occurred_at=now,
+        )
+
+
+def _record_order_combo_signals(
+    connection, *, order_id: str, org_id: str, occurred_at: str, signal_type: str
+) -> None:
+    """CO_PURCHASED/REFUND_NEGATIVE: pair every distinct product in an order.
+
+    Refunds in this demo's data model are whole-order (claims/returns don't
+    track which specific order_item was returned -- see request_return), so
+    a refund on a multi-product order applies REFUND_NEGATIVE to every pair
+    in it rather than just the one item's pairings.
+    """
+    rows = connection.execute(
+        "SELECT DISTINCT product_id FROM order_items WHERE order_id = ?", (order_id,)
+    ).fetchall()
+    product_ids = sorted({str(row["product_id"]) for row in rows})
+    for i, product_a in enumerate(product_ids):
+        for product_b in product_ids[i + 1 :]:
+            record_combo_signal(
+                connection,
+                external_event_id=f"{order_id}:{signal_type}:{product_a}:{product_b}",
+                product_a_id=product_a,
+                product_b_id=product_b,
+                signal_type=signal_type,
+                org_id=org_id,
+                occurred_at=occurred_at,
+            )
+
+
+# --- AI 추천 · 코디 조합 엔진 (docs/ai-recommendation-plan.html) ---------------
+# 조합 점수 자체는 app.recommendation의 순수 함수(코드)가 결정적으로 계산한다.
+# 여기 있는 함수들은 그 계산에 필요한 데이터(카탈로그 속성, 행동 신호 집계,
+# 취향 프로필 앵커)를 DB에서 모아주는 조회 전담 계층일 뿐이다.
+
+_SIGNAL_WEIGHTS = {"CO_PURCHASED": 8.0, "CO_CART": 3.0, "REFUND_NEGATIVE": -10.0}
+_MAX_SIGNAL_INFLUENCE = 5  # 같은 쌍이 아무리 많이 반복돼도 가중치는 5회분에서 포화
+
+
+def _load_catalog_attrs(connection) -> dict[str, dict[str, object]]:
+    rows = connection.execute(
+        """
+        SELECT p.id, p.slug, p.name, p.brand, p.image, p.price, p.compare_at_price,
+               p.category_id, p.color_family, p.style_tags,
+               c.name category_name, c.slug category_slug, c.parent_id category_parent_id,
+               COALESCE(SUM(v.stock), 0) total_stock
+        FROM products p
+        JOIN categories c ON c.id = p.category_id
+        LEFT JOIN variants v ON v.product_id = p.id
+        LEFT JOIN organizations o ON o.id = p.org_id
+        WHERE (p.org_id IS NULL OR o.status IS NULL OR o.status != 'SUSPENDED')
+        GROUP BY p.id, c.name, c.slug, c.parent_id
+        """
+    ).fetchall()
+    catalog: dict[str, dict[str, object]] = {}
+    for row in rows:
+        item = dict(row)
+        item["in_stock"] = int(item.pop("total_stock")) > 0
+        item["top_level_id"] = item["category_parent_id"] or item["category_id"]
+        catalog[str(item["id"])] = item
+    return catalog
+
+
+def _load_signal_map(connection) -> dict[tuple[str, str], dict[str, int]]:
+    rows = connection.execute(
+        """
+        SELECT product_a_id, product_b_id, signal_type, COUNT(*) c
+        FROM combo_signals GROUP BY product_a_id, product_b_id, signal_type
+        """
+    ).fetchall()
+    signal_map: dict[tuple[str, str], dict[str, int]] = {}
+    for row in rows:
+        key = (str(row["product_a_id"]), str(row["product_b_id"]))
+        signal_map.setdefault(key, {})[str(row["signal_type"])] = int(row["c"])
+    return signal_map
+
+
+def _pair_score(
+    catalog: dict[str, dict[str, object]],
+    signal_map: dict[tuple[str, str], dict[str, int]],
+    product_a: str,
+    product_b: str,
+) -> float:
+    a, b = catalog[product_a], catalog[product_b]
+    seed = combo_score(
+        color_family_a=a["color_family"],  # type: ignore[arg-type]
+        color_family_b=b["color_family"],  # type: ignore[arg-type]
+        style_tags_a=a["style_tags"],  # type: ignore[arg-type]
+        style_tags_b=b["style_tags"],  # type: ignore[arg-type]
+        top_level_a=a["top_level_id"],  # type: ignore[arg-type]
+        top_level_b=b["top_level_id"],  # type: ignore[arg-type]
+    )
+    signals = signal_map.get(pair_key(product_a, product_b), {})
+    adjustment = sum(
+        _SIGNAL_WEIGHTS[signal_type] * min(count, _MAX_SIGNAL_INFLUENCE)
+        for signal_type, count in signals.items()
+    )
+    return max(0.0, min(100.0, seed + adjustment))
+
+
+def _resolve_recommendation_basis(
+    connection, customer: dict[str, object] | None, cart_id: str | None
+) -> tuple[int, list[str]]:
+    """3단계 개인화 폴백(docs/ai-recommendation-plan.html#s4)의 앵커 상품 결정.
+
+    장바구니는 어느 단계든 항상 최우선으로 포함된다. 반환하는 anchor_ids의
+    첫 항목이 "기준 상품"(추천 근거 문구에 쓰임)이다.
+    """
+    cart_product_ids: list[str] = []
+    if cart_id:
+        rows = connection.execute(
+            """
+            SELECT DISTINCT v.product_id FROM cart_items ci
+            JOIN variants v ON v.id = ci.variant_id WHERE ci.cart_id = ?
+            """,
+            (cart_id,),
+        ).fetchall()
+        cart_product_ids = [str(row["product_id"]) for row in rows]
+
+    purchased_ids: list[str] = []
+    viewed_ids: list[str] = []
+    if customer:
+        purchased_rows = connection.execute(
+            """
+            SELECT oi.product_id, MAX(o.ordered_at) latest FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE o.customer_id = ? GROUP BY oi.product_id ORDER BY latest DESC
+            """,
+            (customer["id"],),
+        ).fetchall()
+        purchased_ids = [str(row["product_id"]) for row in purchased_rows]
+        viewed_rows = connection.execute(
+            """
+            SELECT product_id, MAX(occurred_at) latest FROM commerce_events
+            WHERE event_type = 'PRODUCT_VIEWED' AND customer_id = ? AND product_id IS NOT NULL
+            GROUP BY product_id ORDER BY latest DESC LIMIT 20
+            """,
+            (customer["id"],),
+        ).fetchall()
+        viewed_ids = [str(row["product_id"]) for row in viewed_rows]
+
+    if purchased_ids:
+        tier, basis_ids = 3, purchased_ids[:5]
+    elif viewed_ids:
+        tier, basis_ids = 2, viewed_ids[:5]
+    else:
+        tier, basis_ids = 1, []
+
+    anchor_ids = list(dict.fromkeys(cart_product_ids + basis_ids))
+    return tier, anchor_ids
+
+
+def _bestseller_product_ids(connection, limit: int) -> list[str]:
+    rows = connection.execute(
+        """
+        SELECT oi.product_id, SUM(oi.quantity) qty FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.payment_status = 'PAID'
+        GROUP BY oi.product_id ORDER BY qty DESC LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [str(row["product_id"]) for row in rows]
+
+
+def _rank_candidates(
+    catalog: dict[str, dict[str, object]],
+    signal_map: dict[tuple[str, str], dict[str, int]],
+    anchor_ids: list[str],
+    exclude_ids: set[str],
+) -> list[tuple[str, float]]:
+    scored: list[tuple[str, float]] = []
+    for product_id, item in catalog.items():
+        if product_id in exclude_ids or not item["in_stock"]:
+            continue
+        best = 0.0
+        for anchor_id in anchor_ids:
+            if anchor_id not in catalog:
+                continue
+            best = max(best, _pair_score(catalog, signal_map, product_id, anchor_id))
+        scored.append((product_id, best))
+    scored.sort(key=lambda pair: pair[1], reverse=True)
+    return scored
+
+
+def _recommendation_product_summary(
+    item: dict[str, object], score: float | None
+) -> dict[str, object]:
+    return {
+        "id": item["id"],
+        "slug": item["slug"],
+        "name": item["name"],
+        "brand": item["brand"],
+        "image": item["image"],
+        "price": item["price"],
+        "compare_at_price": item["compare_at_price"],
+        "category_name": item["category_name"],
+        "category_slug": item["category_slug"],
+        "in_stock": item["in_stock"],
+        "match_score": round(score, 1) if score is not None else None,
+    }
+
+
+@app.get("/recommendations/home")
+async def get_home_recommendations(
+    cart_id: str | None = Query(default=None, max_length=64),
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """홈 화면 'AI 추천' 섹션용 — 최대 5개, 카테고리 구분 없는 플랫 목록."""
+    with closing(connect()) as connection:
+        customer = authenticate(connection, authorization)
+        catalog = _load_catalog_attrs(connection)
+        tier, anchor_ids = _resolve_recommendation_basis(connection, customer, cart_id)
+        basis_name = (
+            catalog[anchor_ids[0]]["name"] if anchor_ids and anchor_ids[0] in catalog else None
+        )
+        if anchor_ids:
+            signal_map = _load_signal_map(connection)
+            ranked = _rank_candidates(catalog, signal_map, anchor_ids, set(anchor_ids))
+            items = [
+                _recommendation_product_summary(catalog[pid], score)
+                for pid, score in ranked[:5]
+            ]
+        else:
+            items = []
+        if not items:
+            fallback_ids = _bestseller_product_ids(connection, limit=5 + len(anchor_ids))
+            items = [
+                _recommendation_product_summary(catalog[pid], None)
+                for pid in fallback_ids
+                if pid in catalog and pid not in anchor_ids
+            ][:5]
+        return {"tier": tier, "basis_product_name": basis_name, "items": items}
+
+
+_RECOMMENDATION_TOP_LEVELS = ["cat_top", "cat_bottom", "cat_outer", "cat_shoes", "cat_acc"]
+
+
+@app.get("/recommendations")
+async def get_recommendations(
+    cart_id: str | None = Query(default=None, max_length=64),
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """'AI 추천' 전용 페이지용 — 대분류별로 묶어 각 최대 3개(최소 1개)."""
+    with closing(connect()) as connection:
+        customer = authenticate(connection, authorization)
+        catalog = _load_catalog_attrs(connection)
+        tier, anchor_ids = _resolve_recommendation_basis(connection, customer, cart_id)
+        basis_name = (
+            catalog[anchor_ids[0]]["name"] if anchor_ids and anchor_ids[0] in catalog else None
+        )
+        top_level_names = {
+            str(row["id"]): str(row["name"])
+            for row in connection.execute(
+                "SELECT id, name FROM categories WHERE parent_id IS NULL ORDER BY sort_order"
+            ).fetchall()
+        }
+        if anchor_ids:
+            signal_map = _load_signal_map(connection)
+            ranked = _rank_candidates(catalog, signal_map, anchor_ids, set(anchor_ids))
+        else:
+            ranked = [
+                (pid, 0.0)
+                for pid in _bestseller_product_ids(connection, limit=200)
+                if pid in catalog
+            ]
+        sections = []
+        for top_level_id in _RECOMMENDATION_TOP_LEVELS:
+            if top_level_id not in top_level_names:
+                continue
+            picks = [
+                _recommendation_product_summary(catalog[pid], score if anchor_ids else None)
+                for pid, score in ranked
+                if catalog[pid]["top_level_id"] == top_level_id
+            ][:3]
+            if picks:
+                sections.append(
+                    {
+                        "category_id": top_level_id,
+                        "category_name": top_level_names[top_level_id],
+                        "items": picks,
+                    }
+                )
+        return {"tier": tier, "basis_product_name": basis_name, "sections": sections}
 
 
 _LOW_STOCK_THRESHOLD = 3  # matches analytics.py's seller_daily_snapshot low_stock cutoff
@@ -1501,6 +1838,13 @@ async def seller_complete_refund(
             occurred_at=now,
             org_id=org["id"],
         )
+        _record_order_combo_signals(
+            connection,
+            order_id=order_id,
+            org_id=org["id"],
+            occurred_at=now,
+            signal_type="REFUND_NEGATIVE",
+        )
         return order_payload(connection, order_id)
 
 
@@ -1622,6 +1966,40 @@ async def internal_discord_channels(
                 ),
             )
         return _discord_status_payload(connection, org)
+
+
+class ProductAttributesUpdate(BaseModel):
+    color_family: str = Field(min_length=1, max_length=30)
+    style_tags: list[str] = Field(min_length=1, max_length=3)
+
+
+@app.patch("/internal/products/{product_id}/attributes")
+async def internal_update_product_attributes(
+    product_id: str,
+    payload: ProductAttributesUpdate,
+    x_internal_token: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Writes back the AI 추천 tagger's one-time color/mood classification
+    (core-api's ProductStyleTaggerService) -- see
+    docs/ai-recommendation-plan.html#s3. Internal-token authed: this isn't
+    something a seller's own bearer token calls directly, only core-api.
+    """
+    require_internal_token(x_internal_token)
+    with transaction() as connection:
+        product = connection.execute(
+            "SELECT id FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        if product is None:
+            raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+        connection.execute(
+            "UPDATE products SET color_family = ?, style_tags = ? WHERE id = ?",
+            (payload.color_family, ",".join(payload.style_tags), product_id),
+        )
+        return {
+            "product_id": product_id,
+            "color_family": payload.color_family,
+            "style_tags": payload.style_tags,
+        }
 
 
 @app.get("/internal/discord/metrics")

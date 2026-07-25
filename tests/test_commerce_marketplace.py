@@ -36,7 +36,7 @@ async def _signup_seller(client, email: str) -> dict[str, object]:
 
 NEW_PRODUCT = {
     "name": "New Seller Jacket",
-    "category_id": "cat_fashion",
+    "category_id": "cat_outer_jacket",
     "description": "새로 등록한 판매자 상품입니다.",
     "material": "폴리에스터 100%",
     "care": "드라이클리닝",

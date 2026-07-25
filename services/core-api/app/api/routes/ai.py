@@ -15,6 +15,8 @@ from app.schemas.ai import (
     MonthlyReportResponse,
     PlatformTrafficRequest,
     PlatformTrafficResponse,
+    ProductStyleTagRequest,
+    ProductStyleTagResponse,
     SellerDailyReportRequest,
     SellerDailyReportResponse,
     SellerMarketShareRequest,
@@ -24,6 +26,7 @@ from app.services.commerce_ai import (
     CommerceInsightService,
     MonthlyReportService,
     PlatformTrafficService,
+    ProductStyleTaggerService,
     SellerDailyReportService,
     SellerMarketShareService,
 )
@@ -89,6 +92,12 @@ def get_platform_traffic_service() -> PlatformTrafficService:
 def get_market_share_service() -> SellerMarketShareService:
     settings = get_settings()
     return SellerMarketShareService(settings, PromptRepository(settings))
+
+
+@lru_cache
+def get_product_style_tagger_service() -> ProductStyleTaggerService:
+    settings = get_settings()
+    return ProductStyleTaggerService(settings, PromptRepository(settings))
 
 
 _CANCELLABLE_ORDER_STATUSES = {"PENDING_PAYMENT", "PREPARING"}
@@ -285,6 +294,33 @@ async def commerce_insight(
     return await run_in_threadpool(
         service.generate_insight, resolved_period, summary, products
     )
+
+
+@router.post("/tag-product-attributes", response_model=ProductStyleTagResponse)
+async def tag_product_attributes(
+    payload: ProductStyleTagRequest,
+    service: Annotated[ProductStyleTaggerService, Depends(get_product_style_tagger_service)],
+    commerce: Annotated[CommerceClient, Depends(get_commerce_client)],
+) -> ProductStyleTagResponse:
+    """상품 등록 직후 판매자 콘솔이 호출 — 색상 계열·스타일 무드를 AI가 한 번
+    태깅하고(product-style-tagger 페르소나), 결과를 mock-commerce-api에
+    바로 반영한다. 이후 조합 점수 계산은 이 태그를 코드가 재사용할 뿐, 다시
+    AI를 호출하지 않는다 (docs/ai-recommendation-plan.html#s3).
+    """
+    product = await commerce.get_product(payload.product_id)
+    result = await run_in_threadpool(
+        service.tag_product,
+        payload.product_id,
+        name=str(product.get("name", "")),
+        category_name=str(product.get("category_name", "")),
+        description=str(product.get("description", "")),
+        material=str(product.get("material", "")),
+        color=str((product.get("variants") or [{}])[0].get("color", "")),
+    )
+    await commerce.tag_product_attributes(
+        payload.product_id, color_family=result.color_family, style_tags=result.style_tags
+    )
+    return result
 
 
 @router.post("/monthly-report", response_model=MonthlyReportResponse)

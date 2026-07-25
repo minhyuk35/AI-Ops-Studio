@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     langfuse_daily_seller_report_prompt_name: str = "daily-seller-report"
     langfuse_platform_traffic_prompt_name: str = "platform-daily-traffic"
     langfuse_seller_market_share_prompt_name: str = "seller-market-share-report"
+    langfuse_product_style_tagger_prompt_name: str = "product-style-tagger"
 
     daily_report_hour_utc: int = Field(default=0, ge=0, le=23)
     platform_traffic_report_hour_utc: int = Field(default=1, ge=0, le=23)

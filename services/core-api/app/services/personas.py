@@ -218,6 +218,43 @@ PLATFORM_DAILY_TRAFFIC = Persona(
     },
 )
 
+PRODUCT_STYLE_TAGGER = Persona(
+    fallback_text="""당신은 패션 커머스 상품 태깅 시스템입니다. 아래 상품 정보를 보고
+색상 계열과 스타일 무드를 딱 한 번만 분류하세요. 이 태그는 이후 다른 상품과의
+코디 조합 점수를 코드가 계산할 때 계속 재사용되므로, 신중하게 분류하되 반드시
+아래 정해진 값 중에서만 고르세요.
+
+상품명: {{name}}
+카테고리: {{category_name}}
+설명: {{description}}
+소재: {{material}}
+등록된 색상: {{color}}
+
+color_family로 고를 수 있는 값(하나만): 뉴트럴, 데님/인디고, 어스톤, 파스텔, 비비드
+- 뉴트럴: 화이트/블랙/그레이/베이지/네이비
+- 데님/인디고: 청바지 계열 블루
+- 어스톤: 카키/브라운/올리브/카멜
+- 파스텔: 라벤더/민트/베이비핑크 등 옅은 톤
+- 비비드: 레드/옐로우/오렌지 등 선명한 원색
+
+style_tags로 고를 수 있는 값(1~2개): 미니멀, 캐주얼, 스트릿·힙, 러블리·청순, 포멀, 스포티
+
+다른 설명 없이 아래 형식의 JSON 한 줄만 출력하세요:
+{"color_family": "...", "style_tags": ["..."]}
+""",
+    fallback_config={
+        "gateway": "openrouter",
+        "model": "~google/gemini-flash-latest",
+        "temperature": 0,
+        "max_tokens": 200,
+        "reasoning": {"effort": "none"},
+        "provider": {
+            "allow_fallbacks": True,
+            "data_collection": "deny",
+        },
+    },
+)
+
 SELLER_MARKET_SHARE = Persona(
     fallback_text="""당신은 마켓플레이스 총관리자 전담 분석가입니다. 아래는 코드가 이미
 계산한 이번 달 "플랫폼 매출"(판매자 매출 자체가 아니라, 판매 수수료와 판매자

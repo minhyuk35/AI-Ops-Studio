@@ -1,6 +1,6 @@
 # Langfuse prompt personas
 
-AI Ops Studio의 MVP는 호출 목적이 다른 일곱 개의 페르소나를 사용합니다. 하나의 긴
+AI Ops Studio의 MVP는 호출 목적이 다른 여덟 개의 페르소나를 사용합니다. 하나의 긴
 프롬프트에 모든 책임을 넣지 않고, 입력 데이터·출력 형식·평가 기준이 다른 작업을
 별도 prompt name으로 관리합니다.
 
@@ -13,6 +13,13 @@ AI Ops Studio의 MVP는 호출 목적이 다른 일곱 개의 페르소나를 �
 | `daily-seller-report` | 판매자별 일일 스냅샷 해석·재입고 제안 | 조회·판매·환불·재고 스냅샷(1개 판매자) | 판매자 콘솔·Discord용 리포트 | 판매자 | 구현 |
 | `platform-daily-traffic` | 사이트 전체 일일 트래픽 해석 | 전체 판매자 조회수 스냅샷 | 관리자 전용 트래픽 리포트 | 관리자 | 구현 |
 | `seller-market-share-report` | 판매자별 플랫폼 매출 점유율 비교 | 수수료+플랜 요금 스냅샷 | 관리자 전용 월간 비교 리포트 | 관리자 | 구현 |
+| `product-style-tagger` | 상품 색상 계열·스타일 무드 태깅(등록 시 1회) | 상품명·카테고리·설명·소재·색상 | `{color_family, style_tags}` JSON | 시스템 내부 | 구현 |
+
+`product-style-tagger`는 다른 일곱 개와 성격이 다릅니다 — 매번 실행되는 리포트가
+아니라 상품마다 **딱 한 번**만 실행되고, 그 결과(`color_family`/`style_tags`)가
+상품 레코드에 저장돼 이후 코디 조합 점수 계산(`services/mock-commerce-api/app/
+recommendation.py`, 순수 코드)에 계속 재사용됩니다. AI 추천 엔진 전체 설계는
+`docs/ai-recommendation-plan.html` 참고.
 
 `daily-seller-report`는 판매자 1명당 1개씩 매일 실행되고, 그 판매자 본인의
 상품만 본다. `platform-daily-traffic`/`seller-market-share-report`는 정반대로
@@ -47,6 +54,7 @@ Langfuse 콘솔에 등록한 버전입니다.
    - `daily-seller-report`
    - `platform-daily-traffic`
    - `seller-market-share-report`
+   - `product-style-tagger`
 3. **Type**: `Text` (Chat이 아님 — 코드가 `type="text"`로 조회합니다).
 4. **Prompt**: `docs/prompts/<name>.md`에 있는 코드 블록을 그대로 붙여넣습니다.
    `{{question}}`, `{{period}}`처럼 이중 중괄호로 된 변수 이름은 코드가
@@ -208,6 +216,22 @@ config에도 아래처럼 명시적으로 넣어두는 걸 권장합니다 — �
   "model": "~google/gemini-flash-latest",
   "temperature": 0.2,
   "max_tokens": 2000,
+  "reasoning": { "effort": "none" },
+  "provider": {
+    "allow_fallbacks": true,
+    "data_collection": "deny"
+  }
+}
+```
+
+상품 스타일 태깅:
+
+```json
+{
+  "gateway": "openrouter",
+  "model": "~google/gemini-flash-latest",
+  "temperature": 0,
+  "max_tokens": 200,
   "reasoning": { "effort": "none" },
   "provider": {
     "allow_fallbacks": true,

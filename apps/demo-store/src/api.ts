@@ -111,8 +111,56 @@ export function getProducts(params: {
 export const getProduct = (slug: string) =>
   request<ProductDetail>(`${commerceBaseUrl}/products/${slug}`);
 
-export const recordProductView = (productId: string) =>
-  fetch(`${commerceBaseUrl}/events/product-view`, json("POST", { product_id: productId }));
+export interface RecommendedProduct {
+  id: string;
+  slug: string;
+  name: string;
+  brand: string;
+  image: string;
+  price: number;
+  compare_at_price: number | null;
+  category_name: string;
+  category_slug: string;
+  in_stock: boolean;
+  match_score: number | null;
+}
+
+export interface HomeRecommendations {
+  tier: 1 | 2 | 3;
+  basis_product_name: string | null;
+  items: RecommendedProduct[];
+}
+
+export interface RecommendationSection {
+  category_id: string;
+  category_name: string;
+  items: RecommendedProduct[];
+}
+
+export interface Recommendations {
+  tier: 1 | 2 | 3;
+  basis_product_name: string | null;
+  sections: RecommendationSection[];
+}
+
+export const getHomeRecommendations = (cartId?: string, token?: string) => {
+  const query = cartId ? `?cart_id=${encodeURIComponent(cartId)}` : "";
+  return request<HomeRecommendations>(
+    `${commerceBaseUrl}/recommendations/home${query}`,
+    json("GET", undefined, token),
+  );
+};
+
+export const getRecommendations = (cartId?: string, token?: string) => {
+  const query = cartId ? `?cart_id=${encodeURIComponent(cartId)}` : "";
+  return request<Recommendations>(
+    `${commerceBaseUrl}/recommendations${query}`,
+    json("GET", undefined, token),
+  );
+};
+
+export const recordProductView = (productId: string, customerId?: string) =>
+  fetch(`${commerceBaseUrl}/events/product-view`, json("POST", { product_id: productId, customer_id: customerId ?? null }));
 
 export const getCart = (cartId: string, couponCode?: string) => {
   const query = couponCode ? `?coupon_code=${encodeURIComponent(couponCode)}` : "";
@@ -385,6 +433,23 @@ export const getSellerDailyReport = (token: string, orgId: string, sendDiscord: 
   request<SellerDailyReport>(
     `${coreBaseUrl}/api/v1/ai/seller-daily-report`,
     json("POST", { org_id: orgId, send_discord: sendDiscord }, token),
+  );
+
+export interface ProductStyleTag {
+  product_id: string;
+  color_family: string;
+  style_tags: string[];
+  model: string;
+  prompt_source: "langfuse" | "fallback";
+  prompt_version: string | null;
+}
+
+// 상품 등록 직후 판매자 콘솔이 호출 — 응답을 기다려 화면을 막지 않고
+// best-effort로 태깅한다(실패해도 상품 등록 자체는 이미 끝난 상태).
+export const tagProductAttributes = (productId: string) =>
+  request<ProductStyleTag>(
+    `${coreBaseUrl}/api/v1/ai/tag-product-attributes`,
+    json("POST", { product_id: productId }),
   );
 
 export interface PlatformTrafficProduct {
