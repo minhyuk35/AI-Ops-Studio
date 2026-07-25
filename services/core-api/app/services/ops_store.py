@@ -227,7 +227,7 @@ class OpsStore:
             (
                 "int_commerce",
                 "Commerce API",
-                "Everyday Market",
+                "코디랩",
                 "주문·상품",
                 "CONNECTED",
                 "http://localhost:8001",
@@ -316,7 +316,7 @@ class OpsStore:
                 "system",
                 "WORKSPACE_INITIALIZED",
                 "workspace",
-                "everyday-market",
+                "codilab",
                 "운영 워크스페이스 기본 데이터 생성",
                 now,
             ),

@@ -20,7 +20,7 @@ a { color: inherit; }
 .store-shell { min-height: 100vh; }
 .store-header { position: sticky; top: 0; z-index: 20; min-height: 74px; display: grid; grid-template-columns: auto auto minmax(180px, 360px) auto; gap: 28px; align-items: center; padding: 14px 4vw; border-bottom: 1px solid var(--line-strong); background: rgba(255,255,255,.92); backdrop-filter: blur(14px); }
 .wordmark,.store-header nav button,.cart-button { border: 0; background: transparent; cursor: pointer; }
-.wordmark { padding: 0; font-weight: 900; letter-spacing: .16em; white-space: nowrap; }
+.wordmark { padding: 0; font-weight: 900; letter-spacing: .04em; white-space: nowrap; font-size: 18px; }
 .store-header nav { display: flex; gap: 18px; }
 .store-header nav button { font-size: 13px; font-weight: 600; }
 .header-search { display: flex; border-bottom: 1px solid var(--ink); }

@@ -32,7 +32,7 @@ def main() -> None:
             policy_context="배송 중인 주문은 확인된 배송 예정일만 안내합니다.",
             session_id="langfuse-smoke-session",
             user_id="cus_demo",
-            organization_id="everyday-market",
+            organization_id="codilab",
             request_id="langfuse-smoke-request",
             channel="api",
         )

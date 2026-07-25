@@ -247,7 +247,7 @@ export const askSupport = (input: {
       "상품 준비 중에는 주문 취소가 가능합니다. 배송 완료 후 7일 이내 미사용 상품은 반품을 신청할 수 있으며 단순 변심 반품비는 3,000원입니다.",
     session_id: input.sessionId,
     user_id: input.customerId,
-    organization_id: "everyday-market",
+    organization_id: "codilab",
     request_id: crypto.randomUUID().replaceAll("-", ""),
     channel: "demo-store",
   }));

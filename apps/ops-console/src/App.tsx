@@ -218,7 +218,7 @@ function ConsoleShell({ session, onLogout }: { session: Session; onLogout: () =>
         counts={counts}
         onNavigate={setPage}
         navigation={navigation}
-        workspaceName={isAdmin ? "Everyday Market" : profile.organization?.name ?? profile.name}
+        workspaceName={isAdmin ? "코디랩" : profile.organization?.name ?? profile.name}
         workspaceMeta={isAdmin ? "관리자" : "판매자"}
         onLogout={onLogout}
       />

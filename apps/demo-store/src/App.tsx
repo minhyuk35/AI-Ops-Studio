@@ -301,7 +301,7 @@ export function App() {
   return (
     <div className="store-shell">
       <header className="store-header">
-        <button className="wordmark" onClick={() => setView("home")}>EVERYDAY MARKET</button>
+        <button className="wordmark" onClick={() => setView("home")}>코디랩</button>
         <nav aria-label="주요 메뉴">
           <button onClick={() => setView("catalog")}>SHOP</button>
           <button onClick={() => setView("recommendations")}>AI 추천</button>
@@ -322,7 +322,7 @@ export function App() {
         </div>
       </header>
 
-      <Marquee text="NEW SEASON — MINIMAL SILHOUETTE — MONOCHROME — EVERYDAY MARKET — " />
+      <Marquee text="NEW SEASON — MINIMAL SILHOUETTE — MONOCHROME — CODILAB — " />
 
       {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice("")}>닫기</button></div>}
 
@@ -468,8 +468,8 @@ export function App() {
       }} />
 
       <footer>
-        <strong>EVERYDAY MARKET</strong>
-        <p>대표 홍길동 · 서울특별시 중구 세종대로 110 · 02-000-0000 · help@everyday.market</p>
+        <strong>코디랩</strong>
+        <p>대표 홍길동 · 서울특별시 중구 세종대로 110 · 02-000-0000 · help@codilab.market</p>
         <p>사업자등록번호 000-00-00000 · 통신판매업 신고 정보는 데모 프로젝트용 예시입니다.</p>
         <div><a href="#terms">이용약관</a><a href="#privacy">개인정보처리방침</a><a href="#returns">배송·교환·반품 정책</a></div>
         <small>Product photography provided under the Unsplash License.</small>

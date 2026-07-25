@@ -58,7 +58,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title="Everyday Market Commerce API",
+    title="CodiLab Commerce API",
     version="1.0.0",
     description="Persistent demo commerce service for AI Ops Studio",
     lifespan=lifespan,
@@ -396,7 +396,7 @@ def require_internal_token(x_internal_token: str | None) -> None:
 
 @app.get("/")
 async def root() -> dict[str, str]:
-    return {"service": "Everyday Market Commerce API", "docs": "/docs"}
+    return {"service": "CodiLab Commerce API", "docs": "/docs"}
 
 
 @app.get("/health")
