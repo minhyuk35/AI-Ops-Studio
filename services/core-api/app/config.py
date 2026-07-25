@@ -10,8 +10,14 @@ def running_on_vercel() -> bool:
     docs/vercel-deployment.md. Used to skip the asyncio background-loop
     schedulers (which never wake back up between serverless invocations)
     in favor of Vercel Cron Jobs hitting app/api/routes/cron.py instead.
+
+    VERCEL is only set when the project has "Automatically expose System
+    Environment Variables" turned on. AWS_LAMBDA_FUNCTION_NAME comes from
+    the underlying Lambda runtime Vercel's Python functions run on and
+    isn't gated by that toggle, so check it too rather than silently
+    falling through to local-dev behavior on a real deployment.
     """
-    return bool(os.getenv("VERCEL"))
+    return bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
 
 
 def _default_mock_commerce_api_url() -> str:
@@ -20,10 +26,26 @@ def _default_mock_commerce_api_url() -> str:
     this deployment's own domain under /api/commerce rather than hardcoding
     a URL that wouldn't exist for preview deployments. Explicitly setting
     MOCK_COMMERCE_API_URL still overrides this.
+
+    VERCEL_URL is only populated when the project has "Automatically expose
+    System Environment Variables" turned on -- if that toggle is off,
+    VERCEL_URL (and VERCEL itself) are silently missing even in production,
+    and every AI endpoint that talks to the commerce API fails fast against
+    a localhost:8001 that doesn't exist inside the function.
+    AWS_LAMBDA_FUNCTION_NAME is injected by the underlying Lambda runtime
+    Vercel's Python functions run on, independent of that toggle, so it's a
+    reliable "are we actually deployed" signal even when VERCEL_URL isn't.
+    CORS_ORIGINS already has to carry the real production domain for the
+    browser to work at all, so reuse its first https origin in that case.
     """
     vercel_url = os.getenv("VERCEL_URL")
     if running_on_vercel() and vercel_url:
         return f"https://{vercel_url}/api/commerce"
+    if running_on_vercel():
+        for origin in os.getenv("CORS_ORIGINS", "").split(","):
+            origin = origin.strip()
+            if origin.startswith("https://"):
+                return f"{origin}/api/commerce"
     return "http://localhost:8001"
 
 
