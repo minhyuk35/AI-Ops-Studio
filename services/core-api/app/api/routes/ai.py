@@ -113,12 +113,26 @@ async def create_reply(
             "trace_id": response.trace_id or payload.request_id,
         }
     )
-    if final.requires_human and notifier.enabled:
+    if final.requires_human:
         message = (
             f"**상담원 이관 필요**\n분류: {final.category} · 위험도: {final.risk}\n"
             f"문의: {payload.question[:300]}\n문의 ID: {inquiry_id}"
         )
-        await run_in_threadpool(notifier.send, message)
+        # The seller's own "문의-이관" channel webhook, auto-provisioned by
+        # /실행 and stored in discord_channels -- no env var, no manual
+        # setup. Falls back to the platform's admin/dev webhook only when
+        # this inquiry can't be attributed to a seller (no order_id) or
+        # that seller hasn't linked Discord yet, so escalations never just
+        # silently vanish.
+        seller_webhook_url = (
+            await commerce.get_org_discord_webhook(org_id, "support") if org_id else None
+        )
+        if seller_webhook_url:
+            timeout = get_settings().discord_timeout_seconds
+            seller_notifier = DiscordNotifier(seller_webhook_url, timeout)
+            await run_in_threadpool(seller_notifier.send, message)
+        elif notifier.enabled:
+            await run_in_threadpool(notifier.send, message)
     return final
 
 
