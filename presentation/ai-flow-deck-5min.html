@@ -111,10 +111,11 @@
 
   <!-- 1 · TITLE -->
   <section class="slide"><div class="wrap" style="text-align:center">
-    <div class="eyebrow">AI Ops Studio · 5분 요약</div>
-    <h1 style="display:block">이벤트는 <span class="accent">코드</span>가 쌓고,<br>숫자는 <span class="green">SQL</span>이 세고, <span class="pink">AI</span>는 해석만 한다</h1>
-    <p class="lead" style="margin:0 auto">커머스 데이터가 쌓이는 방식부터, 7개 AI 페르소나가 어디서 어떻게
-      동작하는지, 마지막엔 문의 한 건이 Discord 알림까지 가는 흐름을 5분 안에 보여드립니다.</p>
+    <div class="eyebrow">AI 기반 커머스 운영 자동화 플랫폼</div>
+    <h1 style="display:block">AI Ops <span class="accent">Studio</span></h1>
+    <p class="lead" style="margin:0 auto">데이터는 <b>코드</b>가 정확히 쌓고 집계하며, <b>AI</b>는 그 숫자를
+      해석·제안만 합니다. 커머스 데이터가 쌓이는 방식부터 7개 AI 페르소나, 문의 한 건이 Discord
+      알림까지 가는 흐름을 5분 안에 보여드립니다.</p>
     <p class="foot" style="margin-top:30px"><kbd>←</kbd> <kbd>→</kbd> 이동 · <kbd>N</kbd> 발표대본(본인만 보기) · <kbd>?</kbd> 도움말</p>
   </div></section>
 
@@ -124,7 +125,7 @@
     <div class="steps">
       <div class="st"><div class="no">1</div><div><span class="b">사용자 행동</span><span class="d"> 상품 조회 · 결제 · 환불 · 문의 — demo-store(React) + mock-commerce-api(FastAPI)</span></div></div>
       <div class="st"><div class="no">2</div><div><span class="b">이벤트 적재</span><span class="d"> 모든 행동을 <code>commerce_events</code> 테이블에 발생 시점 그대로 기록 (불변 로그)</span></div></div>
-      <div class="st"><div class="no">3</div><div><span class="b">SQL 집계</span><span class="d"> 정해진 시점에 코드가 매출·조회·환불 숫자를 확정 — LLM은 아직 등장 안 함</span></div></div>
+      <div class="st"><div class="no">3</div><div><span class="b">숫자 집계</span><span class="d"> 정해진 시점에 코드가 매출·조회·환불 숫자를 확정 — LLM은 아직 등장 안 함</span></div></div>
       <div class="st"><div class="no">4</div><div><span class="b">AI 해석</span><span class="d"> 그 확정 숫자만 프롬프트에 넣어 core-api가 Langfuse 페르소나로 서술·제안 생성</span></div></div>
       <div class="st"><div class="no">5</div><div><span class="b">Discord 전달</span><span class="d"> 판매자 자신의 서버 웹훅으로, 또는 위험 문의는 사람에게 이관</span></div></div>
     </div>
@@ -147,9 +148,12 @@
         <h4>쌓이는 이벤트 7종</h4>
         <table>
           <tr><td><code>PRODUCT_VIEWED</code></td><td>상품 조회</td></tr>
+          <tr><td><code>ORDER_CREATED</code></td><td>주문 생성</td></tr>
           <tr><td><code>PAYMENT_CONFIRMED</code></td><td>결제(매출)</td></tr>
+          <tr><td><code>STOCK_CHANGED</code></td><td>재고 증감</td></tr>
+          <tr><td><code>ORDER_CANCELLED</code></td><td>주문 취소</td></tr>
           <tr><td><code>REFUND_COMPLETED</code></td><td>환불</td></tr>
-          <tr><td>외 4종</td><td>주문 생성·취소·재고·반품신청</td></tr>
+          <tr><td><code>RETURN_REQUESTED</code></td><td>반품 신청</td></tr>
         </table>
       </div>
     </div>
@@ -174,7 +178,7 @@
       </div>
       <div class="card p">
         <h4>AI가 실제로 보는 데이터</h4>
-        <p class="muted" style="margin-top:0"><b>AI는 DB를 직접 조회하지 않습니다.</b> 코드가 SQL로
+        <p class="muted" style="margin-top:0"><b>AI는 DB를 직접 조회하지 않습니다.</b> 코드가
           미리 집계한 <b>요약 JSON</b>만 프롬프트에 주입됩니다.</p>
         <p class="muted">예: 일일 리포트는 <code>seller_daily_snapshot()</code>이 만든 "총매출 · 상품별
           조회/판매/환불 · 재고 경고" 요약 dict만 봅니다.</p>
@@ -186,11 +190,11 @@
   <!-- 5 · PRINCIPLE + HALLUCINATION -->
   <section class="slide"><div class="wrap" style="text-align:center">
     <div class="eyebrow">환각을 줄인 핵심 설계</div>
-    <h2 style="display:block">숫자는 <span class="green">SQL</span>이, 서술은 <span class="pink">AI</span>가</h2>
+    <h2 style="display:block">숫자는 <span class="green">코드</span>가, 서술은 <span class="pink">AI</span>가</h2>
     <div class="rule" style="margin:12px auto 26px"></div>
     <div class="cols-3">
       <div class="card g"><h4>① 쌓기</h4><p class="muted">이벤트를 원장에 기록만 한다. AI는 아직 관여하지 않는다.</p></div>
-      <div class="card a"><h4>② 집계</h4><p class="muted">코드(SQL)가 매출·조회·환불을 확정 숫자로 만든다. 여기까지 LLM 호출 0번.</p></div>
+      <div class="card a"><h4>② 집계</h4><p class="muted">코드가 매출·조회·환불을 확정 숫자로 만든다. 여기까지 LLM 호출 0번.</p></div>
       <div class="card p"><h4>③ 해석만</h4><p class="muted">그 숫자를 프롬프트에 그대로 넣고, "다시 계산하지 말고 해석만 하라"고 못박는다.</p></div>
     </div>
     <p class="lead" style="margin:22px auto 0">LLM이 숫자를 <b>스스로 계산할 기회 자체를 주지 않기 때문에</b>,
@@ -202,10 +206,13 @@
     <div class="eyebrow">페르소나 · 어디서 어떻게 동작하는가</div><h2>7개 페르소나, 각자 다른 자리에서</h2><div class="rule"></div>
     <table>
       <tr><th>Langfuse name</th><th>역할</th><th>실행 위치 / 시점</th></tr>
-      <tr><td><code>support-triage</code></td><td>문의 분류 (위험도 판정)</td><td>core-api · 문의 접수 즉시</td></tr>
-      <tr><td><code>customer-support-answer</code></td><td>고객 응대 생성</td><td>core-api · 분류 직후</td></tr>
+      <tr><td><code>support-triage</code></td><td>문의 위험도 분류</td><td>core-api · 문의 접수 즉시</td></tr>
+      <tr><td><code>customer-support-answer</code></td><td>고객 문의 응대 생성</td><td>core-api · 분류 직후</td></tr>
       <tr><td><code>daily-seller-report</code></td><td>판매자 일일 리포트</td><td>core-api · 전송 버튼 또는 매일 자정 크론</td></tr>
-      <tr><td><code>commerce-insight</code> 등 4개</td><td>월간/관리자 리포트</td><td>core-api · 요청 시 또는 스케줄</td></tr>
+      <tr><td><code>commerce-insight</code></td><td>매출 데이터 인사이트</td><td>core-api · 운영자 요청 시</td></tr>
+      <tr><td><code>commerce-monthly-report</code></td><td>월간 운영 리포트</td><td>core-api · 매월 스케줄</td></tr>
+      <tr><td><code>platform-daily-traffic</code></td><td>플랫폼 트래픽 리포트 (관리자용)</td><td>core-api · 매일 스케줄</td></tr>
+      <tr><td><code>seller-market-share-report</code></td><td>판매자 매출 점유율 리포트 (관리자용)</td><td>core-api · 매월 스케줄</td></tr>
     </table>
     <p class="foot">전부 <b>core-api 한 곳</b>에서 Langfuse의 <code>production</code> 라벨 프롬프트를 가져와
       OpenRouter로 생성 — 페르소나 이름·API·Discord 채널까지 물리적으로 분리해서 서로 안 섞입니다.</p>
@@ -229,7 +236,7 @@
     <h2 style="display:block">한 문장으로</h2>
     <div class="rule" style="margin:12px auto 24px"></div>
     <p class="lead" style="margin:0 auto;max-width:70ch">
-      <b>사용자의 행동</b>은 이벤트가 되고, <b>SQL</b>이 그것을 확정 숫자로 집계하며, 그 숫자는
+      <b>사용자의 행동</b>은 이벤트가 되고, <b>코드</b>가 그것을 확정 숫자로 집계하며, 그 숫자는
       <b>7개 페르소나</b>가 각자의 자리에서 해석만 해서 <b>Discord</b>로 전달됩니다.
       AI는 끝까지 숫자를 만들지 않습니다.</p>
     <p class="foot" style="margin-top:26px">감사합니다. 질문 받겠습니다.</p>
@@ -273,21 +280,21 @@
   let i = 0;
 
   const NOTES = [
-    "안녕하세요. 5분 안에 이 커머스 AI 플랫폼의 핵심만 보여드리겠습니다. 하나만 기억해주세요 — 이벤트는 코드가 쌓고, 숫자는 SQL이 세고, AI는 해석만 합니다.",
+    "안녕하세요. 5분 안에 AI Ops Studio의 핵심만 보여드리겠습니다. 하나만 기억해주세요 — 이벤트는 코드가 쌓고, 숫자도 코드가 세고, AI는 해석만 합니다.",
 
-    "전체 흐름입니다. 사용자가 뭔가 하면(조회·결제·환불·문의) 그게 이벤트로 쌓이고, 정해진 시점에 SQL이 숫자를 확정하고, 그 숫자를 AI가 해석해서 Discord로 보냅니다. 다섯 단계인데 핵심은 AI가 3번째 단계까지는 전혀 등장하지 않는다는 겁니다.",
+    "전체 흐름입니다. 사용자가 뭔가 하면(조회·결제·환불·문의) 그게 이벤트로 쌓이고, 정해진 시점에 코드가 숫자를 확정하고, 그 숫자를 AI가 해석해서 Discord로 보냅니다. 다섯 단계인데 핵심은 AI가 3번째 단계까지는 전혀 등장하지 않는다는 겁니다.",
 
     "이벤트 원장 얘기입니다. commerce_events 테이블에 계속 추가만 하고 덮어쓰지 않아요. 그래서 이번 달 환불이 지난달 매출을 건드리지 않습니다. 같은 이벤트가 중복으로 와도 external_event_id로 한 번만 집계됩니다.",
 
-    "데이터가 실제로 어디에 저장되는지 정리했습니다. 왼쪽 표가 핵심 테이블들이고, 로컬은 SQLite, 배포는 Neon Postgres를 씁니다. 오른쪽이 중요한데 — AI는 이 DB를 직접 들여다보지 않습니다. 코드가 SQL로 미리 계산한 요약 JSON만 프롬프트에 넣어줘요. 그래서 원본 이벤트나 비밀번호 해시, 다른 판매자 데이터는 애초에 AI 눈에 보일 수가 없는 구조입니다.\n\n[사설 — 청중 질문 대비, 발표에서 굳이 먼저 꺼내지 말 것]\nQ. JSON 파일로 계속 쌓이는 데이터인가요? 사람이 많아지면 어떡하나요?\nA. 정확히는 JSON 파일이 아니라 Postgres(Neon)의 실제 테이블입니다 — commerce_events는 event_type+occurred_at, order_id에 인덱스가 걸려 있어서 지금 규모(포트폴리오/데모 트래픽)에서는 문제없습니다. 다만 이건 append-only라 데이터가 무한히 늘어나는 구조라, 실사용자가 많아지면 (1) 오래된 이벤트를 아카이브/파티셔닝하거나 (2) 자주 조회하는 집계는 매번 원장을 스캔하지 않고 미리 계산해둔 요약 테이블(materialized view)을 따로 두는 리팩터링이 필요합니다. 지금은 그 최적화 이전 단계라고 솔직히 말하면 됩니다 — '아직 그 정도 트래픽을 겪어본 적은 없지만, 다음 단계로 필요한 작업은 알고 있다'는 톤으로.",
+    "데이터가 실제로 어디에 저장되는지 정리했습니다. 왼쪽 표가 핵심 테이블들이고, 로컬은 SQLite, 배포는 Neon Postgres를 씁니다. 오른쪽이 중요한데 — AI는 이 DB를 직접 들여다보지 않습니다. 코드가 미리 계산한 요약 JSON만 프롬프트에 넣어줘요. 그래서 원본 이벤트나 비밀번호 해시, 다른 판매자 데이터는 애초에 AI 눈에 보일 수가 없는 구조입니다.\n\n[사설 — 청중 질문 대비, 발표에서 굳이 먼저 꺼내지 말 것]\nQ. JSON 파일로 계속 쌓이는 데이터인가요? 사람이 많아지면 어떡하나요?\nA. 정확히는 JSON 파일이 아니라 Postgres(Neon)의 실제 테이블입니다 — commerce_events는 event_type+occurred_at, order_id에 인덱스가 걸려 있어서 지금 규모(포트폴리오/데모 트래픽)에서는 문제없습니다. 다만 이건 append-only라 데이터가 무한히 늘어나는 구조라, 실사용자가 많아지면 (1) 오래된 이벤트를 아카이브/파티셔닝하거나 (2) 자주 조회하는 집계는 매번 원장을 스캔하지 않고 미리 계산해둔 요약 테이블(materialized view)을 따로 두는 리팩터링이 필요합니다. 지금은 그 최적화 이전 단계라고 솔직히 말하면 됩니다 — '아직 그 정도 트래픽을 겪어본 적은 없지만, 다음 단계로 필요한 작업은 알고 있다'는 톤으로.",
 
     "이 원칙이 환각을 줄이는 핵심 장치입니다. 쌓고, 집계하고, 그 다음에야 AI가 등장해서 해석만 합니다. LLM한테 숫자를 계산할 기회 자체를 안 주기 때문에, LLM이 할 수 있는 실수는 서술을 이상하게 하는 정도지 숫자 자체를 틀리는 게 아닙니다.",
 
-    "페르소나 얘기입니다. 7개가 있는데 전부 core-api라는 한 곳에서 돕니다. 문의 분류·응대는 문의가 들어온 즉시, 일일 리포트는 판매자가 버튼을 누르거나 매일 자정 크론이 돌 때 실행됩니다. 이름과 API, Discord 채널까지 분리해서 판매자용과 관리자용이 절대 안 섞이게 했습니다.\n\n[사설 — 청중 질문 대비]\nQ. AI 모델은 왜 Gemini로 정했나요?\nA. Gemini Flash 계열을 OpenRouter를 통해 씁니다. 리포트 생성은 창의적 추론보다 '주어진 숫자를 정해진 형식으로 서술'하는 상대적으로 단순한 반복 작업이라, 고성능 추론 모델 대신 응답이 빠르고 토큰 비용이 저렴한 Flash 티어를 선택했습니다. 원래는 google-genai SDK로 Gemini를 직접 불렀는데, 이번에 OpenRouter로 옮겨서 1차 제공자가 장애가 나면 다른 모델로 자동 폴백되게 만들었습니다 — 그래서 지금은 'Gemini를 쓰지만 OpenRouter 뒤에 숨어 있어 다른 모델로도 바로 바꿀 수 있는' 구조입니다.",
+    "페르소나 얘기입니다. 7개가 있는데 전부 core-api라는 한 곳에서 돕니다. 앞의 둘은 문의가 들어온 즉시 분류하고 응대하고, 판매자 일일 리포트는 버튼을 누르거나 매일 자정 크론이 돌 때 실행됩니다. 나머지 넷은 운영·관리자용 리포트예요 — 매출 인사이트는 운영자가 요청할 때, 월간 리포트·플랫폼 트래픽·판매자 점유율 비교는 정해진 스케줄에 자동으로 돕니다. 이름과 API, Discord 채널까지 분리해서 판매자용과 관리자용이 절대 안 섞이게 했습니다.\n\n[사설 — 청중 질문 대비]\nQ. AI 모델은 왜 Gemini로 정했나요?\nA. Gemini Flash 계열을 OpenRouter를 통해 씁니다. 리포트 생성은 창의적 추론보다 '주어진 숫자를 정해진 형식으로 서술'하는 상대적으로 단순한 반복 작업이라, 고성능 추론 모델 대신 응답이 빠르고 토큰 비용이 저렴한 Flash 티어를 선택했습니다. 원래는 google-genai SDK로 Gemini를 직접 불렀는데, 이번에 OpenRouter로 옮겨서 1차 제공자가 장애가 나면 다른 모델로 자동 폴백되게 만들었습니다 — 그래서 지금은 'Gemini를 쓰지만 OpenRouter 뒤에 숨어 있어 다른 모델로도 바로 바꿀 수 있는' 구조입니다.",
 
     "문의 한 건이 실제로 어떻게 처리되는지입니다. 문의가 들어오면 먼저 분류 페르소나가 위험도를 판정해요 — 이건 순수 JSON 출력이라 사람 눈에는 안 보입니다. 그 다음 응대 페르소나가 실제 답변을 만드는데, 절대 추측하지 않고 주어진 주문·정책 정보 안에서만 답합니다. 분쟁이나 고액 환불, 개인정보 같은 게 언급되면 위험도가 높다고 판정되고, 그러면 운영 콘솔에 뜨는 동시에 Discord로 담당자에게 알림이 갑니다.\n\n[사설 — 이 흐름을 한 번 더 요약]\n문의 접수 → (AI) 분류: category/risk/requires_human 세 개만 JSON으로 뽑음 → risk가 HIGH거나 requires_human이 true면: 운영 콘솔의 문의함에 노출 + DiscordNotifier가 담당 채널로 알림 메시지 전송 → 동시에 (AI) 응대 페르소나가 고객에게 보여줄 답변도 생성(위험 문의라도 일단 임시 답변은 내려가고, 사람이 이어받는 구조) → 사람이 이어서 처리. 즉 '위험도 측정'과 '고객에게 보여줄 답변 생성'은 동시에 일어나고, '이관 여부'만 위험도에 달려 있습니다.",
 
-    "정리하겠습니다. 사용자의 행동은 이벤트가 되고, SQL이 숫자를 확정하고, 7개 페르소나가 각자의 자리에서 해석만 해서 Discord로 전달됩니다. AI는 끝까지 숫자를 만들지 않습니다. 감사합니다."
+    "정리하겠습니다. 사용자의 행동은 이벤트가 되고, 코드가 숫자를 확정하고, 7개 페르소나가 각자의 자리에서 해석만 해서 Discord로 전달됩니다. AI는 끝까지 숫자를 만들지 않습니다. 감사합니다."
   ];
 
   const bar = document.getElementById('bar');
