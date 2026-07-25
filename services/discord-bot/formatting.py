@@ -131,5 +131,5 @@ def format_status(data: dict[str, Any]) -> str:
             lines.append(f"  · {name} {has_hook}")
     else:
         plan_names = ", ".join(str(c.get("name")) for c in plan_channels)
-        lines.append(f"- 아직 `/생성`을 실행하지 않았습니다. 생성될 채널: {plan_names}")
+        lines.append(f"- 아직 `/실행`을 실행하지 않았습니다. 생성될 채널: {plan_names}")
     return clip("\n".join(lines))

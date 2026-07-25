@@ -11,11 +11,16 @@
     "api/core/index.py": {
       "includeFiles": "services/core-api/**",
       "maxDuration": 120
+    },
+    "api/discord/index.py": {
+      "includeFiles": "services/discord-bot/**",
+      "maxDuration": 60
     }
   },
   "rewrites": [
     { "source": "/api/commerce/(.*)", "destination": "/api/commerce/index" },
     { "source": "/api/core/(.*)", "destination": "/api/core/index" },
+    { "source": "/api/discord/(.*)", "destination": "/api/discord/index" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [

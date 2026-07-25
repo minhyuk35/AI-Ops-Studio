@@ -2,7 +2,7 @@ import type { Cart, Category, Inquiry, Order, Product, ProductDetail } from "@ai
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -97,9 +97,17 @@ const guestId = persistentId("everyday-guest-id", "guest");
 
 const roleLabel: Record<string, string> = { CONSUMER: "소비자", SELLER: "판매자", ADMIN: "총관리자" };
 
-// three.js is a heavy dependency (~500kB) only needed for the home hero, so
-// it's code-split into its own chunk instead of bloating every route.
-const ThreeHero = lazy(() => import("./ThreeHero").then((module) => ({ default: module.ThreeHero })));
+// Thin concentric-ring line art used as quiet hero decoration — plain SVG,
+// no runtime cost, no WebGL.
+function HeroRings({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 300 300" fill="none" aria-hidden="true">
+      <circle cx="150" cy="150" r="60" stroke="currentColor" strokeWidth="1" />
+      <circle cx="150" cy="150" r="100" stroke="currentColor" strokeWidth="1" />
+      <circle cx="150" cy="150" r="140" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  );
+}
 
 function Marquee({ text }: { text: string }) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -455,16 +463,6 @@ function Home({ products, onShop, onProduct }: { products: Product[]; onShop: ()
         stagger: 0.12,
         delay: 0.15,
       });
-      // The hero heading is a photo showing through its own letter shapes
-      // (background-clip: text) — this slowly pans that photo so the effect
-      // reads as alive rather than a static image crop.
-      gsap.to(".hero-heading", {
-        backgroundPositionX: "78%",
-        duration: 10,
-        ease: "sine.inOut",
-        repeat: -1,
-        yoyo: true,
-      });
     }, heroRef);
     return () => ctx.revert();
   }, []);
@@ -526,9 +524,8 @@ function Home({ products, onShop, onProduct }: { products: Product[]; onShop: ()
 
   return <main>
     <section className="hero" ref={heroRef}>
-      <Suspense fallback={null}>
-        <ThreeHero />
-      </Suspense>
+      <HeroRings className="hero-ring hero-ring-a" />
+      <HeroRings className="hero-ring hero-ring-b" />
       <div className="hero-content">
         <p className="eyebrow hero-reveal">NEW SEASON · 2026</p>
         <h1 className="hero-heading hero-reveal">매일의 옷을<br />조금 더 선명하게.</h1>

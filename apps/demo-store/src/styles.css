@@ -35,25 +35,26 @@ a { color: inherit; }
 .marquee { overflow: hidden; background: var(--ink); border-bottom: 1px solid var(--line-strong); }
 .marquee-track { display: flex; width: max-content; }
 .marquee-track span { padding: 11px 0; white-space: nowrap; color: #ffffff; font-size: 12px; font-weight: 800; letter-spacing: .32em; text-transform: uppercase; }
-.hero { position: relative; overflow: hidden; min-height: 92vh; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px; padding: 100px 6vw 70px; color: #ffffff; background: var(--ink); }
-.hero-canvas { position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .55; }
+.hero {
+  position: relative; overflow: hidden; min-height: 92vh; display: grid;
+  grid-template-columns: 1fr auto; align-items: end; gap: 24px;
+  padding: 100px 6vw 70px; color: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(10,10,10,.18) 0%, rgba(10,10,10,.5) 60%, rgba(10,10,10,.86) 100%),
+    url("https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1800&q=85") center 32% / cover no-repeat;
+}
+/* Thin concentric-ring line art (see App.tsx's HeroRings) — quiet, static
+   decoration in place of the old WebGL wireframe background. */
+.hero-ring { position: absolute; z-index: 0; pointer-events: none; }
+.hero-ring-a { top: -70px; right: -70px; width: 280px; height: 280px; color: rgba(255,255,255,.22); }
+.hero-ring-b { bottom: 20px; left: -110px; width: 360px; height: 360px; color: rgba(255,255,255,.12); }
 .hero-content { position: relative; z-index: 1; max-width: 760px; }
 .hero-index { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 14px; padding-bottom: 6px; color: #9a9a9a; font-size: 11px; font-weight: 800; letter-spacing: .3em; writing-mode: vertical-rl; }
 .hero-heading {
   margin: 12px 0 18px;
   font: 800 clamp(48px,7vw,92px)/.96 Inter, sans-serif;
   letter-spacing: -.04em;
-  background-image:
-    linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.32)),
-    url("https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1800&q=85");
-  background-size: cover;
-  background-position: 30% 45%;
-  background-repeat: no-repeat;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  filter: grayscale(1) contrast(1.25) brightness(1.15);
+  color: #ffffff;
 }
 .hero-content > p:not(.eyebrow) { max-width: 520px; color: #c9c9c9; font-size: 17px; }
 .eyebrow,.section-title p { color: var(--muted); font-size: 11px; font-weight: 900; letter-spacing: .22em; text-transform: uppercase; }
@@ -208,4 +209,4 @@ a { color: inherit; }
 @media (max-width: 900px) { .console-stats,.console-grid-two { grid-template-columns: 1fr 1fr; } }
 footer { padding: 50px 6vw; color: #d4d4d4; background: var(--ink); }footer p,footer small { color: #a3a3a3; font-size: 12px; }footer div { display: flex; gap: 18px; margin: 20px 0; font-size: 12px; }
 @media (max-width: 900px) { .store-header { grid-template-columns: 1fr auto auto; gap: 12px; }.store-header nav { display: none; }.header-search { grid-column: 1/-1; grid-row: 2; }.product-grid { grid-template-columns: repeat(2,1fr); }.editorial-grid { grid-template-columns: 1fr; }.editorial-side { grid-template-columns: 1fr 1fr; }.hero-index { display: none; }.product-page { grid-template-columns: 1fr; }.product-gallery { min-height: auto; aspect-ratio: 4/5; }.cart-layout,.order-columns,.inquiry-layout { grid-template-columns: 1fr; }.summary { width: 100%; }.benefits { grid-template-columns: 1fr; }.catalog-tools { align-items: start; flex-direction: column; }.filters { margin-bottom: 10px; } }
-@media (max-width: 560px) { .store-header { padding: 13px 16px; }.wordmark { font-size: 12px; }.store-section { padding: 52px 18px 80px; }.hero { min-height: 78vh; padding: 70px 24px 50px; }.editorial-side { grid-template-columns: 1fr; }.statement { height: 50vh; min-height: 320px; }.product-grid { grid-template-columns: 1fr 1fr; gap: 24px 10px; }.product-card h3 { font-size: 14px; }.product-info { padding: 38px 20px 70px; }.purchase-actions { position: sticky; bottom: 0; z-index: 5; padding: 10px 0; background: var(--bg); }.cart-item { grid-template-columns: 90px 1fr; }.cart-item img { width: 90px; }.cart-item > div:last-child { grid-column: 2; display: flex; justify-content: space-between; }.form-grid { grid-template-columns: 1fr; }.form-grid .wide { grid-column: auto; }.payment-methods { flex-direction: column; }.chat { right: 16px; bottom: 16px; }.chat-launcher { right: 16px; bottom: 16px; } }
+@media (max-width: 560px) { .store-header { padding: 13px 16px; }.wordmark { font-size: 12px; }.store-section { padding: 52px 18px 80px; }.hero { min-height: 78vh; padding: 70px 24px 50px; }.hero-ring { display: none; }.editorial-side { grid-template-columns: 1fr; }.statement { height: 50vh; min-height: 320px; }.product-grid { grid-template-columns: 1fr 1fr; gap: 24px 10px; }.product-card h3 { font-size: 14px; }.product-info { padding: 38px 20px 70px; }.purchase-actions { position: sticky; bottom: 0; z-index: 5; padding: 10px 0; background: var(--bg); }.cart-item { grid-template-columns: 90px 1fr; }.cart-item img { width: 90px; }.cart-item > div:last-child { grid-column: 2; display: flex; justify-content: space-between; }.form-grid { grid-template-columns: 1fr; }.form-grid .wide { grid-column: auto; }.payment-methods { flex-direction: column; }.chat { right: 16px; bottom: 16px; }.chat-launcher { right: 16px; bottom: 16px; } }

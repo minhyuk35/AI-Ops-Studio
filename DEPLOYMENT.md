@@ -68,8 +68,14 @@ CRON_SECRET=<무작위 16자+>                              # Vercel Cron 검증
 OPENROUTER_API_KEY=<...>                                # AI 응대/리포트 켤 때
 LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY=<...>         # 트레이싱 켤 때
 DISCORD_BOT_SHARED_SECRET=<봇과 동일한 무작위 값>       # 봇 내부 API 인증
+DISCORD_BOT_TOKEN=<...>                                 # 디스코드 봇(/api/discord)
+DISCORD_APPLICATION_ID=<...>                            # 디스코드 봇
+DISCORD_PUBLIC_KEY=<...>                                # 디스코드 봇 서명 검증(Bot 토큰과 다른 값)
 # (선택) COMMERCE_CORS_ORIGINS=https://ai-ops-studio-demo-store.vercel.app
 ```
+
+디스코드 봇은 `api/discord/index.py`로 같이 배포된다 — 자세한 설정(Interactions
+Endpoint URL 등록, 슬래시 명령 등록)은 `services/discord-bot/README.md` 참고.
 
 > ⚠️ **`.env` 파일은 절대 커밋/업로드하지 않는다**(`.gitignore`에 있음). 위 값은
 > Vercel 대시보드에만 넣는다. Neon 키는 재발급 예정인 테스트용이므로 운영 전

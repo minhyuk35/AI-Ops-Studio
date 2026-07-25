@@ -1,7 +1,15 @@
-# AI Ops Studio 판매자 연동 Discord 봇 (독립 실행) 전용 의존성.
-# 메인 서비스(services/core-api, services/mock-commerce-api)와 별도로 설치한다:
+# AI Ops Studio 판매자 연동 Discord 봇 전용 의존성.
+#
+# bot.py(Gateway, 상시 프로세스로 로컬/별도 서버에서 실행)를 쓸 때만
+# discord.py가 필요하다:
 #   python -m venv .venv-bot
 #   .venv-bot\Scripts\pip install -r services/discord-bot/requirements.txt
+#
+# interactions_app.py(Vercel에 배포되는 HTTP Interactions 경로)는 discord.py
+# 없이 fastapi/httpx/pynacl만 쓴다 -- 루트 pyproject.toml의 [project]가 Vercel
+# 빌드용 통합 의존성 목록이라, 배포 시 실제로 설치되는 건 거기 있는 값이다.
 discord.py>=2.4,<3
 httpx>=0.28,<1
 python-dotenv>=1.1,<2
+pynacl>=1.5,<2
+fastapi>=0.116,<1
