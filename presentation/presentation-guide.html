@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Ops Studio · 발표 진행 가이드 + 예상 질문 답변</title>
+<style>
+  :root{
+    --bg:#0b0e17; --bg2:#0f1420; --panel:#141b2c; --panel2:#1a2338;
+    --border:#26304a; --border2:#313d5c; --text:#e8ebf6; --muted:#9aa4bf; --dim:#6b7594;
+    --accent:#8b9bff; --accent2:#4ade80; --warn:#fbbf24; --danger:#f87171;
+    --pink:#f472b6; --cyan:#38bdf8;
+    --mono:"Cascadia Code","JetBrains Mono",Consolas,"D2Coding",monospace;
+    --sans:"Segoe UI",system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+    --r:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:
+    radial-gradient(1200px 700px at 82% -10%, rgba(139,155,255,.08), transparent 60%),
+    radial-gradient(900px 600px at 4% 110%, rgba(244,114,182,.06), transparent 55%),
+    var(--bg);
+    color:var(--text);font-family:var(--sans);line-height:1.6}
+
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.92em;color:var(--cyan);background:rgba(56,189,248,.08);
+    padding:1px 6px;border-radius:5px}
+  strong,b{color:#fff}
+
+  /* ===== top tab bar ===== */
+  #topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:4px;
+    padding:14px 20px;background:rgba(11,14,23,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border)}
+  #topbar .brand{font-weight:800;color:#fff;font-size:14px;margin-right:18px;white-space:nowrap}
+  .tabbtn{background:transparent;border:1px solid transparent;color:var(--muted);font-family:var(--sans);
+    font-size:14px;font-weight:700;padding:8px 16px;border-radius:10px;cursor:pointer}
+  .tabbtn:hover{color:#fff}
+  .tabbtn.active{background:var(--panel2);border-color:var(--border2);color:#fff}
+  .tabbtn .n{display:inline-block;background:rgba(139,155,255,.16);color:var(--accent);
+    border-radius:999px;font-size:11px;padding:1px 7px;margin-left:7px}
+
+  /* ===== layout ===== */
+  #shell{display:grid;grid-template-columns:270px 1fr;max-width:1320px;margin:0 auto}
+  @media (max-width:920px){ #shell{grid-template-columns:1fr} #nav{position:static;height:auto} }
+
+  #nav{position:sticky;top:57px;align-self:start;height:calc(100vh - 57px);overflow-y:auto;
+    padding:24px 18px 40px 26px;border-right:1px solid var(--border)}
+  #nav .sub{color:var(--dim);font-size:12px;margin-bottom:16px}
+  #nav .grp{color:var(--accent);font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+    font-size:11px;margin:18px 0 6px}
+  #nav .navgroup{display:none}
+  #nav .navgroup.active{display:block}
+  #nav ul{list-style:none;margin:0;padding:0}
+  #nav li a{display:block;padding:5px 10px;border-radius:8px;color:var(--muted);font-size:13.5px}
+  #nav li a:hover{background:var(--panel);color:#fff;text-decoration:none}
+
+  main{padding:36px 56px 90px;max-width:920px}
+  @media (max-width:640px){ main{padding:24px 20px 70px} }
+
+  .tabpanel{display:none}
+  .tabpanel.active{display:block}
+
+  h1{font-size:clamp(22px,3vw,30px);margin:0 0 8px;font-weight:800;letter-spacing:-.01em}
+  .lead{color:var(--muted);font-size:15px;max-width:70ch;margin:0 0 26px}
+  h2{font-size:clamp(20px,2.4vw,26px);margin:40px 0 6px;font-weight:800;padding-top:8px;
+    border-top:1px solid var(--border)}
+  h2:first-of-type{border-top:none;margin-top:0}
+  h3{font-size:18px;margin:30px 0 12px;color:#fff;font-weight:700}
+  h3 .num{color:var(--accent);font-family:var(--mono);margin-right:8px;font-size:15px}
+  p{margin:10px 0;color:var(--text)}
+  .rule{height:3px;width:56px;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--pink));
+    margin:14px 0 22px}
+
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:14px 0 20px;border-radius:12px;
+    overflow:hidden;border:1px solid var(--border)}
+  th,td{border-bottom:1px solid var(--border);padding:10px 14px;text-align:left;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  th{background:var(--panel2);color:#fff;font-weight:700}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+
+  ul,ol{padding-left:22px;margin:10px 0}
+  li{margin:7px 0;color:var(--text)}
+  li::marker{color:var(--accent)}
+  li b{color:#fff}
+
+  .tip{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);
+    border-left:3px solid var(--accent);border-radius:var(--r);padding:14px 18px;margin:12px 0}
+  .tip b{color:var(--accent)}
+
+  blockquote{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--pink);
+    border-radius:var(--r);padding:16px 20px;margin:16px 0;color:var(--muted);font-style:italic}
+  blockquote b{color:#fff;font-style:normal}
+
+  .qa{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);
+    border-radius:var(--r);padding:16px 20px;margin:14px 0;scroll-margin-top:70px}
+  .qa .q{color:var(--pink);font-weight:800;margin:0 0 8px;font-size:15px}
+  .qa .a{color:var(--text);margin:0}
+  .qa .a b{color:var(--accent2)}
+
+  .checklist{list-style:none;padding:0;margin:16px 0}
+  .checklist li{display:flex;gap:10px;align-items:flex-start;background:var(--panel);
+    border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin:8px 0}
+  .checklist input{margin-top:3px;accent-color:var(--accent);width:16px;height:16px;flex:none}
+  .checklist label{cursor:pointer}
+  .checklist li.done{opacity:.5}
+  .checklist li.done label{text-decoration:line-through}
+
+  /* speaker script cards */
+  .script-card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);
+    border-radius:var(--r);padding:18px 22px;margin:14px 0;scroll-margin-top:70px}
+  .script-hd{display:flex;gap:14px;align-items:center;margin-bottom:10px}
+  .script-n{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+    font-weight:800;font-size:14px;background:rgba(139,155,255,.16);color:var(--accent);
+    border:1px solid rgba(139,155,255,.35);font-family:var(--mono)}
+  .script-eyebrow{color:var(--accent);font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    font-size:11px;display:block}
+  .script-hd h4{margin:2px 0 0;font-size:16px;color:#fff;font-weight:700}
+  .script-body{color:var(--muted);font-size:14.5px;line-height:1.7;margin:0}
+
+  .foot{color:var(--dim);font-size:12.5px;margin-top:50px;border-top:1px solid var(--border);padding-top:16px}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <span class="brand">AI Ops Studio</span>
+  <button class="tabbtn active" data-tab="script">발표 대본<span class="n">30</span></button>
+  <button class="tabbtn" data-tab="guide">발표 진행 가이드</button>
+  <button class="tabbtn" data-tab="qna">예상 질문 답변</button>
+</div>
+
+<div id="shell">
+  <nav id="nav">
+    <div class="sub">탭을 눌러 다른 자료로 이동</div>
+
+    <div class="navgroup active" data-tab="script">
+      <div class="grp">발표 대본 (페이지마다)</div>
+      <ul>
+        <li><a href="#p1">1. 커머스 플랫폼의 AI 동작 흐름</a></li>
+        <li><a href="#p3">3. 시스템 지도</a></li>
+        <li><a href="#p5">5. 숫자=SQL, 해석=AI</a></li>
+        <li><a href="#p9">9. Langfuse 개념</a></li>
+        <li><a href="#p10">10. 7개 페르소나</a></li>
+        <li><a href="#p12">12. 문의 End-to-End</a></li>
+        <li><a href="#p18">18. 스케줄</a></li>
+        <li><a href="#p20">20. Discord 봇</a></li>
+        <li><a href="#p22">22. 인증</a></li>
+        <li><a href="#p23">23. DB 이중 백엔드</a></li>
+        <li><a href="#p24">24. Discord 봇 2가지 방식</a></li>
+        <li><a href="#p25">25. 프런트엔드 스택</a></li>
+        <li><a href="#p26">26. Vercel 배포</a></li>
+        <li><a href="#p27">27. 실전 트러블슈팅</a></li>
+        <li><a href="#p29">29. 한계와 로드맵</a></li>
+        <li><a href="#p30">30. 한 문장으로</a></li>
+      </ul>
+      <div class="grp">부록</div>
+      <ul>
+        <li><a href="#pron-lib">라이브러리 · 프레임워크</a></li>
+        <li><a href="#pron-svc">서비스 · 인프라</a></li>
+        <li><a href="#pron-db">DB / SQL</a></li>
+        <li><a href="#pron-proto">프로토콜 · 공통 용어</a></li>
+        <li><a href="#pron-fn">함수 · 클래스</a></li>
+      </ul>
+    </div>
+
+    <div class="navgroup" data-tab="guide">
+      <div class="grp">1 · 진행 가이드</div>
+      <ul>
+        <li><a href="#s11">1.1 발표 골격</a></li>
+        <li><a href="#s12">1.2 톤 원칙</a></li>
+        <li><a href="#s13">1.3 슬라이드별 발화 팁</a></li>
+        <li><a href="#s14">1.4 라이브 데모</a></li>
+        <li><a href="#s15">1.5 마무리 멘트</a></li>
+      </ul>
+      <div class="grp">체크리스트</div>
+      <ul>
+        <li><a href="#s3">발표 직전 체크리스트</a></li>
+      </ul>
+    </div>
+
+    <div class="navgroup" data-tab="qna">
+      <div class="grp">2 · 예상 질문 Q&amp;A</div>
+      <ul>
+        <li><a href="#s21">2.1 AI / LLM 설계</a></li>
+        <li><a href="#s22">2.2 데이터/아키텍처</a></li>
+        <li><a href="#s23">2.3 보안</a></li>
+        <li><a href="#s24">2.4 배포 / 운영</a></li>
+        <li><a href="#s25">2.5 Discord 봇</a></li>
+        <li><a href="#s26">2.6 한계 / 압박 질문</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <!-- ============ TAB 1: 발표 대본 ============ -->
+    <section class="tabpanel active" id="tab-script">
+      <h1>발표 대본 · 페이지마다</h1>
+      <p class="lead"><code>ai-flow-deck.html</code>의 30개 슬라이드와 1:1로 대응하는 실제 발표 대본입니다.
+        덱 안에서 <code>N</code> 키를 눌러도 같은 내용이 뜨지만, 여기서는 전체를 한 번에 쭉 읽으며 리허설할 수
+        있습니다. 각 카드 상단의 번호가 덱의 슬라이드 번호와 같습니다.</p>
+
+    <div class="script-card" id="p1">
+      <div class="script-hd"><span class="script-n">1</span><div><span class="script-eyebrow">AI Ops Studio · Technical Deep-Dive</span><h4>커머스 플랫폼의 AI 동작 흐름</h4></div></div>
+      <p class="script-body">안녕하세요. 이 발표는 저희 커머스 플랫폼에서 'AI가 정확히 어디서, 어떻게 동작하는가'를 처음부터 끝까지 따라가는 자리입니다. 화면에 보이는 것처럼 페르소나가 7개고, API 서비스가 둘, 디스코드 봇이 하나입니다. 한 가지 큰 원칙만 기억하시면 됩니다 — 숫자는 코드가 계산하고, AI는 그 숫자를 해석만 합니다. 이 원칙이 발표 내내 반복됩니다.</p>
+    </div>
+    <div class="script-card" id="p2">
+      <div class="script-hd"><span class="script-n">2</span><div><span class="script-eyebrow">Agenda</span><h4>오늘 이야기할 4가지</h4></div></div>
+      <p class="script-body">오늘은 크게 네 덩어리로 나눠서 봅니다. 첫째는 뼈대 — 시스템이 어떻게 생겼고 무슨 라이브러리를 쓰는지. 둘째가 오늘의 핵심인 AI 파이프라인 — 사용자의 행동이 어떻게 페르소나로 연결되는지. 셋째와 넷째는 그 결과를 어떻게 추적하고 디스코드로 전달하는지입니다. 참고로 발표 중에 N 키를 누르면 지금 이 대본이 화면 아래에 뜹니다.</p>
+    </div>
+    <div class="script-card" id="p3">
+      <div class="script-hd"><span class="script-n">3</span><div><span class="script-eyebrow">System Map</span><h4>모노레포 한 장 요약</h4></div></div>
+      <p class="script-body">먼저 전체 지도입니다. 왼쪽이 고객 쪽 흐름이에요 — 리액트 쇼핑몰이 커머스 API를 부르고, 데이터는 Neon 포스트그레스에 쌓입니다. 오른쪽이 AI·운영 쪽입니다 — 코어 API가 OpenRouter로 LLM을 부르고 Langfuse로 추적하죠. 맨 아래 디스코드 봇만 별도 프로세스로, 판매자 서버에 들어가 채널을 깝니다. 두 API는 같은 배포 안의 두 서비스라, 프런트는 상대경로로 부릅니다.</p>
+    </div>
+    <div class="script-card" id="p4">
+      <div class="script-hd"><span class="script-n">4</span><div><span class="script-eyebrow">Stack · Libraries</span><h4>어떤 라이브러리가 어디서 일하는가</h4></div></div>
+      <p class="script-body">라이브러리는 '어디서 일하는가'로 보시면 됩니다. 백엔드는 FastAPI 위에서, 특히 눈여겨볼 건 Langfuse가 감싼 OpenAI SDK예요 — 이걸로 OpenRouter를 부르면 모든 호출이 자동으로 추적됩니다. 프런트는 리액트에 리액트 쿼리, 봇은 discord.py죠. 가장 중요한 한 줄은 맨 아래입니다 — 모델이나 온도 값이 코드에 박혀 있지 않고 Langfuse 설정에서 옵니다. 그래서 모델을 바꿔도 재배포가 필요 없어요.</p>
+    </div>
+    <div class="script-card" id="p5">
+      <div class="script-hd"><span class="script-n">5</span><div><span class="script-eyebrow">The One Principle</span><h4>숫자는 SQL이 계산하고, AI는 해석만 한다</h4></div></div>
+      <p class="script-body">이게 이 시스템을 관통하는 단 하나의 원칙입니다. 세 단계로 보시죠. 먼저 판매·환불·조회를 불변 이벤트로 '쌓고', 정해진 시점에 SQL로 확정 숫자를 '집계'하고, 그 숫자만 프롬프트에 넣어 AI가 '해석'합니다. 모든 페르소나 프롬프트에 '숫자를 다시 계산하지 말고 해석만 하라'가 못박혀 있어요. 덕분에 환각 위험이 낮고, 같은 입력이면 같은 근거가 나오니 재현이 가능합니다.</p>
+    </div>
+    <div class="script-card" id="p6">
+      <div class="script-hd"><span class="script-n">6</span><div><span class="script-eyebrow">Data · Event Ledger</span><h4>모든 것의 원천: commerce_events</h4></div></div>
+      <p class="script-body">그 숫자의 원천이 바로 이 이벤트 원장입니다. 핵심은 두 가지예요. 첫째, 상태가 아니라 이벤트를 쌓기 때문에 다음 달 환불이 이번 달 매출을 덮어쓰지 않습니다 — 발생 시점 기준으로 집계하니까요. 둘째, 각 이벤트에 고유 ID가 있어서, 재시도로 같은 취소가 두 번 들어와도 매출이 이중으로 잡히지 않습니다. 오른쪽이 실제로 쌓는 일곱 가지 이벤트 종류입니다.</p>
+    </div>
+    <div class="script-card" id="p7">
+      <div class="script-hd"><span class="script-n">7</span><div><span class="script-eyebrow">Metrics</span><h4>지표는 이렇게 "계산"된다 (코드가)</h4></div></div>
+      <p class="script-body">지표가 실제로 어떻게 계산되는지입니다. 전부 SQL 집계라는 게 포인트예요. 순매출은 결제에서 환불을 빼고, 증감률은 전월 대비로 냅니다. 여기서 중요한 건 오른쪽 '안전장치' 열입니다 — 지난달이 0이면 증감률을 지어내지 않고 '비교 불가'로 비워요. 판매가 3건 미만이면 환불률에 '표본이 적다'는 경고를 붙입니다. 그리고 플랫폼 매출은 판매자 매출이 아니라 우리가 받는 수수료 더하기 플랜 요금입니다 — 무료 플랜은 아무리 많이 팔아도 기여도가 낮죠.</p>
+    </div>
+    <div class="script-card" id="p8">
+      <div class="script-hd"><span class="script-n">8</span><div><span class="script-eyebrow">The Bridge</span><h4>사용자 행동 → 이벤트 → 페르소나</h4></div></div>
+      <p class="script-body">이 슬라이드가 오늘 발표의 다리입니다. 왼쪽이 사용자의 행동, 가운데가 그때 남는 이벤트, 오른쪽이 그걸 해석하는 페르소나예요. 상품을 보면 조회 이벤트가 남고 일일 리포트 페르소나가 해석합니다. 결제하면 매출 이벤트가 남고 인사이트 페르소나가 봅니다. 문의를 하면 분류 페르소나가 먼저 돌고요. 즉, 사용자가 어떤 행동을 하느냐가 어떤 이름의 어떤 페르소나가 도는지를 결정합니다. 다음 장부터 이 페르소나들을 하나씩 열어봅니다.</p>
+    </div>
+    <div class="script-card" id="p9">
+      <div class="script-hd"><span class="script-n">9</span><div><span class="script-eyebrow">Langfuse · 개념</span><h4>프롬프트를 코드 밖으로 꺼낸다</h4></div></div>
+      <p class="script-body">Langfuse를 왜 쓰냐면, 프롬프트를 코드 밖으로 꺼내기 위해서입니다. 개념 네 개만 보시죠 — name은 페르소나 식별자, production 라벨은 지금 돌 버전을 가리키는 포인터, config에는 모델과 온도가 프롬프트와 함께 저장됩니다. 그래서 오른쪽처럼, 새 버전에서 모델만 바꾸고 라벨을 옮기면 코드 재배포 없이 몇 분 안에 반영돼요. 혹시 설정이 엉뚱한 게이트웨이를 가리키면 코드가 예외를 던져서 사고를 막습니다.</p>
+    </div>
+    <div class="script-card" id="p10">
+      <div class="script-hd"><span class="script-n">10</span><div><span class="script-eyebrow">Personas · 총람</span><h4>7개 페르소나 한눈에</h4></div></div>
+      <p class="script-body">이게 페르소나 일곱 개 전체입니다. 위 두 개가 고객 문의용, 가운데 두 개가 운영 리포트용, 아래 세 개가 판매자와 관리자용이에요. 맨 오른쪽 '노출' 열을 봐주세요 — 같은 조회수 숫자라도 판매자 본인이 보는 것과 관리자가 전체를 보는 건 완전히 다른 페르소나, 다른 API, 다른 디스코드 채널로 분리했습니다. 관리자 정보가 판매자에게 새면 안 되니까요. 온도도 작업 성격에 따라 0에서 0.3까지 다릅니다 — 분류는 0으로 딱딱하게, 리포트는 조금 유연하게.</p>
+    </div>
+    <div class="script-card" id="p11">
+      <div class="script-hd"><span class="script-n">11</span><div><span class="script-eyebrow">Persona 1·2 · 문의 자동응대</span><h4>support-triage → customer-support-answer</h4></div></div>
+      <p class="script-body">문의 응대는 두 페르소나가 연달아 돕니다. 먼저 왼쪽, 분류기가 JSON으로만 답해요 — 카테고리, 위험도, 사람이 필요한지. 분쟁이나 소송, 고액 환불, 개인정보가 언급되면 위험도를 높음으로 올리고 사람에게 넘깁니다. 그 다음 오른쪽 답변 페르소나가 도는데, 규칙이 엄격해요 — 주어진 주문과 정책만 쓰고, 확인 안 된 배송일이나 환불 여부는 절대 추측하지 않습니다. 애매하면 상담원 이관을 명시하죠.</p>
+    </div>
+    <div class="script-card" id="p12">
+      <div class="script-hd"><span class="script-n">12</span><div><span class="script-eyebrow">End-to-End · 가장 중요한 경로</span><h4>문의 한 건이 흐르는 전 구간</h4></div></div>
+      <p class="script-body">이 페이지가 제일 중요합니다. 문의 한 건이 들어와서 나갈 때까지 전 구간을 순서대로 보여드릴게요. 0번, 문의가 들어오면 응대 서비스가 시작합니다. 1번, Langfuse 트레이스를 여는데 요청 ID로 추적 ID를 고정해요 — 나중에 똑같이 재현하려고요. 2번에서 방금 본 분류가 돌고, 3번에서 실제 답변 프롬프트의 production 버전을 가져와 변수를 채웁니다. 4번에서 그 설정으로 모델을 확정하고, 5번에서 OpenRouter로 생성합니다. 마지막 6번, 위험한 문의면 운영 콘솔로 올리고 디스코드로 알립니다. 한 문장으로 요약하면 — 분류하고, 프롬프트 가져오고, 모델 정하고, 생성하고, 위험하면 사람에게 넘긴다. 이겁니다.</p>
+    </div>
+    <div class="script-card" id="p13">
+      <div class="script-hd"><span class="script-n">13</span><div><span class="script-eyebrow">OpenRouter · 호출 상세</span><h4>_generate_with_openrouter() 안에서</h4></div></div>
+      <p class="script-body">5번 '생성' 단계 안을 확대한 겁니다. 왼쪽 코드에서 눈여겨볼 건 세 가지예요. allow_fallbacks — 1차 제공자가 죽으면 자동으로 다른 데로 넘어갑니다. data_collection deny — 우리 데이터를 학습에 안 쓰는 경로만 강제해요. 그리고 langfuse_prompt — 이 생성을 프롬프트 버전에 연결해서 나중에 재현할 수 있게 합니다. fallback이 일어나면 실제로 쓴 모델이 요청한 모델과 다를 수 있는데, 그 실제 값을 그대로 기록합니다.</p>
+    </div>
+    <div class="script-card" id="p14">
+      <div class="script-hd"><span class="script-n">14</span><div><span class="script-eyebrow">설정 결정 · 우선순위</span><h4>모델은 어떻게 "정해지는가"</h4></div></div>
+      <p class="script-body">그럼 모델은 최종적으로 어떻게 정해지느냐. 우선순위가 셋입니다. 1순위는 Langfuse 프롬프트 설정, 여기 없는 값은 2순위인 코드 기본값으로 채우고, Langfuse 자체를 못 쓰면 3순위 기본 모델로 갑니다. 이 병합과 변수 치환, 캐싱을 compile 함수 하나가 담당해요. 그리고 이게 실제로 맞게 나가는지는 테스트가 요청 모양을 검증합니다.</p>
+    </div>
+    <div class="script-card" id="p15">
+      <div class="script-hd"><span class="script-n">15</span><div><span class="script-eyebrow">Personas 3~7 · 리포트 계열</span><h4>집계 → 서비스 클래스 → 페르소나</h4></div></div>
+      <p class="script-body">리포트 계열 다섯 페르소나입니다. 왼쪽이 코드의 서비스 클래스, 가운데가 Langfuse 이름, 오른쪽이 언제 도는지예요. 매일 자정에 판매자 리포트, 매일 관리자 트래픽, 매월 점유율 비교가 자동으로 돕니다. 패턴은 모두 같아요 — 트레이스 열고, 프롬프트 가져오고, 코드가 계산한 집계 dict를 JSON으로 넣어서 생성합니다. 다시 강조하지만 숫자는 LLM이 만들지 않습니다.</p>
+    </div>
+    <div class="script-card" id="p16">
+      <div class="script-hd"><span class="script-n">16</span><div><span class="script-eyebrow">Persona 상세 · daily-seller-report</span><h4>판매자 일일 리포트</h4></div></div>
+      <p class="script-body">그 중 판매자 일일 리포트를 예로 자세히 보죠. 왼쪽처럼 코드가 상품별 조회·판매·환불·재고를 뽑고, 최다 조회·최다 판매·품절·재고 임박까지 미리 계산해서 넘깁니다. AI는 그걸 인용만 해요. 오른쪽 프롬프트 규칙이 실무적으로 중요한데 — 조회는 많은데 재고가 부족하거나 0인 상품을 반드시 짚고, 마지막에 어떤 상품을 왜 채워야 하는지 구체적으로 제안하게 했습니다. 원인 단정은 금지하고 '추정됩니다'로 표현하게 했고요.</p>
+    </div>
+    <div class="script-card" id="p17">
+      <div class="script-hd"><span class="script-n">17</span><div><span class="script-eyebrow">Observability · Tracing</span><h4>모든 호출이 재현 가능한 트레이스로</h4></div></div>
+      <p class="script-body">관측 가능성 이야기입니다. 왼쪽, 모든 호출이 trace, span, generation 구조로 남습니다. 추적 ID를 고정하니 같은 문의를 그대로 재현할 수 있어요. 오른쪽이 중요합니다 — 트레이스로 저장하기 전에 이메일, 전화번호, 카드번호를 정규식으로 가립니다. 관측을 위해 개인정보가 로그에 남으면 안 되니까요. 전량이 부담되면 샘플 비율로 조절합니다.</p>
+    </div>
+    <div class="script-card" id="p18">
+      <div class="script-hd"><span class="script-n">18</span><div><span class="script-eyebrow">Automation · 스케줄</span><h4>언제 어떤 리포트가 자동으로 도는가</h4></div></div>
+      <p class="script-body">리포트는 사람이 안 눌러도 자동으로 돕니다. 매일 자정에 판매자 일일, 매일 새벽에 관리자 트래픽, 매월 1일에 점유율 비교예요. 실행 방식이 환경에 따라 갈리는데, 로컬이나 상시 서버는 백그라운드 루프가 시간을 재서 돌고, Vercel 같은 서버리스는 루프가 못 사니까 Vercel Cron이 대신 엔드포인트를 칩니다. 그 요청이 진짜 크론에서 온 건지 비밀키로 검증하고요.</p>
+    </div>
+    <div class="script-card" id="p19">
+      <div class="script-hd"><span class="script-n">19</span><div><span class="script-eyebrow">Delivery · Discord</span><h4>리포트를 Discord로 — 2000자 청킹</h4></div></div>
+      <p class="script-body">결과를 디스코드로 보낼 때 두 가지를 신경 썼습니다. 첫째, 디스코드는 한 메시지가 2000자 제한이라, AI 리포트가 길면 왼쪽 코드처럼 문단 경계에서 잘라 여러 개로 순차 전송합니다. 둘째, 이 전송 함수는 절대 예외를 던지지 않아요 — 알림 실패가 AI 파이프라인 전체를 죽이면 안 되니까요. 그리고 판매자용 웹훅과 관리자용 웹훅을 물리적으로 분리해서, 관리자 정보가 판매자 채널로 새지 않게 했습니다.</p>
+    </div>
+    <div class="script-card" id="p20">
+      <div class="script-hd"><span class="script-n">20</span><div><span class="script-eyebrow">신규 · 판매자 Discord 봇</span><h4>봇이 "판"을 깔고, core-api가 "발신"한다</h4></div></div>
+      <p class="script-body">여기서부터가 이번에 새로 만든 디스코드 봇입니다. 컨셉은 '봇이 판을 깔고, core-api가 발신한다'예요. 흐름은 다섯 단계입니다. 판매자 콘솔에서 1회용 코드를 받고, 봇을 초대한 뒤 서버에서 연동 명령으로 서버와 상점을 연결합니다. 그다음 생성 명령을 치면 봇이 플랜에 맞는 채널과 웹훅을 자동으로 깔고, 그 웹훅 주소를 사이트에 저장해요. 그러면 core-api가 판매자 콘솔의 전송 버튼이나 매일 자정 크론에서 그 웹훅으로 페르소나별 리포트를 쏩니다. 봇의 지표 명령들도 전부 SQL 집계 숫자만 가져옵니다.</p>
+    </div>
+    <div class="script-card" id="p21">
+      <div class="script-hd"><span class="script-n">21</span><div><span class="script-eyebrow">신규 · 플랜 → 채널/페르소나</span><h4>요금제가 페르소나 분배를 결정한다</h4></div></div>
+      <p class="script-body">그럼 어떤 채널이 깔리느냐 — 요금제가 결정합니다. 무료는 봇 명령과 일일 리포트만, 베이직부터 문의 이관, 프로부터 월간 리포트, 비즈니스는 매출 인사이트까지요. 오른쪽 채널마다 붙은 게 그 채널을 담당할 페르소나 이름입니다. 이 매핑은 코드 한 곳에만 정의해두고 봇이 API로 받아 그대로 만들기 때문에, 봇과 서버가 절대 어긋나지 않습니다. 그리고 관리자 전용 페르소나는 어떤 판매자 플랜에도 안 들어갑니다 — 경쟁사 데이터가 새면 안 되니까요.</p>
+    </div>
+    <div class="script-card" id="p22">
+      <div class="script-hd"><span class="script-n">22</span><div><span class="script-eyebrow">구현 상세 · 인증</span><h4>로그인 세 갈래: 자체 · 구글 · 내부 서비스</h4></div></div>
+      <p class="script-body">여기부터는 AI 바깥의 구현도 라이브러리·함수 단위로 짚어보겠습니다. 먼저 인증이에요. 왼쪽 코드가 실제 로그인 함수들입니다. 비밀번호는 bcrypt로 해시하는데, bcrypt가 72바이트까지만 본다는 제약이 있어서 sha256으로 먼저 다이제스트를 뜨고 그걸 해시합니다. 로그인 토큰은 PyJWT로 발급하고 7일 유효기간을 둡니다. 구글 로그인은 JWKS 서명 검증 대신 구글의 tokeninfo 엔드포인트를 호출해서, audience가 우리 클라이언트 ID와 같고 이메일이 인증됐는지 코드가 직접 재확인해요. 그리고 core-api는 이 토큰을 스스로 해독하지 않고, 발급자인 커머스 API에게 '이 토큰 누구 거야'라고 물어보는 방식을 씁니다.</p>
+    </div>
+    <div class="script-card" id="p23">
+      <div class="script-hd"><span class="script-n">23</span><div><span class="script-eyebrow">구현 상세 · 데이터베이스</span><h4>SQLite ↔ Postgres, 호출부는 그대로</h4></div></div>
+      <p class="script-body">다음은 데이터베이스입니다. 이 프로젝트는 로컬은 SQLite, 배포는 Postgres를 씁니다. 핵심은 왼쪽 코드처럼 PostgresConnection이라는 클래스가 sqlite3의 커넥션과 똑같은 인터페이스를 흉내 낸다는 거예요 — execute, executemany 다 그대로 씁니다. SQL 문법 차이는 정규식으로 치환해요 — INSERT OR IGNORE를 ON CONFLICT DO NOTHING으로, LIKE를 ILIKE로 바꾸는 식입니다. 덕분에 나머지 코드는 한 줄도 안 건드리고 백엔드를 바꿀 수 있었는데, 이 정규식 치환이 완벽하지 않아서 실제로 두 가지 버그를 배포 후에 잡았습니다 — 그건 잠시 뒤 트러블슈팅에서 자세히 다룰게요.</p>
+    </div>
+    <div class="script-card" id="p24">
+      <div class="script-hd"><span class="script-n">24</span><div><span class="script-eyebrow">구현 상세 · Discord 봇</span><h4>같은 봇, 두 가지 실행 방식</h4></div></div>
+      <p class="script-body">디스코드 봇은 사실 같은 봇인데 실행 방식이 두 가지입니다. 왼쪽은 원래 방식인 Gateway — discord.py로 상시 웹소켓을 열어두는 방식이에요. 오른쪽이 이번에 새로 만든 HTTP Interactions 방식인데, 연결을 안 열어두고 디스코드가 명령이 올 때마다 POST 요청 하나를 보내는 구조입니다. 여기서 중요한 게 서명 검증이에요 — 아래 코드처럼 PyNaCl로 Ed25519 서명을 검증해서, 진짜 디스코드에서 온 요청인지 확인합니다. 이 방식의 장점은 서버리스인 Vercel 함수로 나머지 API랑 같이 배포할 수 있다는 거예요. 대신 상시 연결이 없어서 디스코드 화면엔 봇이 '오프라인'으로 보이는데, 이건 화면 표시일 뿐 슬래시 명령 동작에는 전혀 영향이 없습니다.</p>
+    </div>
+    <div class="script-card" id="p25">
+      <div class="script-hd"><span class="script-n">25</span><div><span class="script-eyebrow">구현 상세 · 프런트엔드</span><h4>React Query로 서버 상태, GSAP로 연출</h4></div></div>
+      <p class="script-body">프런트엔드는 두 라이브러리가 축입니다. 서버 데이터는 전부 TanStack Query — useQuery, useMutation이 로딩·에러·캐시·재조회를 다 처리해주고, 장바구니에 담으면 onSuccess에서 관련 쿼리를 무효화해서 헤더 배지가 자동으로 갱신돼요. 화면 연출은 GSAP을 씁니다 — 히어로 문구가 떠오르는 효과, 마우스를 따라가는 움직임 같은 게 다 GSAP이에요. gsap.context로 스코프를 잡아두면 컴포넌트가 사라질 때 한 번에 정리가 돼서 메모리 누수를 막습니다.</p>
+    </div>
+    <div class="script-card" id="p26">
+      <div class="script-hd"><span class="script-n">26</span><div><span class="script-eyebrow">구현 상세 · 배포</span><h4>서버리스 함수 3개가 사이트 하나처럼</h4></div></div>
+      <p class="script-body">배포 구조도 짚고 넘어가겠습니다. 실제로는 서버리스 함수가 세 개예요 — 커머스, 코어, 디스코드. 왼쪽 코드처럼 각 진입점이 실제 서비스의 FastAPI 앱을 통째로 import해서 자기 경로 아래에 마운트합니다. 서브앱의 lifespan, 그러니까 시작할 때 DB를 초기화하는 로직도 바깥 앱이 뜰 때 같이 실행되게 직접 열어줘요. vercel.json의 includeFiles가 각 서비스 코드를 함수 번들에 강제로 포함시키고, rewrites가 경로별로 어느 함수로 보낼지 정합니다. 이 덕분에 프런트는 전부 상대경로로 부르고, CORS 설정도 따로 필요 없습니다.</p>
+    </div>
+    <div class="script-card" id="p27">
+      <div class="script-hd"><span class="script-n">27</span><div><span class="script-eyebrow">실전 트러블슈팅</span><h4>"자기 자신을 부르는 URL"이 세 번 틀렸던 이야기</h4></div></div>
+      <p class="script-body">실전 트러블슈팅 하나를 공유하겠습니다. 오늘 겪은 실제 사례예요. 증상은 이랬습니다 — AI 리포트만 유독 500 에러가 나는데, 순수 조회 API는 멀쩡했어요. 파봤더니 원인이 세 겹이었습니다. 1차로, 서버가 자기 자신을 호출할 URL을 계산하는 로직이 Vercel의 특정 환경변수 노출 설정에 의존하고 있었는데, 그게 꺼져 있으면 존재하지도 않는 로컬호스트로 기본값이 잡혔어요. 2차로, 그걸 고치고 보니 실은 대시보드에 로컬 개발용 URL이 그대로 환경변수로 박혀 있어서 그 기본값 계산 자체를 덮어쓰고 있었습니다. 3차로, 그것도 고쳤는데 여전히 안 됐어요 — 이번엔 그 URL이 배포마다 바뀌는 고유 도메인이었는데, 그 도메인이 Vercel의 배포 보호 기능에 걸려서 서버 대 서버 호출이 로그인 페이지로 리다이렉트되고 있었습니다. 최종적으로는 안정적인 프로덕션 도메인을 우선 쓰도록 바꿔서 해결했어요. 이 사례를 공유하는 이유는, 로컬에서는 재현이 안 되고 실제 배포 환경에서 직접 curl로 확인해야만 잡히는 클래스의 버그였기 때문입니다.</p>
+    </div>
+    <div class="script-card" id="p28">
+      <div class="script-hd"><span class="script-n">28</span><div><span class="script-eyebrow">보안 · 인증</span><h4>경로마다 다른 자물쇠</h4></div></div>
+      <p class="script-body">보안은 경로마다 다른 자물쇠를 씁니다. 고객 로그인은 JWT, 비밀번호는 bcrypt인데 72바이트 한계를 피하려고 먼저 해시를 뜹니다. 구글 로그인은 토큰의 대상이 우리 것이 맞는지, 이메일이 인증됐는지 확인하고요. 봇 내부 API는 공유 비밀을 상수 시간으로 비교하고, 크론은 비밀키로 검증합니다. 공통 철학은 하나예요 — 비밀값이 비어 있으면 열어주는 게 아니라 잠급니다.</p>
+    </div>
+    <div class="script-card" id="p29">
+      <div class="script-hd"><span class="script-n">29</span><div><span class="script-eyebrow">Honesty · 한계와 로드맵</span><h4>지금 없는 것 (숨기지 않는다)</h4></div></div>
+      <p class="script-body">면접이나 리뷰에서 신뢰를 얻으려면 없는 것도 솔직히 말해야죠. 지금 한계는 — 진짜 RAG는 없고, 애플리케이션 레벨 재시도가 없고, 결제는 모사입니다. 다음 단계로는 지식문서 임베딩으로 실제 RAG, 재시도 로직, 구독 결제, 그리고 봇 라이브 검증과 Vercel 라우팅 정상화를 계획하고 있습니다.</p>
+    </div>
+    <div class="script-card" id="p30">
+      <div class="script-hd"><span class="script-n">30</span><div><span class="script-eyebrow">요약</span><h4>한 문장으로</h4></div></div>
+      <p class="script-body">마지막으로 한 문장으로 정리하겠습니다. 사용자의 행동은 멱등한 이벤트가 되고, SQL이 그걸 확정 숫자로 집계하며, 그 숫자는 '누가 보는가'에 따라 다른 페르소나로 해석되어, OpenRouter를 거쳐 Langfuse에 추적되고, 봇이 깐 디스코드 채널로 전달됩니다. 그리고 AI는 끝까지 숫자를 만들지 않고 해석만 합니다. 감사합니다. 질문 받겠습니다.</p>
+    </div>
+
+      <h2 id="pron">부록 · 영어 발음 가이드</h2>
+      <p class="lead">대본을 소리내어 읽을 때 참고하세요. 괄호가 없는 항목은 알파벳/약어를 그냥 한 글자씩 읽으면 됩니다.</p>
+
+      <h3 id="pron-lib"><span class="num">A</span>라이브러리 · 프레임워크</h3>
+      <table>
+        <tr><th>표기</th><th>한글 발음</th></tr>
+        <tr><td>FastAPI</td><td>패스트에이피아이</td></tr>
+        <tr><td>uvicorn</td><td>유비콘</td></tr>
+        <tr><td>pydantic</td><td>파이단틱</td></tr>
+        <tr><td>pydantic-settings</td><td>파이단틱 세팅스</td></tr>
+        <tr><td>httpx</td><td>에이치티티피엑스</td></tr>
+        <tr><td>psycopg</td><td>사이코피지</td></tr>
+        <tr><td>PyJWT</td><td>파이제이더블유티</td></tr>
+        <tr><td>bcrypt</td><td>비크립트</td></tr>
+        <tr><td>PyNaCl</td><td>파이나클</td></tr>
+        <tr><td>Langfuse</td><td>랭퓨즈</td></tr>
+        <tr><td>OpenAI (SDK)</td><td>오픈에이아이</td></tr>
+        <tr><td>discord.py</td><td>디스코드 파이</td></tr>
+        <tr><td>React</td><td>리액트</td></tr>
+        <tr><td>Vite</td><td>비트</td></tr>
+        <tr><td>TanStack Query (<code>@tanstack/react-query</code>)</td><td>탠스택 쿼리</td></tr>
+        <tr><td>GSAP</td><td>지샙</td></tr>
+        <tr><td>ScrollTrigger</td><td>스크롤트리거</td></tr>
+      </table>
+
+      <h3 id="pron-svc"><span class="num">B</span>서비스 · 인프라</h3>
+      <table>
+        <tr><th>표기</th><th>한글 발음</th></tr>
+        <tr><td>OpenRouter</td><td>오픈라우터</td></tr>
+        <tr><td>Vercel</td><td>버셀</td></tr>
+        <tr><td>Neon</td><td>니온</td></tr>
+        <tr><td>Discord</td><td>디스코드</td></tr>
+        <tr><td>Google Identity Services</td><td>구글 아이덴티티 서비시즈</td></tr>
+        <tr><td>Fluid Compute</td><td>플루이드 컴퓨트</td></tr>
+        <tr><td>Deployment Protection</td><td>디플로이먼트 프로텍션</td></tr>
+      </table>
+
+      <h3 id="pron-db"><span class="num">C</span>DB / SQL</h3>
+      <table>
+        <tr><th>표기</th><th>한글 발음</th></tr>
+        <tr><td>SQLite</td><td>에스큐엘라이트</td></tr>
+        <tr><td>PostgreSQL / Postgres</td><td>포스트그레스큐엘 / 포스트그레스</td></tr>
+        <tr><td>rowid</td><td>로우아이디</td></tr>
+        <tr><td>GROUP BY</td><td>그룹 바이</td></tr>
+        <tr><td>INSERT OR IGNORE</td><td>인서트 오어 이그노어</td></tr>
+        <tr><td>ON CONFLICT DO NOTHING</td><td>온 컨플릭트 두 낫씽</td></tr>
+      </table>
+
+      <h3 id="pron-proto"><span class="num">D</span>프로토콜 · 공통 용어</h3>
+      <table>
+        <tr><th>표기</th><th>한글 발음</th></tr>
+        <tr><td>JWT</td><td>제이더블유티 (알파벳 그대로)</td></tr>
+        <tr><td>HS256</td><td>에이치에스 이백오십육</td></tr>
+        <tr><td>OAuth</td><td>오어스</td></tr>
+        <tr><td>CORS</td><td>코어스</td></tr>
+        <tr><td>REST</td><td>레스트</td></tr>
+        <tr><td>ASGI</td><td>에이에스지아이 (알파벳 그대로)</td></tr>
+        <tr><td>Webhook</td><td>웹훅</td></tr>
+        <tr><td>Ed25519</td><td>이디 이만오천오백십구 (또는 "이디-투-파이브파이브원나인"처럼 숫자를 한 글자씩)</td></tr>
+        <tr><td>Gateway</td><td>게이트웨이</td></tr>
+      </table>
+
+      <h3 id="pron-fn"><span class="num">E</span>함수 · 클래스 (코드 그대로 읽을 때)</h3>
+      <table>
+        <tr><th>코드</th><th>읽는 법</th></tr>
+        <tr><td><code>create_access_token()</code></td><td>크리에이트 액세스 토큰</td></tr>
+        <tr><td><code>verify_google_id_token()</code></td><td>버리파이 구글 아이디 토큰</td></tr>
+        <tr><td><code>hash_password()</code> / <code>verify_password()</code></td><td>해시 패스워드 / 버리파이 패스워드</td></tr>
+        <tr><td><code>_rewrite_sql()</code></td><td>리라이트 에스큐엘</td></tr>
+        <tr><td><code>PostgresConnection</code></td><td>포스트그레스 커넥션</td></tr>
+        <tr><td><code>executescript()</code></td><td>이그제큐트스크립트</td></tr>
+        <tr><td><code>VerifyKey.verify()</code></td><td>버리파이키 닷 버리파이</td></tr>
+        <tr><td><code>BackgroundTasks</code></td><td>백그라운드 태스크스</td></tr>
+        <tr><td><code>langfuse.openai.OpenAI</code></td><td>랭퓨즈 닷 오픈에이아이 닷 오픈에이아이</td></tr>
+        <tr><td><code>allow_fallbacks</code></td><td>얼라우 폴백스</td></tr>
+        <tr><td><code>CommerceClient.verify_identity()</code></td><td>커머스클라이언트 닷 버리파이 아이덴티티</td></tr>
+        <tr><td><code>DiscordNotifier.send()</code></td><td>디스코드노티파이어 닷 센드</td></tr>
+        <tr><td><code>invalidateQueries</code></td><td>인밸리데이트 쿼리스</td></tr>
+        <tr><td><code>on_guild_join</code></td><td>온 길드 조인</td></tr>
+        <tr><td><code>gsap.context()</code> / <code>gsap.quickTo()</code></td><td>지샙 닷 컨텍스트 / 지샙 닷 퀵투</td></tr>
+      </table>
+    </section>
+
+    <!-- ============ TAB 2: 발표 진행 가이드 ============ -->
+    <section class="tabpanel" id="tab-guide">
+      <h1>발표 진행 가이드</h1>
+      <p class="lead"><code>ai-flow-deck.html</code>(30장, 브라우저에서 열고 <code>←</code>/<code>→</code>로
+        넘기고 <code>N</code>으로 슬라이드별 발표 대본 확인 가능)을 실제로 발표할 때 어떻게 진행할지 정리한
+        운영 가이드입니다.</p>
+
+      <h2 id="s1">1. 전체 진행 가이드</h2>
+
+      <h3 id="s11"><span class="num">1.1</span>발표 골격 (30장, 약 20~25분 기준)</h3>
+      <table>
+        <tr><th>구간</th><th>슬라이드</th><th>시간 배분</th><th>목표</th></tr>
+        <tr><td>오프닝</td><td>1~2</td><td>1분</td><td>오늘 무슨 얘기를 하는지, 핵심 원칙 한 줄 예고</td></tr>
+        <tr><td>Ⅰ. 뼈대</td><td>3~8</td><td>4분</td><td>시스템 지도 → 스택 → 핵심 원칙(숫자=SQL, 해석=AI) → 이벤트 원장</td></tr>
+        <tr><td>Ⅱ. AI 파이프라인</td><td>9~16</td><td>6분</td><td>Langfuse 개념 → 7개 페르소나 → 문의 응대 End-to-End (가장 중요한 구간)</td></tr>
+        <tr><td>Ⅲ. 전달·운영</td><td>17~21</td><td>4분</td><td>트레이싱 → 스케줄 → Discord 전달 → 디스코드 봇 연동</td></tr>
+        <tr><td>Ⅳ. 구현 상세 (신규)</td><td>22~27</td><td>5분</td><td>인증 · DB 이중 백엔드 · 봇 2가지 실행 방식 · 프런트 · 배포 · 실전 트러블슈팅</td></tr>
+        <tr><td>마무리</td><td>28~30</td><td>2분</td><td>보안 총람 → 한계 솔직 인정 → 한 문장 요약</td></tr>
+      </table>
+      <div class="tip">시간이 빠듯하면 <b>9~16번(AI 파이프라인)과 27번(트러블슈팅)은 절대 스킵하지 마세요</b> —
+        이 두 구간이 "이 사람이 실제로 이해하고 만들었는가"를 가장 잘 보여줍니다. 시간이 없으면 4번(스택),
+        21번(플랜→채널)을 줄이세요.</div>
+
+      <h3 id="s12"><span class="num">1.2</span>톤 원칙</h3>
+      <ul>
+        <li><b>자랑하지 말고 설명하라.</b> "이렇게 잘 만들었습니다"가 아니라 "이 문제 때문에 이렇게 할 수밖에
+          없었습니다"로 말하기. 예: "숫자를 SQL로 계산하는 이유는, LLM에게 집계까지 맡기면 같은 질문에 다른
+          숫자가 나올 수 있어서입니다."</li>
+        <li><b>매 파트 전환마다 "왜"를 먼저 던지고 답하는 구조.</b> 슬라이드 대본이 이미 이 구조로 쓰여 있습니다
+          (예: "왜 sha256을 먼저 거치나").</li>
+        <li><b>모르는 질문에는 추측하지 말고 "확인 후 답변드리겠습니다"라고 말하기.</b> 이 프로젝트는 한계
+          슬라이드(29번)에서 스스로 부족한 점을 먼저 밝히기 때문에, 모른다고 인정하는 게 오히려 신뢰를
+          깎지 않습니다.</li>
+        <li><b>27번 트러블슈팅 슬라이드는 발표의 클라이맥스로 취급하세요.</b> 이론이 아니라 실제로 오늘 겪고
+          고친 버그라서 가장 설득력이 강합니다. 여기서 속도를 늦추고, "이게 왜 로컬에서는 재현이 안 됐는지"를
+          강조하세요.</li>
+      </ul>
+
+      <h3 id="s13"><span class="num">1.3</span>슬라이드별 발화 팁 (신규 22~27번 위주)</h3>
+      <ul>
+        <li><b>22 (인증)</b>: 코드를 읽어주지 말고 "72바이트 넘는 비밀번호를 넣으면 bcrypt가 조용히
+          잘라버린다"는 실패 시나리오부터 얘기한 다음 sha256 다이제스트로 해결했다고 설명하면 훨씬 잘 들립니다.</li>
+        <li><b>23 (DB 이중 백엔드)</b>: "왜 처음부터 Postgres만 쓰지 않았나?"를 스스로 먼저 던지고 답하세요 —
+          "로컬 개발은 SQLite가 설치가 필요 없어 빠르고, 배포는 Postgres가 필요해서 두 경로를 하나의
+          인터페이스로 묶었다."</li>
+        <li><b>24 (봇 2가지 방식)</b>: 여기서 "오프라인으로 보이는데 왜 정상이냐"는 질문이 반드시 나옵니다.
+          Gateway 세션이 없어서 그런 거고 슬래시 명령 응답에는 영향이 없다는 걸 먼저 선수 쳐서 설명하면 좋습니다.</li>
+        <li><b>27 (트러블슈팅)</b>: 다섯 단계를 빠르게 읽지 말고, 1차 원인을 고쳤는데 왜 안 됐는지 → 2차
+          원인을 고쳤는데 왜 안 됐는지, 라는 식으로 <b>직접 겪은 순서 그대로</b> 말하세요. "됐다고 생각했는데
+          또 안 됐다"는 흐름이 진짜 디버깅 경험을 보여줍니다.</li>
+      </ul>
+
+      <h3 id="s14"><span class="num">1.4</span>라이브 데모를 곁들일 경우</h3>
+      <p>덱만으로도 충분하지만, 시간이 되면 다음 순서를 추천합니다 (각 1분 내외):</p>
+      <ol>
+        <li>데모 스토어에서 상품 상세 페이지 조회 → (백그라운드에서 <code>PRODUCT_VIEWED</code> 이벤트가
+          쌓였다고 설명)</li>
+        <li>판매자 콘솔의 "오늘의 데이터" 대시보드 열기 → 코드가 집계한 숫자 + AI 해석이 같이 보이는 걸 보여주기</li>
+        <li>"Discord로 전송" 버튼 클릭 → 실제 디스코드 채널에 리포트가 도착하는 걸 보여주기 (가장 임팩트 있는 데모)</li>
+        <li>(선택) 디스코드에서 <code>/수익</code> 같은 슬래시 명령 실행 → 즉시 숫자 응답</li>
+      </ol>
+      <p>데모 전에는 반드시 사전에 한 번 리허설하세요 — 특히 3번은 네트워크·Discord 상태에 따라 몇 초 걸릴 수 있습니다.</p>
+      <div class="tip"><b>봇 초대 링크</b> (테스트용 디스코드 서버에 미리 초대해두세요):<br>
+        <code style="word-break:break-all">https://discord.com/oauth2/authorize?client_id=1226560290087239682&amp;permissions=8&amp;integration_type=0&amp;scope=bot</code></div>
+
+      <h3 id="s15"><span class="num">1.5</span>마무리 멘트 예시</h3>
+      <blockquote>
+        "정리하면 이렇습니다.<br>
+        <b>사용자의 행동</b>은 이벤트가 되고, <b>SQL</b>이 숫자를 확정하고, <b>AI</b>는 그 숫자를 누가
+        보느냐에 따라 다르게 해석만 합니다. 오늘 발표에서 가장 강조하고 싶었던 건 이 원칙 하나였고, 나머지
+        인증·배포·봇 같은 구현들은 전부 이 원칙을 안정적으로 서비스하기 위한 뒷받침이었습니다. 질문 받겠습니다."
+      </blockquote>
+
+      <h2 id="s3">체크리스트</h2>
+      <h3>발표 직전 체크리스트</h3>
+      <ul class="checklist" id="checklist">
+        <li><input type="checkbox" id="c1"><label for="c1"><code>ai-flow-deck.html</code>을 브라우저에서 열어 <code>F</code>로 전체화면 진입해보기</label></li>
+        <li><input type="checkbox" id="c2"><label for="c2"><code>N</code>으로 발표 대본이 슬라이드별로 정확히 뜨는지 1~2장만 확인</label></li>
+        <li><input type="checkbox" id="c3"><label for="c3">라이브 데모를 할 경우, 실제 사이트/디스코드 연결 상태 미리 확인 (특히 "Discord로 전송" 버튼)</label></li>
+        <li><input type="checkbox" id="c4"><label for="c4">27번 트러블슈팅 슬라이드는 반드시 포함 — 시간 압박이 있어도 이 장은 스킵하지 않기</label></li>
+        <li><input type="checkbox" id="c5"><label for="c5">"예상 질문 답변" 탭의 2.6(한계/압박 질문) 섹션은 발표 직전에 한 번 더 훑어보기 — 가장 날카로운 질문이 여기서 나옵니다</label></li>
+      </ul>
+
+      <p class="foot">AI Ops Studio · 발표 진행 가이드 — <code>presentation/ai-flow-deck.html</code>과 함께 사용하세요.</p>
+    </section>
+
+    <!-- ============ TAB 3: 예상 질문 답변 ============ -->
+    <section class="tabpanel" id="tab-qna">
+      <h1>예상 질문 Q&amp;A</h1>
+      <p class="lead">카테고리별로 정리했습니다. 실제 면접/발표에서는 이 문장을 그대로 외우지 말고,
+        <b>왜 그렇게 했는지의 핵심 이유 한 문장</b>만 기억해두고 나머지는 즉흥적으로 풀어도 됩니다.</p>
+
+      <h3 id="s21"><span class="num">2.1</span>AI / LLM 설계</h3>
+      <div class="qa"><p class="q">Q. 왜 OpenAI를 직접 안 쓰고 OpenRouter를 거치나요?</p>
+        <p class="a">A. 하나의 API로 여러 모델 제공자에 접근할 수 있고, <code>allow_fallbacks</code> 옵션으로
+          1차 제공자가 장애가 나면 자동으로 다른 제공자로 넘어갑니다. 특정 벤더에 종속되지 않고, 모델을
+          Langfuse 설정값 하나만 바꿔서 교체할 수 있다는 것도 장점입니다.</p></div>
+      <div class="qa"><p class="q">Q. Langfuse 없이 그냥 프롬프트를 코드에 하드코딩하면 안 되나요?</p>
+        <p class="a">A. 됩니다만, 모델이나 temperature를 바꿀 때마다 재배포가 필요해집니다. Langfuse는
+          프롬프트를 버전 관리하고, <code>production</code> 라벨을 옮기는 것만으로 즉시(캐시 TTL 이후)
+          반영되게 해줍니다. 또 모든 호출이 자동으로 트레이스로 남아서, "이 리포트가 왜 이렇게 나왔지"를
+          나중에 그대로 재현해서 확인할 수 있습니다.</p></div>
+      <div class="qa"><p class="q">Q. LLM이 숫자를 잘못 계산해서 틀린 리포트를 보내면 어떡하나요?</p>
+        <p class="a">A. 그게 바로 이 프로젝트의 핵심 설계 원칙입니다 — LLM은 숫자를 계산하지 않습니다.
+          모든 숫자는 SQL이 먼저 확정해서 dict로 만들고, 프롬프트에는 "이 숫자를 다시 계산하지 말고
+          해석만 하라"고 명시돼 있습니다. 그래서 LLM이 할 수 있는 실수는 <b>서술을 이상하게 한다</b>
+          정도지, 숫자 자체를 틀리는 건 구조적으로 막혀 있습니다.</p></div>
+      <div class="qa"><p class="q">Q. 프롬프트 인젝션(사용자가 "이전 지시 무시하고..."라고 입력)은 어떻게 막나요?</p>
+        <p class="a">A. 지금은 별도의 인젝션 탐지 레이어는 없고, <code>support-triage</code> 페르소나가
+          위험도를 분류해서 애매하거나 위험한 문의는 무조건 사람에게 이관하도록 되어 있습니다. 완벽한
+          방어는 아니고, 로드맵에 있는 "애플리케이션 레벨 재시도·검증 강화" 항목과 함께 다뤄야 할
+          부분이라고 솔직히 답하는 게 좋습니다.</p></div>
+      <div class="qa"><p class="q">Q. 왜 각 용도마다 페르소나(프롬프트)를 따로 두나요? 하나로 합치면 안 되나요?</p>
+        <p class="a">A. 같은 숫자라도 보는 사람이 다르면(판매자 본인 vs 전체 관리자) 노출 범위와 어조가
+          달라야 합니다. 하나로 합치면 실수로 관리자 전용 데이터가 판매자에게 노출될 위험이 생기고,
+          temperature 같은 설정도 분류 작업(0)과 리포트 작성(0.2~0.3)에 다르게 필요합니다. 그래서
+          이름·API·Discord 채널까지 물리적으로 분리했습니다.</p></div>
+      <div class="qa"><p class="q">Q. 토큰 비용은 어떻게 관리하나요?</p>
+        <p class="a">A. 지금은 max_tokens을 페르소나별로 제한해두는 정도입니다 (예: 일일 리포트는
+          1800토큰). 프롬프트 캐싱이나 사용량 모니터링 대시보드는 아직 없고, 이 부분은 실제 운영 단계에서
+          Langfuse의 비용 트레이싱 기능을 더 활용해야 할 부분입니다.</p></div>
+
+      <h3 id="s22"><span class="num">2.2</span>데이터/아키텍처</h3>
+      <div class="qa"><p class="q">Q. 왜 "현재 상태" 테이블이 아니라 이벤트를 쌓는 방식(이벤트 소싱)을 썼나요?</p>
+        <p class="a">A. 상태값만 저장하면 "지금 재고가 몇 개냐"는 답할 수 있어도 "지난달 매출이 얼마였냐"는
+          답할 수 없습니다. 이벤트는 발생 시점이 고정돼 있어서, 이번 달에 들어온 환불이 지난달 매출을
+          소급해서 깎지 않습니다. 또 <code>external_event_id</code>가 유니크해서, 같은 이벤트가 중복으로
+          들어와도(재시도 등) 두 번 집계되지 않습니다.</p></div>
+      <div class="qa"><p class="q">Q. 왜 core-api와 mock-commerce-api를 하나로 합치지 않고 나눴나요?</p>
+        <p class="a">A. mock-commerce-api는 "커머스 사실"(상품·주문·이벤트)을 소유하는 서비스고,
+          core-api는 "AI 해석"을 담당하는 서비스입니다. 책임을 분리해서, 나중에 실제 커머스 시스템과
+          연동할 때 core-api 쪽만 그대로 재사용할 수 있게 하려는 의도입니다. 다만 지금은 둘 다 하나의
+          Vercel 배포 안에서 함께 돌기 때문에, 실질적으로는 프런트에서 두 개의 API처럼 보이지만 운영
+          부담은 하나입니다.</p></div>
+      <div class="qa"><p class="q">Q. 왜 SQLite와 Postgres를 동시에 지원하나요? 처음부터 Postgres만 쓰면 안 되나요?</p>
+        <p class="a">A. 로컬 개발 환경에서는 SQLite가 설치·설정이 전혀 필요 없어서 개발 속도가 빠릅니다.
+          배포 환경(Vercel)은 서버리스라 로컬 파일시스템에 쓸 수 없기 때문에 실제 DB(Neon Postgres)가
+          필요합니다. <code>db_compat.py</code>가 두 백엔드를 같은 인터페이스로 감싸서, 나머지 코드는
+          어떤 DB를 쓰는지 신경 쓰지 않게 만들었습니다.</p></div>
+      <div class="qa"><p class="q">Q. SQL을 정규식으로 SQLite→Postgres로 변환하는 방식, 위험하지 않나요?</p>
+        <p class="a">A. 네, 완벽하지 않다는 걸 알고 있고 실제로 두 가지 버그를 배포 후에 발견했습니다 —
+          <code>rowid</code>(SQLite 전용 암묵 컬럼)를 쓴 쿼리, 그리고 Postgres가 SQLite보다
+          <code>GROUP BY</code>를 더 엄격하게 검사해서 JOIN된 테이블의 컬럼을 그룹핑 목록에 명시해야
+          했던 경우입니다. 테스트 스위트가 SQLite로만 돌아서 이런 차이를 못 잡았고, 실제 배포 로그를
+          보고서야 발견했습니다. 이건 이 프로젝트의 정직한 한계입니다 — 진짜 마이그레이션이 필요하다면
+          정규식 치환이 아니라 ORM이나 쿼리 빌더를 쓰는 게 맞습니다.</p></div>
+      <div class="qa"><p class="q">Q. 멱등성(idempotency)은 왜 중요한가요? 실제로 어떻게 보장하나요?</p>
+        <p class="a">A. 결제/이벤트 시스템은 네트워크 재시도 때문에 같은 요청이 두 번 올 수 있습니다.
+          <code>commerce_events</code> 테이블의 <code>external_event_id</code>에 UNIQUE 제약을 걸고
+          <code>INSERT OR IGNORE</code>(Postgres에서는 <code>ON CONFLICT DO NOTHING</code>)로 삽입하기
+          때문에, 같은 이벤트가 중복으로 와도 두 번째는 조용히 무시되고 매출이 이중으로 잡히지 않습니다.</p></div>
+
+      <h3 id="s23"><span class="num">2.3</span>보안</h3>
+      <div class="qa"><p class="q">Q. 왜 세션이 아니라 JWT를 쓰나요?</p>
+        <p class="a">A. 서버가 세션 상태를 따로 저장할 필요가 없어서 서버리스 환경(Vercel Functions,
+          요청마다 새 프로세스일 수 있음)에 잘 맞습니다. 대신 리프레시 토큰이나 즉시 폐기(revoke) 기능은
+          없어서, TTL을 7일로 짧게 잡고 포트폴리오 데모 수준의 트레이드오프를 인정한 설계입니다.</p></div>
+      <div class="qa"><p class="q">Q. 왜 core-api는 JWT를 직접 검증하지 않고 mock-commerce-api에 물어보나요?</p>
+        <p class="a">A. mock-commerce-api가 고객 계정의 발급자(issuer)이기 때문에, 리소스 서버 패턴을
+          따라서 "이 토큰이 진짜인지, 누구 건지"는 발급자에게만 묻습니다. 두 서비스가 같은 시크릿을
+          공유할 필요가 없어지고, 나중에 인증 방식이 바뀌어도(예: OAuth 서버 도입) core-api 코드는
+          안 건드려도 됩니다.</p></div>
+      <div class="qa"><p class="q">Q. 봇 내부 API(<code>/internal/discord/*</code>)는 왜 JWT가 아니라 공유 비밀(shared secret)을 쓰나요?</p>
+        <p class="a">A. 이건 사람이 아니라 서비스 대 서비스(디스코드 봇 ↔ 커머스 API) 통신이라 JWT
+          발급/만료 관리가 오히려 과합니다. <code>X-Internal-Token</code> 헤더를 상수 시간
+          비교(<code>secrets.compare_digest</code>)로 검증하고, 비밀값이 비어있으면 전부 401을 던지는
+          fail-closed 기본값을 씁니다.</p></div>
+      <div class="qa"><p class="q">Q. 비밀번호를 sha256으로 먼저 해싱하고 bcrypt를 또 쓰는 게 이중 해싱 아닌가요, 안전한가요?</p>
+        <p class="a">A. bcrypt 알고리즘 자체가 72바이트를 넘는 입력을 조용히 잘라버리는 제약이 있어서,
+          긴 비밀번호를 쓰는 사용자는 실제로는 앞 72바이트만으로 로그인되는 문제가 생깁니다. sha256로
+          먼저 고정 길이(32바이트) 다이제스트를 만들면 이 문제가 없어지고, bcrypt의 salt+cost factor
+          보호는 그대로 유지됩니다. 이건 표준적으로 알려진 우회법입니다(passlib 등 라이브러리도 비슷하게 처리).</p></div>
+
+      <h3 id="s24"><span class="num">2.4</span>배포 / 운영</h3>
+      <div class="qa"><p class="q">Q. 왜 Vercel을 선택했나요? AWS나 별도 서버는 고려 안 했나요?</p>
+        <p class="a">A. 무료로 시작할 수 있고(포트폴리오 프로젝트라 비용이 중요), Git 푸시만으로
+          프런트/백엔드가 함께 배포되는 워크플로우가 빠릅니다. 다만 서버리스라서 상시 프로세스가 필요한
+          것(예: 디스코드 Gateway 봇)은 못 올라가는 트레이드오프가 있고, 그것 때문에 HTTP Interactions
+          방식을 별도로 만들었습니다.</p></div>
+      <div class="qa"><p class="q">Q. 서버리스에서 스케줄된 작업(매일 자정 리포트)은 어떻게 돌리나요?</p>
+        <p class="a">A. 로컬/상시 서버에서는 asyncio 백그라운드 루프가 다음 실행 시각까지 대기했다가
+          도는 방식이지만, Vercel 함수는 요청이 끝나면 프로세스가 사라지기 때문에 이 루프가 살아있을 수
+          없습니다. 대신 Vercel Cron이 정해진 시각에 크론 전용 엔드포인트(<code>/internal/cron/*</code>)를
+          호출하고, 그 요청이 진짜 Vercel Cron에서 온 건지 <code>CRON_SECRET</code>으로 검증합니다.</p></div>
+      <div class="qa"><p class="q">Q. (27번 슬라이드 관련) 그 URL 버그, 애초에 어떻게 발견했나요?</p>
+        <p class="a">A. 사용자가 "AI 리포트에서 데이터를 못 불러온다"고 알려줘서 시작했습니다. 먼저
+          로컬에서 실제 프로덕션 DB에 연결해서 똑같은 쿼리를 돌려봤는데 성공했어요 — 그래서 SQL이나
+          데이터 문제가 아니라는 걸 알았습니다. 그다음 실제 배포된 엔드포인트에 curl로 직접 요청을
+          보내봤더니 재현이 됐고, 실패 속도(0.3초 vs 정상 몇 초)를 보고 "이건 진짜 네트워크 호출이 아니라
+          즉시 실패하는 것"이라는 가설을 세워서 하나씩 좁혀갔습니다.</p></div>
+      <div class="qa"><p class="q">Q. 이런 종류의 버그를 앞으로 어떻게 예방할 건가요?</p>
+        <p class="a">A. 로컬 재현이 안 되는 클래스의 버그였기 때문에, 배포 환경에서 실제로 자기 자신을
+          호출하는 로직은 헬스체크나 스모크 테스트로 배포 직후 검증하는 절차가 필요하다고 느꼈습니다.
+          지금은 수동으로 curl을 쳐서 확인했지만, 이상적으로는 배포 파이프라인에 "배포 후 핵심 엔드포인트
+          자동 점검" 단계를 추가하는 게 다음 개선 항목입니다.</p></div>
+
+      <h3 id="s25"><span class="num">2.5</span>Discord 봇</h3>
+      <div class="qa"><p class="q">Q. 왜 봇을 두 가지 방식으로 만들었나요? 하나만 있으면 안 되나요?</p>
+        <p class="a">A. 처음엔 discord.py Gateway 방식(<code>bot.py</code>)만 있었는데, 이건 상시
+          WebSocket 연결이 필요해서 Vercel 서버리스 함수로 못 올라갑니다. 나머지 시스템 전부를 Vercel
+          하나에 배포하는 게 목표였기 때문에, Discord의 HTTP Interactions 방식으로 다시 만들어서
+          서버리스에 맞게 포팅했습니다. Gateway 방식 코드는 로컬/상시 서버에서 쓸 수 있게 남겨뒀습니다.</p></div>
+      <div class="qa"><p class="q">Q. 봇이 디스코드에 "오프라인"으로 뜨는데 정상 작동하는 게 맞나요?</p>
+        <p class="a">A. 네, 이건 화면 표시 문제일 뿐입니다. "온라인" 상태는 Gateway가 유지하는
+          프레즌스(presence)인데, HTTP Interactions 방식은 애초에 Gateway 연결 자체가 없어서 프레즌스를
+          보낼 수가 없습니다. 슬래시 명령은 Discord가 등록된 엔드포인트 URL로 직접 HTTP 요청을 보내는
+          거라 온라인 여부와 무관하게 동작합니다.</p></div>
+      <div class="qa"><p class="q">Q. 리포트는 정확히 누가 언제 보내나요? 봇이 보내나요?</p>
+        <p class="a">A. 봇은 채널과 웹훅을 "세팅"만 합니다 — <code>/실행</code>으로 채널·웹훅을 만들고
+          그 URL을 사이트 DB에 저장하는 것까지가 봇의 역할입니다. 실제 리포트 생성과 전송은 core-api가
+          합니다 — 판매자가 콘솔에서 "Discord로 전송" 버튼을 누르거나, 매일 자정 Vercel Cron이
+          <code>/internal/cron/daily-seller-reports</code>를 호출하면 core-api가 저장된 웹훅으로 직접
+          POST합니다. 판매자가 별도로 뭔가를 실행할 필요는 없습니다.</p></div>
+      <div class="qa"><p class="q">Q. 웹훅 URL이 유출되면 위험하지 않나요?</p>
+        <p class="a">A. 웹훅 URL을 아는 사람은 누구나 그 채널에 메시지를 보낼 수 있어서 민감한
+          값입니다. DB에는 저장하지만 API 응답에는 판매자 본인 토큰으로 인증된
+          <code>/sellers/me/discord</code> 요청에서만 노출되고, 관리자 전용 채널 웹훅과 판매자 채널
+          웹훅은 물리적으로 분리돼 있어 한쪽이 새도 다른 쪽까지 영향이 없습니다. 실제 운영이라면 웹훅
+          URL 로테이션 기능도 필요하다고 생각합니다.</p></div>
+      <div class="qa"><p class="q">Q. 서명 검증(<code>verify_signature</code>)을 왜 직접 구현했나요? 라이브러리는 없나요?</p>
+        <p class="a">A. PyNaCl의 <code>VerifyKey.verify()</code>가 이미 라이브러리 함수입니다 — Ed25519
+          서명 검증 자체는 PyNaCl이 하고, 저희 코드는 그걸 Discord가 요구하는 방식(타임스탬프+바디를
+          이어붙여서 검증)으로 감싸는 얇은 wrapper입니다. Discord 공식 문서가 이 패턴을 그대로 안내합니다.</p></div>
+
+      <h3 id="s26"><span class="num">2.6</span>한계 / 압박 질문</h3>
+      <div class="qa"><p class="q">Q. 이거 진짜 RAG 아니잖아요? "지식 검색"이라면서요.</p>
+        <p class="a">A. 맞습니다, 지금은 진짜 RAG가 아니라 Langfuse에서 프롬프트 버전을 "조회"하는
+          것뿐입니다. 정직하게 한계 슬라이드에 그렇게 적어뒀고, 다음 단계로 실제 지식문서를 임베딩해서
+          벡터 검색을 붙이는 걸 로드맵에 넣어뒀습니다.</p></div>
+      <div class="qa"><p class="q">Q. 재시도 로직이 없다고 했는데, 그럼 OpenRouter가 잠깐 죽으면 어떻게 되나요?</p>
+        <p class="a">A. <code>allow_fallbacks</code>로 OpenRouter가 다른 모델 제공자로 자동 전환하는
+          것까지는 되지만, 애플리케이션 레벨에서 "실패하면 N번 재시도"하는 로직은 없습니다. 지금은
+          실패하면 사용자에게 에러가 그대로 갑니다. Discord 알림은 예외적으로
+          <code>DiscordNotifier.send()</code>가 절대 예외를 던지지 않게 만들어서, 알림 실패가 전체
+          파이프라인을 죽이지는 않게 해뒀습니다.</p></div>
+      <div class="qa"><p class="q">Q. 결제가 실제 PG 연동이 아니라 모사(mock)라고 했는데, 그럼 이 프로젝트가 증명하는 건 뭔가요?</p>
+        <p class="a">A. 이 프로젝트가 보여주려는 핵심은 결제 처리 자체가 아니라 "커머스 이벤트가 발생했을
+          때 그 데이터를 어떻게 신뢰할 수 있는 숫자로 만들고, AI가 그걸 어떻게 안전하게 해석해서
+          전달하는가"입니다. 실제 PG 연동은 인터페이스만 바뀌는 부분이라, 이벤트 원장과 AI 파이프라인
+          설계가 바뀔 필요는 없습니다.</p></div>
+      <div class="qa"><p class="q">Q. 이 프로젝트에서 가장 자신 없는 부분은 어디인가요?</p>
+        <p class="a">A. (정직하게 답하는 게 중요한 질문입니다) SQL 정규식 변환 기반의 DB 이중 백엔드
+          지원이 가장 위험한 설계라고 생각합니다. 실제로 배포 후 두 번이나 버그가 났고, 테스트 스위트가
+          SQLite로만 돌아서 Postgres 전용 문제를 구조적으로 못 잡습니다. 프로덕션이라면 SQLAlchemy
+          같은 정식 ORM이나, 최소한 CI에서 Postgres 컨테이너로도 테스트를 돌리는 게 맞다고 생각합니다.</p></div>
+
+      <p class="foot">AI Ops Studio · 예상 질문 답변 — <code>presentation/ai-flow-deck.html</code>과 함께 사용하세요.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+  // 탭 전환
+  const tabbtns = document.querySelectorAll('.tabbtn');
+  const panels = document.querySelectorAll('.tabpanel');
+  const navgroups = document.querySelectorAll('.navgroup');
+
+  function activateTab(name, scrollTop){
+    tabbtns.forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+    panels.forEach((p) => p.classList.toggle('active', p.id === 'tab-' + name));
+    navgroups.forEach((g) => g.classList.toggle('active', g.dataset.tab === name));
+    if (scrollTop) window.scrollTo(0, 0);
+    localStorage.setItem('aiops-guide-tab', name);
+  }
+  tabbtns.forEach((b) => b.addEventListener('click', () => activateTab(b.dataset.tab, true)));
+
+  // 사이드바에서 다른 탭의 앵커를 누르면 탭도 같이 전환
+  document.querySelectorAll('#nav a[href^="#"]').forEach((a) => {
+    a.addEventListener('click', () => {
+      const group = a.closest('.navgroup');
+      if (group) activateTab(group.dataset.tab, false);
+    });
+  });
+
+  // 마지막으로 보던 탭 기억
+  const saved = localStorage.getItem('aiops-guide-tab');
+  if (saved && document.getElementById('tab-' + saved)) activateTab(saved, false);
+
+  // 체크리스트 상태를 로컬에 기억
+  document.querySelectorAll('#checklist input[type=checkbox]').forEach((box) => {
+    const key = 'aiops-guide-' + box.id;
+    box.checked = localStorage.getItem(key) === '1';
+    box.closest('li').classList.toggle('done', box.checked);
+    box.addEventListener('change', () => {
+      localStorage.setItem(key, box.checked ? '1' : '0');
+      box.closest('li').classList.toggle('done', box.checked);
+    });
+  });
+</script>
+</body>
+</html>

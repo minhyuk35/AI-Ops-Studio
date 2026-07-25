@@ -567,13 +567,13 @@ completion = client.chat.completions.create(
   <!-- 20 · DISCORD BOT (NEW) -->
   <section class="slide"><div class="wrap">
     <div class="snum"></div>
-    <div class="eyebrow">신규 · 판매자 Discord 봇</div><h2>봇이 “판”을 깔고, 노트북 AI가 “발신”한다</h2><div class="rule"></div>
+    <div class="eyebrow">신규 · 판매자 Discord 봇</div><h2>봇이 “판”을 깔고, core-api가 “발신”한다</h2><div class="rule"></div>
     <div class="steps">
       <div class="st"><div class="no">1</div><div><span class="b">링크코드 발급</span><span class="d"> 판매자 콘솔 → 1회용 코드 발급</span></div></div>
       <div class="st"><div class="no">2</div><div><span class="b">봇 초대 후 <code>/연동 &lt;코드&gt;</code></span><span class="d"> → 봇이 API로 guild ↔ 상점 바인딩</span></div></div>
       <div class="st"><div class="no">3</div><div><span class="b"><code>/생성</code></span><span class="d"> → 플랜별 카테고리·채널 생성 + 채널마다 웹훅 생성</span></div></div>
       <div class="st"><div class="no">4</div><div><span class="b">웹훅 URL 저장</span><span class="d"> → 사이트 DB(discord_channels)에 기록</span></div></div>
-      <div class="st"><div class="no">5</div><div><span class="b">노트북 AI 발신</span><span class="d"> 저장된 웹훅으로 페르소나별 리포트 전송(“AI는 내 노트북에서”)</span></div></div>
+      <div class="st"><div class="no">5</div><div><span class="b">리포트 발신</span><span class="d"> core-api가 저장된 웹훅으로 페르소나별 리포트 전송 — 판매자 콘솔의 "Discord로 전송" 버튼 또는 매일 자정 크론</span></div></div>
     </div>
     <p class="foot">지표 명령(<code>/수익 /조회수 /일일리포트 /재고</code>)은 SQL 집계 숫자만 가져온다 — 여기서도 AI는 숫자를 만들지 않는다.</p>
   </div></section>
@@ -881,7 +881,7 @@ app.mount(<span class="s">"/api/commerce"</span>, commerce_app)</code></pre>
     "관측 가능성 이야기입니다. 왼쪽, 모든 호출이 trace, span, generation 구조로 남습니다. 추적 ID를 고정하니 같은 문의를 그대로 재현할 수 있어요. 오른쪽이 중요합니다 — 트레이스로 저장하기 전에 이메일, 전화번호, 카드번호를 정규식으로 가립니다. 관측을 위해 개인정보가 로그에 남으면 안 되니까요. 전량이 부담되면 샘플 비율로 조절합니다.",
     "리포트는 사람이 안 눌러도 자동으로 돕니다. 매일 자정에 판매자 일일, 매일 새벽에 관리자 트래픽, 매월 1일에 점유율 비교예요. 실행 방식이 환경에 따라 갈리는데, 로컬이나 상시 서버는 백그라운드 루프가 시간을 재서 돌고, Vercel 같은 서버리스는 루프가 못 사니까 Vercel Cron이 대신 엔드포인트를 칩니다. 그 요청이 진짜 크론에서 온 건지 비밀키로 검증하고요.",
     "결과를 디스코드로 보낼 때 두 가지를 신경 썼습니다. 첫째, 디스코드는 한 메시지가 2000자 제한이라, AI 리포트가 길면 왼쪽 코드처럼 문단 경계에서 잘라 여러 개로 순차 전송합니다. 둘째, 이 전송 함수는 절대 예외를 던지지 않아요 — 알림 실패가 AI 파이프라인 전체를 죽이면 안 되니까요. 그리고 판매자용 웹훅과 관리자용 웹훅을 물리적으로 분리해서, 관리자 정보가 판매자 채널로 새지 않게 했습니다.",
-    "여기서부터가 이번에 새로 만든 디스코드 봇입니다. 컨셉은 '봇이 판을 깔고, 노트북 AI가 발신한다'예요. 흐름은 다섯 단계입니다. 판매자 콘솔에서 1회용 코드를 받고, 봇을 초대한 뒤 서버에서 연동 명령으로 서버와 상점을 연결합니다. 그다음 생성 명령을 치면 봇이 플랜에 맞는 채널과 웹훅을 자동으로 깔고, 그 웹훅 주소를 사이트에 저장해요. 그러면 제 노트북의 AI가 그 웹훅으로 페르소나별 리포트를 쏩니다. 봇의 지표 명령들도 전부 SQL 집계 숫자만 가져옵니다.",
+    "여기서부터가 이번에 새로 만든 디스코드 봇입니다. 컨셉은 '봇이 판을 깔고, core-api가 발신한다'예요. 흐름은 다섯 단계입니다. 판매자 콘솔에서 1회용 코드를 받고, 봇을 초대한 뒤 서버에서 연동 명령으로 서버와 상점을 연결합니다. 그다음 생성 명령을 치면 봇이 플랜에 맞는 채널과 웹훅을 자동으로 깔고, 그 웹훅 주소를 사이트에 저장해요. 그러면 core-api가 판매자 콘솔의 전송 버튼이나 매일 자정 크론에서 그 웹훅으로 페르소나별 리포트를 쏩니다. 봇의 지표 명령들도 전부 SQL 집계 숫자만 가져옵니다.",
     "그럼 어떤 채널이 깔리느냐 — 요금제가 결정합니다. 무료는 봇 명령과 일일 리포트만, 베이직부터 문의 이관, 프로부터 월간 리포트, 비즈니스는 매출 인사이트까지요. 오른쪽 채널마다 붙은 게 그 채널을 담당할 페르소나 이름입니다. 이 매핑은 코드 한 곳에만 정의해두고 봇이 API로 받아 그대로 만들기 때문에, 봇과 서버가 절대 어긋나지 않습니다. 그리고 관리자 전용 페르소나는 어떤 판매자 플랜에도 안 들어갑니다 — 경쟁사 데이터가 새면 안 되니까요.",
     "여기부터는 AI 바깥의 구현도 라이브러리·함수 단위로 짚어보겠습니다. 먼저 인증이에요. 왼쪽 코드가 실제 로그인 함수들입니다. 비밀번호는 bcrypt로 해시하는데, bcrypt가 72바이트까지만 본다는 제약이 있어서 sha256으로 먼저 다이제스트를 뜨고 그걸 해시합니다. 로그인 토큰은 PyJWT로 발급하고 7일 유효기간을 둡니다. 구글 로그인은 JWKS 서명 검증 대신 구글의 tokeninfo 엔드포인트를 호출해서, audience가 우리 클라이언트 ID와 같고 이메일이 인증됐는지 코드가 직접 재확인해요. 그리고 core-api는 이 토큰을 스스로 해독하지 않고, 발급자인 커머스 API에게 '이 토큰 누구 거야'라고 물어보는 방식을 씁니다.",
     "다음은 데이터베이스입니다. 이 프로젝트는 로컬은 SQLite, 배포는 Postgres를 씁니다. 핵심은 왼쪽 코드처럼 PostgresConnection이라는 클래스가 sqlite3의 커넥션과 똑같은 인터페이스를 흉내 낸다는 거예요 — execute, executemany 다 그대로 씁니다. SQL 문법 차이는 정규식으로 치환해요 — INSERT OR IGNORE를 ON CONFLICT DO NOTHING으로, LIKE를 ILIKE로 바꾸는 식입니다. 덕분에 나머지 코드는 한 줄도 안 건드리고 백엔드를 바꿀 수 있었는데, 이 정규식 치환이 완벽하지 않아서 실제로 두 가지 버그를 배포 후에 잡았습니다 — 그건 잠시 뒤 트러블슈팅에서 자세히 다룰게요.",
