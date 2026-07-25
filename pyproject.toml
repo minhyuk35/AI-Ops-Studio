@@ -1,3 +1,29 @@
+[project]
+# Vercel's Python function builder requires exactly one project-level
+# dependency manifest for the whole repo (api/core/index.py and
+# api/commerce/index.py both build from this same root) -- without a
+# [project] table here, `uv lock` fails outright ("No `project` table
+# found"), so it silently ignores services/*/requirements.txt too. This is
+# the union of both services' actual runtime imports (see
+# services/core-api/requirements.txt and services/mock-commerce-api/
+# requirements.txt, which remain the source of truth for local dev).
+name = "ai-ops-studio"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "python-dotenv>=1.1,<2",
+  "httpx>=0.28,<1",
+  "langfuse>=4,<5",
+  "openai>=1.109,<2",
+  "psycopg[binary,pool]>=3.2,<4",
+  "email-validator>=2.2,<3",
+  "PyJWT>=2.10,<3",
+  "bcrypt>=4.1,<5",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["services/core-api", "services/mock-commerce-api"]
 testpaths = ["tests"]
