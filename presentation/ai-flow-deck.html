@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Ops Studio · AI 아키텍처 발표</title>
+<style>
+  :root{
+    --bg:#0b0e17; --bg2:#0f1420; --panel:#141b2c; --panel2:#1a2338;
+    --border:#26304a; --border2:#313d5c; --text:#e8ebf6; --muted:#9aa4bf; --dim:#6b7594;
+    --accent:#8b9bff; --accent2:#4ade80; --warn:#fbbf24; --danger:#f87171;
+    --pink:#f472b6; --cyan:#38bdf8;
+    --mono:"Cascadia Code","JetBrains Mono",Consolas,"D2Coding",monospace;
+    --sans:"Segoe UI",system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+    --r:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:
+    radial-gradient(1200px 700px at 78% -8%, rgba(139,155,255,.10), transparent 60%),
+    radial-gradient(900px 600px at 6% 108%, rgba(244,114,182,.08), transparent 55%),
+    var(--bg);
+    color:var(--text);font-family:var(--sans)}
+  body{overflow:hidden}
+
+  /* ===== deck shell ===== */
+  #deck{position:fixed;inset:0}
+  .slide{
+    position:absolute;inset:0;display:none;
+    align-items:center;justify-content:center;      /* 콘텐츠 블록을 화면 중앙에 → 여백이 균형있게 */
+    padding:4vh 6vw;
+  }
+  .slide.active{display:flex}
+  .wrap{width:100%;max-width:1160px;margin:auto;animation:rise .3s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+  .snum{position:absolute;top:3.4vh;right:6vw;font-family:var(--mono);font-size:12px;color:var(--dim);
+    letter-spacing:.1em}
+  .eyebrow{color:var(--accent);font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+    font-size:clamp(11px,1vw,13px);margin-bottom:12px}
+  h1{font-size:clamp(30px,5vw,60px);line-height:1.06;margin:0 0 20px;font-weight:800;letter-spacing:-.02em}
+  h2{font-size:clamp(24px,3.2vw,40px);line-height:1.12;margin:0 0 6px;font-weight:800;letter-spacing:-.01em;
+    display:inline-block}
+  .rule{height:4px;width:64px;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--pink));
+    margin:10px 0 26px}
+  h3{font-size:clamp(15px,1.55vw,20px);margin:0 0 10px;color:#fff;font-weight:700}
+  h4{font-size:clamp(14px,1.3vw,17px);margin:0 0 8px;color:#fff;font-weight:700}
+  p,li{font-size:clamp(14px,1.28vw,18px);line-height:1.55;color:var(--text)}
+  .muted{color:var(--muted)} .dim{color:var(--dim)}
+  .accent{color:var(--accent)} .green{color:var(--accent2)} .warn{color:var(--warn)}
+  .pink{color:var(--pink)} .cyan{color:var(--cyan)}
+  strong,b{color:#fff}
+  ul{margin:6px 0;padding-left:20px} li{margin:7px 0} li::marker{color:var(--accent)}
+  a{color:var(--cyan);text-decoration:none}
+
+  .lead{font-size:clamp(16px,1.7vw,23px);color:var(--muted);max-width:64ch;line-height:1.5}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:stretch}
+  .cols-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch}
+  .cols-32{display:grid;grid-template-columns:1.25fr 1fr;gap:22px;align-items:stretch}
+
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);
+    border-radius:var(--r);padding:20px 22px}
+  .card.tint{border-color:var(--border2)}
+  .card.a{border-left:3px solid var(--accent)}
+  .card.g{border-left:3px solid var(--accent2)}
+  .card.p{border-left:3px solid var(--pink)}
+  .card.c{border-left:3px solid var(--cyan)}
+  .card.w{border-left:3px solid var(--warn)}
+
+  .tag{display:inline-block;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;
+    background:rgba(139,155,255,.14);color:var(--accent);border:1px solid rgba(139,155,255,.4);letter-spacing:.02em}
+  .tag.green{background:rgba(74,222,128,.12);color:var(--accent2);border-color:rgba(74,222,128,.4)}
+  .tag.warn{background:rgba(251,191,36,.12);color:var(--warn);border-color:rgba(251,191,36,.4)}
+  .tag.danger{background:rgba(248,113,113,.12);color:var(--danger);border-color:rgba(248,113,113,.4)}
+  .tag.cyan{background:rgba(56,189,248,.12);color:var(--cyan);border-color:rgba(56,189,248,.4)}
+
+  code,.mono{font-family:var(--mono)}
+  pre{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:12px;padding:14px 16px;overflow:auto;margin:0}
+  pre code{font-size:clamp(12px,1vw,14px);line-height:1.55;color:#d6def5;white-space:pre}
+  .k{color:var(--pink)} .s{color:var(--accent2)} .n{color:var(--warn)} .c2{color:var(--dim);font-style:italic}
+  .f{color:var(--cyan)}
+
+  table{border-collapse:collapse;width:100%;font-size:clamp(12px,1.12vw,15.5px);overflow:hidden;
+    border-radius:12px;border:1px solid var(--border)}
+  th,td{border-bottom:1px solid var(--border);padding:9px 13px;text-align:left;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  th{background:var(--panel2);color:#fff;font-weight:700}
+  tr:nth-child(even) td{background:rgba(255,255,255,.018)}
+  td code{color:var(--cyan);font-size:.92em}
+  .ck{color:var(--accent2);font-weight:800;text-align:center} .cx{color:var(--dim);text-align:center}
+  .scroll{overflow-x:auto}
+
+  .pill-row{display:flex;flex-wrap:wrap;gap:10px}
+  .pill{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 14px;
+    font-size:clamp(12px,1.05vw,15px)}
+  .pill b{color:var(--accent)}
+  .kpi{display:flex;gap:14px;flex-wrap:wrap}
+  .kpi .box{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:14px 16px;text-align:center}
+  .kpi .num{font-size:clamp(22px,2.7vw,34px);font-weight:800;color:var(--accent);line-height:1}
+  .kpi .lab{color:var(--muted);font-size:12px;margin-top:6px}
+
+  /* vertical flow (steps) */
+  .steps{display:flex;flex-direction:column;gap:9px}
+  .st{display:flex;gap:14px;align-items:flex-start;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:12px 16px}
+  .st .no{flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-weight:800;
+    font-size:13px;background:rgba(139,155,255,.16);color:var(--accent);border:1px solid rgba(139,155,255,.35)}
+  .st .b{color:#fff;font-weight:700} .st .d{color:var(--muted);font-size:.92em}
+  .st code{color:var(--cyan)}
+
+  .foot{color:var(--dim);font-size:clamp(11px,1vw,13.5px);margin-top:18px}
+  hr{border:none;border-top:1px solid var(--border);margin:14px 0}
+
+  /* ===== chrome ===== */
+  #bar{position:fixed;left:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--pink));
+    width:0;transition:width .25s ease;z-index:30}
+  #hud{position:fixed;right:16px;bottom:12px;z-index:30;display:flex;gap:10px;align-items:center}
+  #count{font-family:var(--mono);font-size:13px;color:var(--dim)}
+  #count b{color:var(--muted)}
+  #brand{position:fixed;left:20px;bottom:11px;z-index:30;color:var(--dim);font-size:12px;letter-spacing:.05em}
+  .btn{background:var(--panel);border:1px solid var(--border);color:var(--muted);border-radius:9px;
+    padding:6px 11px;font-size:12px;cursor:pointer;font-family:var(--mono)}
+  .btn:hover{color:#fff;border-color:var(--accent)}
+  /* 전체화면일 때 우하단 버튼/브랜드 숨김 (카운터만 은은하게 유지) */
+  body.fs .btn, body.fs #brand{display:none}
+  body.fs #hud{opacity:.35}
+
+  /* speaker notes */
+  #notes{position:fixed;left:0;right:0;bottom:0;z-index:40;transform:translateY(102%);
+    transition:transform .28s ease;background:rgba(10,13,22,.97);border-top:1px solid var(--border2);
+    box-shadow:0 -20px 50px rgba(0,0,0,.5);max-height:44vh;overflow:auto}
+  #notes.show{transform:none}
+  #notes .inner{max-width:1000px;margin:0 auto;padding:18px 26px 22px}
+  #notes .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  #notes .hd .t{color:var(--accent);font-weight:800;letter-spacing:.05em;font-size:13px;text-transform:uppercase}
+  #notes .body{color:#e8ebf6;font-size:clamp(14px,1.35vw,18px);line-height:1.62;white-space:pre-wrap}
+
+  #help{position:fixed;inset:0;background:rgba(6,9,16,.92);z-index:50;display:none;
+    align-items:center;justify-content:center}
+  #help.show{display:flex}
+  #help .box{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:28px 34px;max-width:560px}
+  kbd{font-family:var(--mono);background:var(--bg2);border:1px solid var(--border);border-bottom-width:3px;
+    border-radius:6px;padding:2px 8px;color:#fff;font-size:13px}
+  .khint{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;margin-top:14px;align-items:center}
+</style>
+</head>
+<body>
+<div id="deck">
+
+  <!-- 1 · TITLE -->
+  <section class="slide"><div class="wrap" style="text-align:center">
+    <div class="eyebrow">AI Ops Studio · Technical Deep-Dive</div>
+    <h1 style="display:block">커머스 플랫폼의 <span class="accent">AI 동작 흐름</span></h1>
+    <p class="lead" style="margin:0 auto">사용자의 행동이 어떤 이벤트가 되고, 그 데이터가 어떤 Langfuse
+      <b>페르소나</b>로 해석되어, 어떤 함수·라이브러리를 거쳐 <b>Discord</b>까지 전달되는지 —
+      전 구간을 처음부터 끝까지 따라갑니다.</p>
+    <div class="pill-row" style="justify-content:center;margin-top:26px">
+      <span class="pill"><b>7</b> Langfuse 페르소나</span>
+      <span class="pill"><b>2</b> FastAPI + <b>1</b> Discord 봇</span>
+      <span class="pill"><b>OpenRouter</b> 게이트웨이</span>
+      <span class="pill">숫자=SQL · 해석=AI</span>
+    </div>
+    <p class="foot" style="margin-top:30px"><kbd>←</kbd> <kbd>→</kbd> 이동 · <kbd>F</kbd> 전체화면 · <kbd>N</kbd> 발표대본 · <kbd>?</kbd> 도움말</p>
+  </div></section>
+
+  <!-- 2 · AGENDA -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Agenda</div><h2>오늘 이야기할 4가지</h2><div class="rule"></div>
+    <div class="cols-3">
+      <div class="card a"><span class="tag">Ⅰ · 뼈대</span>
+        <ul class="muted" style="margin-top:12px">
+          <li>모노레포 시스템 지도</li><li>기술 스택·라이브러리</li>
+          <li>핵심 원칙: 숫자는 SQL, 해석은 AI</li><li>커머스 이벤트 원장</li>
+        </ul></div>
+      <div class="card p"><span class="tag">Ⅱ · AI 파이프라인</span>
+        <ul class="muted" style="margin-top:12px">
+          <li>행동 → 이벤트 → 페르소나</li><li>Langfuse: name·config</li>
+          <li>7개 페르소나</li><li>문의 응대 End-to-End</li>
+        </ul></div>
+      <div class="card c"><span class="tag">Ⅲ·Ⅳ · 전달·운영</span>
+        <ul class="muted" style="margin-top:12px">
+          <li>트레이싱·마스킹</li><li>스케줄·Discord 전달</li>
+          <li>Discord 봇 연동(신규)</li><li>보안·DB 호환·한계</li>
+        </ul></div>
+    </div>
+    <p class="foot">발표 중 <kbd>N</kbd> 키를 누르면 이 슬라이드의 발표 대본이 아래에서 올라옵니다.</p>
+  </div></section>
+
+  <!-- 3 · SYSTEM MAP -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">System Map</div><h2>모노레포 한 장 요약</h2><div class="rule"></div>
+    <div class="cols">
+      <div class="card a">
+        <h3>고객 쪽</h3>
+        <div class="steps">
+          <div class="st"><div class="no">웹</div><div><span class="b">demo-store</span><span class="d"> · React 쇼핑몰</span></div></div>
+          <div class="st"><div class="no">API</div><div><span class="b">mock-commerce-api</span><span class="d"> · 상품·주문·이벤트 (FastAPI)</span></div></div>
+          <div class="st"><div class="no">DB</div><div><span class="b">Neon Postgres / SQLite</span><span class="d"> · 영속 저장</span></div></div>
+        </div>
+      </div>
+      <div class="card p">
+        <h3>AI · 운영 쪽</h3>
+        <div class="steps">
+          <div class="st"><div class="no">웹</div><div><span class="b">ops-console</span><span class="d"> · 운영 화면 (React)</span></div></div>
+          <div class="st"><div class="no">API</div><div><span class="b">core-api</span><span class="d"> · AI 응대·리포트 (FastAPI)</span></div></div>
+          <div class="st"><div class="no">AI</div><div><span class="b">OpenRouter</span> + <span class="b">Langfuse</span><span class="d"> · LLM 게이트웨이·트레이싱</span></div></div>
+          <div class="st"><div class="no">봇</div><div><span class="b">discord-bot</span><span class="d"> · 판매자 서버 연동 (discord.py)</span></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="foot">두 API는 <b>같은 배포의 두 서비스</b> — 프런트는 <code>/api/commerce</code>·<code>/api/core</code> 상대경로로 부른다. 봇만 별도 프로세스(노트북/상시 서버).</p>
+  </div></section>
+
+  <!-- 4 · STACK -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Stack · Libraries</div><h2>어떤 라이브러리가 어디서 일하는가</h2><div class="rule"></div>
+    <div class="cols">
+      <div class="card a scroll">
+        <h3 class="accent">백엔드 · Python</h3>
+        <table>
+          <tr><th>라이브러리</th><th>역할</th></tr>
+          <tr><td><code>fastapi</code> · <code>uvicorn</code></td><td>API · ASGI 서버</td></tr>
+          <tr><td><code>pydantic</code> · <code>-settings</code></td><td>검증 · 환경설정</td></tr>
+          <tr><td><code>langfuse</code></td><td>프롬프트 관리 + 트레이싱</td></tr>
+          <tr><td><code>langfuse.openai.OpenAI</code></td><td>OpenRouter 호출(자동 추적)</td></tr>
+          <tr><td><code>httpx</code></td><td>Discord 웹훅 · 구글 검증</td></tr>
+          <tr><td><code>psycopg</code> · <code>PyJWT</code> · <code>bcrypt</code></td><td>Postgres · 토큰 · 비번</td></tr>
+        </table>
+      </div>
+      <div class="card p scroll">
+        <h3 class="pink">프런트 · 봇</h3>
+        <table>
+          <tr><th>라이브러리</th><th>역할</th></tr>
+          <tr><td><code>react</code> · <code>vite</code></td><td>UI · 번들러</td></tr>
+          <tr><td><code>@tanstack/react-query</code></td><td>서버 상태(useQuery/Mutation)</td></tr>
+          <tr><td><code>three</code></td><td>메인 3D 히어로</td></tr>
+          <tr><td>Google Identity Services</td><td>구글 로그인</td></tr>
+          <tr><td><code>discord.py</code></td><td>봇 게이트웨이·슬래시 명령</td></tr>
+          <tr><td><code>httpx (async)</code></td><td>봇 → 커머스 내부 API</td></tr>
+        </table>
+      </div>
+    </div>
+    <p class="foot">모델·temperature·max_tokens는 코드가 아니라 <b>Langfuse 프롬프트 설정</b>에서 온다 → 모델 교체에 재배포가 필요 없다.</p>
+  </div></section>
+
+  <!-- 5 · CORE PRINCIPLE -->
+  <section class="slide"><div class="wrap" style="text-align:center">
+    <div class="eyebrow">The One Principle</div>
+    <h2 style="display:block">숫자는 <span class="green">SQL</span>이 계산하고, AI는 <span class="pink">해석만</span> 한다</h2>
+    <div class="rule" style="margin:12px auto 26px"></div>
+    <div class="cols-3">
+      <div class="card g"><h4>① 쌓기</h4><p class="muted">판매·환불·조회를 <b>불변 이벤트</b>로 기록. 발생 시점 기준.</p></div>
+      <div class="card a"><h4>② 집계</h4><p class="muted">정해진 시점에 <b>SQL</b>로 확정 숫자(dict)를 만든다. LLM은 개입 안 함.</p></div>
+      <div class="card p"><h4>③ 해석</h4><p class="muted">그 숫자만 프롬프트에 넣어 <b>AI가 서술·제안</b>. 새 수치는 못 만든다.</p></div>
+    </div>
+    <p class="lead" style="margin:22px auto 0">모든 페르소나 프롬프트에 <b>“숫자를 다시 계산하지 말고 해석만 하라”</b>가 못박혀 있다 →
+      분석 비용↓, 환각 위험↓, 리포트는 <b>재현 가능</b>.</p>
+  </div></section>
+
+  <!-- 6 · EVENT LEDGER -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Data · Event Ledger</div><h2>모든 것의 원천: <code>commerce_events</code></h2><div class="rule"></div>
+    <div class="cols-32">
+      <div class="card a">
+        <p class="muted" style="margin-top:0">상태값이 아니라 <b>불변 이벤트 로그</b>. 집계는 “지금 상태”가 아니라
+          <b>발생 시점(occurred_at)</b> 기준이라, 다음 달 환불이 이번 달 매출을 덮어쓰지 않는다.</p>
+        <h4 style="margin-top:14px">멱등성 (중복 방지)</h4>
+        <p class="muted"><code>external_event_id</code>가 UNIQUE라, 재시도로 같은 취소가 두 번 와도
+          <code>INSERT OR IGNORE</code>로 <b>매출·환불이 이중 집계되지 않는다.</b></p>
+      </div>
+      <div class="card tint scroll">
+        <h4>이벤트 7종</h4>
+        <table>
+          <tr><th>event_type</th><th>언제</th></tr>
+          <tr><td><code>PRODUCT_VIEWED</code></td><td>상품 조회</td></tr>
+          <tr><td><code>ORDER_CREATED</code></td><td>주문 생성</td></tr>
+          <tr><td><code>PAYMENT_CONFIRMED</code></td><td>결제(매출)</td></tr>
+          <tr><td><code>STOCK_CHANGED</code></td><td>재고 증감</td></tr>
+          <tr><td><code>ORDER_CANCELLED</code></td><td>취소</td></tr>
+          <tr><td><code>REFUND_COMPLETED</code></td><td>환불(인식)</td></tr>
+          <tr><td><code>RETURN_REQUESTED</code></td><td>반품 신청</td></tr>
+        </table>
+      </div>
+    </div>
+    <p class="foot">각 이벤트에 <code>org_id</code>가 붙어 판매자별 집계가 가능하다.</p>
+  </div></section>
+
+  <!-- 7 · METRICS (formula-free) -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Metrics</div><h2>지표는 이렇게 “계산”된다 (코드가)</h2><div class="rule"></div>
+    <div class="scroll"><table>
+      <tr><th>지표</th><th>계산 방식 (전부 SQL 집계)</th><th>안전장치</th></tr>
+      <tr><td><b>순매출</b></td><td>결제액 합계 − 환불액 합계</td><td>빈 기간이면 0</td></tr>
+      <tr><td><b>객단가</b></td><td>순매출 ÷ 결제 주문 수</td><td>주문 0이면 0</td></tr>
+      <tr><td><b>전월 대비 증감</b></td><td>(이번달 − 지난달) ÷ 지난달</td><td>지난달 0이면 “비교 불가”(빈값)</td></tr>
+      <tr><td><b>상품 환불률</b></td><td>환불 수량 ÷ 판매 수량</td><td>판매 0이면 빈값 · 판매 3 미만은 “표본 적음” 경고</td></tr>
+      <tr><td><b>플랫폼 매출</b></td><td>판매 수수료 + 구독 플랜 요금</td><td>판매자 GMV와 구분(무료 플랜은 기여도 낮음)</td></tr>
+      <tr><td><b>판매자 점유율</b></td><td>그 판매자 플랫폼 기여 ÷ 전체 플랫폼 매출</td><td>지난달 점유율과 함께 비교</td></tr>
+    </table></div>
+    <div class="pill-row" style="margin-top:16px">
+      <span class="pill">플랜 요금 · FREE <b>0</b></span>
+      <span class="pill">BASIC <b>35,000</b></span>
+      <span class="pill">PRO <b>150,000</b></span>
+      <span class="pill">BUSINESS <b>300,000</b></span>
+    </div>
+    <p class="foot">핵심: <b>불확실하면 숫자를 지어내지 않고 빈값</b>으로 둔다. AI는 그 빈값을 “비교 불가”로 서술한다.</p>
+  </div></section>
+
+  <!-- 8 · ACTION -> EVENT -> PERSONA -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">The Bridge</div><h2>사용자 행동 → 이벤트 → 페르소나</h2><div class="rule"></div>
+    <div class="scroll"><table>
+      <tr><th>사용자 행동</th><th>이벤트</th><th>해석 페르소나 (Langfuse name)</th></tr>
+      <tr><td>상품 상세를 본다</td><td><code>PRODUCT_VIEWED</code></td><td><code>daily-seller-report</code> · <code>platform-daily-traffic</code></td></tr>
+      <tr><td>결제한다</td><td><code>PAYMENT_CONFIRMED</code></td><td><code>commerce-insight</code> · <code>commerce-monthly-report</code></td></tr>
+      <tr><td>환불/취소한다</td><td><code>REFUND_COMPLETED</code></td><td><code>commerce-insight</code></td></tr>
+      <tr><td>“환불하고 싶어요” 문의</td><td>(문의 저장)</td><td><code>support-triage</code> → <code>customer-support-answer</code></td></tr>
+      <tr><td>매일 자정 / 월말 (자동)</td><td>스케줄 트리거</td><td><code>commerce-monthly-report</code> · <code>seller-market-share-report</code></td></tr>
+    </table></div>
+    <p class="foot">즉 <b>“어떤 행동이냐”가 “어떤 name의 어떤 페르소나가 도는가”를 결정</b>한다. 다음 장부터 페르소나를 하나씩.</p>
+  </div></section>
+
+  <!-- 9 · LANGFUSE CONCEPT -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Langfuse · 개념</div><h2>프롬프트를 코드 밖으로 꺼낸다</h2><div class="rule"></div>
+    <div class="cols">
+      <div class="card a">
+        <ul style="margin-top:0">
+          <li><b>name</b> — 페르소나 식별자 (예: <code>customer-support-answer</code>)</li>
+          <li><b>label = production</b> — 지금 실제로 돌 버전을 가리키는 포인터</li>
+          <li><b>config</b> — model·temperature·max_tokens·provider가 프롬프트에 저장 → 코드에 하드코딩 없음</li>
+          <li><b>fallback</b> — Langfuse 불가 시 <code>personas.py</code> 로컬 프롬프트 + 기본 모델</li>
+        </ul>
+      </div>
+      <div class="card g">
+        <h4>모델 교체 = 재배포 없음</h4>
+        <div class="steps">
+          <div class="st"><div class="no">1</div><div><span class="b">새 버전에서 config.model 변경</span></div></div>
+          <div class="st"><div class="no">2</div><div><span class="b">production 라벨을 새 버전으로 이동</span></div></div>
+          <div class="st"><div class="no">3</div><div><span class="b">캐시 TTL(기본 300초) 뒤 반영</span></div></div>
+        </div>
+        <p class="foot" style="margin-top:12px">안전장치: config의 <code>gateway</code>가 <code>"openrouter"</code>가 아니면 코드가 예외를 던져 엉뚱한 비밀값 사용을 막는다.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 10 · 7 PERSONAS -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Personas · 총람</div><h2>7개 페르소나 한눈에</h2><div class="rule"></div>
+    <div class="scroll"><table>
+      <tr><th>Langfuse name</th><th>페르소나</th><th>입력</th><th>노출</th><th>temp</th></tr>
+      <tr><td><code>customer-support-answer</code></td><td>고객지원 AI</td><td>문의+주문+정책</td><td class="cyan">고객</td><td>0.2</td></tr>
+      <tr><td><code>support-triage</code></td><td>문의 분류기</td><td>문의 텍스트</td><td class="dim">내부</td><td>0</td></tr>
+      <tr><td><code>commerce-insight</code></td><td>데이터 분석가</td><td>매출+상품</td><td class="warn">운영</td><td>0.1</td></tr>
+      <tr><td><code>commerce-monthly-report</code></td><td>리포트 편집자</td><td>월 요약+인사이트</td><td class="warn">운영</td><td>0.3</td></tr>
+      <tr><td><code>daily-seller-report</code></td><td>판매자 전담 분석가</td><td>판매자 1일</td><td class="green">판매자</td><td>0.2</td></tr>
+      <tr><td><code>platform-daily-traffic</code></td><td>총관리자 분석가</td><td>전체 트래픽</td><td class="danger">관리자</td><td>0.2</td></tr>
+      <tr><td><code>seller-market-share-report</code></td><td>총관리자 분석가</td><td>판매자별 점유율</td><td class="danger">관리자</td><td>0.2</td></tr>
+    </table></div>
+    <p class="foot">같은 숫자라도 <b>누가 보는가</b>(판매자 본인 vs 관리자 전체)가 다르면 <b>별도 name · 별도 API · 별도 Discord 채널</b>로 분리했다.</p>
+  </div></section>
+
+  <!-- 11 · SUPPORT PERSONAS -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Persona 1·2 · 문의 자동응대</div><h2><code>support-triage</code> → <code>customer-support-answer</code></h2><div class="rule"></div>
+    <div class="cols">
+      <div class="card p">
+        <h4>① 먼저 분류한다 (triage)</h4>
+        <p class="muted" style="margin-top:0">답변 전에 JSON으로만 분류:</p>
+        <pre><code>{
+  <span class="s">"category"</span>: <span class="s">"REFUND"</span>,   <span class="c2">// 배송|취소|환불|기타</span>
+  <span class="s">"risk"</span>: <span class="s">"HIGH"</span>,        <span class="c2">// LOW|MEDIUM|HIGH</span>
+  <span class="s">"requires_human"</span>: <span class="k">true</span>
+}</code></pre>
+        <p class="foot" style="margin-top:10px">분쟁·소송·신고·고액환불·개인정보 언급 → <b>HIGH → 사람 이관</b>.</p>
+      </div>
+      <div class="card a">
+        <h4>② 그 다음 답변한다 (answer)</h4>
+        <ul class="muted" style="margin-top:0">
+          <li>제공된 <b>주문·정책만</b> 사용</li>
+          <li>확인 안 된 배송일·환불여부·금액 <b>추측 금지</b></li>
+          <li>개인정보 불필요 노출 금지</li>
+          <li>정보 부족·실행 승인 필요 시 <b>상담원 이관 명시</b></li>
+        </ul>
+        <p class="foot" style="margin-top:10px">변수: <code>question</code> · <code>order_context</code> · <code>policy_context</code></p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 12 · END-TO-END -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">End-to-End · 가장 중요한 경로</div><h2>문의 한 건이 흐르는 전 구간</h2><div class="rule"></div>
+    <div class="steps">
+      <div class="st"><div class="no">0</div><div><span class="b">진입</span><span class="d"> POST /inquiries → <code>OpenRouterSupportService.answer()</code></span></div></div>
+      <div class="st"><div class="no">1</div><div><span class="b">Trace 시작</span><span class="d"> <code>langfuse.start_as_current_observation()</code> · request_id로 trace_id 고정(재현)</span></div></div>
+      <div class="st"><div class="no">2</div><div><span class="b">분류 span</span><span class="d"> triage 프롬프트 → category·risk·requires_human</span></div></div>
+      <div class="st"><div class="no">3</div><div><span class="b">프롬프트 조회 span</span><span class="d"> <code>PromptRepository.compile(name, label=production)</code> · 변수 치환</span></div></div>
+      <div class="st"><div class="no">4</div><div><span class="b">모델·설정 결정</span><span class="d"> Langfuse config로 model·temperature·max_tokens 확정</span></div></div>
+      <div class="st"><div class="no">5</div><div><span class="b">생성</span><span class="d"> <code>_generate_with_openrouter()</code> → <code>langfuse.openai.OpenAI</code>가 OpenRouter 호출+자동 추적</span></div></div>
+      <div class="st"><div class="no">6</div><div><span class="b">이관 판정</span><span class="d"> requires_human → Ops Console 에스컬레이션 + <code>DiscordNotifier</code> 알림</span></div></div>
+    </div>
+    <p class="foot"><b>한 줄 요약:</b> 분류하고 → 프롬프트 버전 가져오고 → 설정으로 모델 정하고 → OpenRouter로 생성하고 → 위험하면 사람에게 넘긴다.</p>
+  </div></section>
+
+  <!-- 13 · OPENROUTER CALL -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">OpenRouter · 호출 상세</div><h2><code>_generate_with_openrouter()</code> 안에서</h2><div class="rule"></div>
+    <div class="cols-32">
+      <pre style="align-self:center"><code><span class="c2"># Langfuse가 감싼 OpenAI SDK</span>
+<span class="k">from</span> langfuse.openai <span class="k">import</span> OpenAI
+client = OpenAI(base_url=<span class="s">OPENROUTER_BASE_URL</span>,
+               api_key=<span class="s">OPENROUTER_API_KEY</span>)
+
+completion = client.chat.completions.create(
+  model       = cfg[<span class="s">"model"</span>],
+  temperature = cfg[<span class="s">"temperature"</span>],
+  max_tokens  = cfg[<span class="s">"max_tokens"</span>],
+  messages    = [{<span class="s">"role"</span>:<span class="s">"user"</span>,
+                 <span class="s">"content"</span>: compiled.text}],
+  extra_body  = {<span class="s">"provider"</span>:{
+     <span class="s">"allow_fallbacks"</span>:<span class="k">True</span>,
+     <span class="s">"data_collection"</span>:<span class="s">"deny"</span>}},
+  langfuse_prompt = compiled.langfuse_prompt,
+)</code></pre>
+      <div class="card c">
+        <h4>왜 이렇게?</h4>
+        <ul class="muted" style="margin-top:0">
+          <li><b>allow_fallbacks</b> — 1차 provider 장애 시 자동 대체</li>
+          <li><b>data_collection=deny</b> — 학습 미사용 경로만</li>
+          <li><b>langfuse_prompt</b> — 이 생성을 프롬프트 버전에 링크(재현)</li>
+        </ul>
+        <p class="foot" style="margin-top:12px">fallback이 일어나면 실제 사용 모델(<code>completion.model</code>)이 요청 모델과 다를 수 있어, 그 값을 그대로 기록한다.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 14 · CONFIG DECISION -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">설정 결정 · 우선순위</div><h2>모델은 어떻게 “정해지는가”</h2><div class="rule"></div>
+    <div class="cols-32">
+      <div class="scroll"><table>
+        <tr><th>우선순위</th><th>출처</th><th>상황</th></tr>
+        <tr><td>1 (최우선)</td><td>Langfuse 프롬프트 <code>config</code></td><td>정상 · production 버전</td></tr>
+        <tr><td>2</td><td><code>personas.py</code> 기본 설정</td><td>config에 없는 키 보충</td></tr>
+        <tr><td>3</td><td><code>OPENROUTER_DEFAULT_MODEL</code></td><td>Langfuse 자체가 불가할 때</td></tr>
+      </table></div>
+      <div class="card a">
+        <p class="muted" style="margin-top:0">Langfuse 설정이 기본 설정 위에 덮어써진다. <code>PromptRepository.compile()</code>이
+          이 병합 + 변수 치환 + 프롬프트 캐시(TTL 300초)를 담당한다.</p>
+        <p class="foot" style="margin-top:10px"><code>tests/test_tracing.py</code>가 실제 OpenRouter로 나가는 요청 모양(모델·파라미터)을 모킹으로 검증한다.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 15 · REPORT PERSONAS -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Personas 3~7 · 리포트 계열</div><h2>집계 → 서비스 클래스 → 페르소나</h2><div class="rule"></div>
+    <div class="scroll"><table>
+      <tr><th>서비스 클래스</th><th>Langfuse name</th><th>트리거</th></tr>
+      <tr><td><code>CommerceInsightService</code></td><td><code>commerce-insight</code></td><td>운영 요청</td></tr>
+      <tr><td><code>MonthlyReportService</code></td><td><code>commerce-monthly-report</code></td><td>월간 스케줄</td></tr>
+      <tr><td><code>SellerDailyReportService</code></td><td><code>daily-seller-report</code></td><td>매일 자정(UTC)</td></tr>
+      <tr><td><code>PlatformTrafficService</code></td><td><code>platform-daily-traffic</code></td><td>매일(관리자)</td></tr>
+      <tr><td><code>SellerMarketShareService</code></td><td><code>seller-market-share-report</code></td><td>매월(관리자)</td></tr>
+    </table></div>
+    <p class="foot">공통 패턴: 트레이스를 열고 → <code>compile(name)</code> → <b>코드가 계산한 집계 dict를 JSON 변수로 주입</b> → 생성. 숫자는 절대 LLM이 만들지 않는다.</p>
+  </div></section>
+
+  <!-- 16 · DAILY SELLER REPORT -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Persona 상세 · daily-seller-report</div><h2>판매자 일일 리포트</h2><div class="rule"></div>
+    <div class="cols">
+      <div class="card a">
+        <h4>코드가 하이라이트를 “미리” 뽑는다</h4>
+        <p class="muted" style="margin-top:0"><code>seller_daily_snapshot(org_id, date)</code>가 상품별 조회·판매·환불·재고를 뽑고,
+          최다/최소 조회, 최다 판매·환불, <b>품절·재고 임박</b>을 코드가 계산한다. LLM은 그대로 인용만.</p>
+      </div>
+      <div class="card p">
+        <h4>프롬프트 규칙</h4>
+        <ul class="muted" style="margin-top:0">
+          <li>순서 고정: 요약 / 조회 / 판매·환불 / 재고</li>
+          <li><b>조회 높은데 재고 부족·0</b>인 상품은 반드시 짚기</li>
+          <li>“AI 제안”에서 재입고 대상과 이유를 구체 제안</li>
+          <li>원인 단정 금지 → “~로 추정됩니다”</li>
+        </ul>
+      </div>
+    </div>
+    <p class="foot">이 리포트가 판매자 Discord <b>일일-리포트</b> 채널로 전달된다(플랜 무관 기본 제공).</p>
+  </div></section>
+
+  <!-- 17 · TRACING -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Observability · Tracing</div><h2>모든 호출이 재현 가능한 트레이스로</h2><div class="rule"></div>
+    <div class="cols">
+      <div class="card a">
+        <h4>구조</h4>
+        <ul class="muted" style="margin-top:0">
+          <li><b>trace</b> = 문의/리포트 1건 (seed로 trace_id 고정 → 재현)</li>
+          <li><b>span</b> = 분류 · 프롬프트 조회 등 단계</li>
+          <li><b>generation</b> = LLM 호출(모델·토큰·지연·프롬프트버전 자동 기록)</li>
+        </ul>
+      </div>
+      <div class="card p">
+        <h4>민감정보 마스킹</h4>
+        <p class="muted" style="margin-top:0"><code>redact_sensitive_text()</code>가 트레이스 저장 전 정규식으로 가린다:</p>
+        <div class="pill-row" style="margin-top:8px">
+          <span class="pill">이메일</span><span class="pill">전화번호</span><span class="pill">카드번호</span>
+        </div>
+        <p class="foot" style="margin-top:12px">표본 비율은 <code>LANGFUSE_SAMPLE_RATE</code>. 실제 1건 스모크: <code>verify_langfuse_trace.py</code>.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 18 · SCHEDULER -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Automation · 스케줄</div><h2>언제 어떤 리포트가 자동으로 도는가</h2><div class="rule"></div>
+    <div class="scroll"><table>
+      <tr><th>리포트</th><th>주기(UTC)</th><th>대상 채널</th></tr>
+      <tr><td>판매자 일일 리포트</td><td>매일 00:00</td><td class="green">판매자별</td></tr>
+      <tr><td>플랫폼 트래픽</td><td>매일 01:00</td><td class="danger">관리자 전용</td></tr>
+      <tr><td>판매자 점유율 비교</td><td>매월 1일 01:00</td><td class="danger">관리자 전용</td></tr>
+    </table></div>
+    <div class="cols" style="margin-top:16px">
+      <div class="card a"><h4>로컬/서버</h4><p class="muted" style="margin-top:0">asyncio 백그라운드 루프가 다음 실행까지 잔여 시간을 계산해 대기.</p></div>
+      <div class="card c"><h4>Vercel</h4><p class="muted" style="margin-top:0">서버리스라 루프를 끄고, <b>Vercel Cron</b>이 크론 엔드포인트를 호출. 그 요청이 진짜인지 <code>CRON_SECRET</code>으로 검증.</p></div>
+    </div>
+  </div></section>
+
+  <!-- 19 · DISCORD DELIVERY -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Delivery · Discord</div><h2>리포트를 Discord로 — 2000자 청킹</h2><div class="rule"></div>
+    <div class="cols-32">
+      <pre style="align-self:center"><code><span class="k">def</span> <span class="f">_chunk_content</span>(text, max=<span class="n">2000</span>):
+  <span class="k">while</span> len(rest) &gt; max:
+    win = rest[:max]
+    at = win.rfind(<span class="s">"\n\n"</span>)   <span class="c2"># 1순위: 문단</span>
+    <span class="k">if</span> at &lt; 0: at = win.rfind(<span class="s">"\n"</span>) <span class="c2"># 2순위: 줄</span>
+    <span class="k">if</span> at &lt; 0: at = max        <span class="c2"># 3순위: 강제</span>
+    chunks.append(rest[:at])
+    rest = rest[at:].lstrip()</code></pre>
+      <div class="card a">
+        <p class="muted" style="margin-top:0"><code>DiscordNotifier.send()</code>는 <b>절대 예외를 던지지 않는다</b> — 알림 실패가 AI
+          파이프라인을 죽이면 안 되니까. 2000자 넘는 리포트는 문단 경계로 나눠 순차 전송.</p>
+        <p class="foot" style="margin-top:12px">두 개의 독립 웹훅: 판매자·이관용 vs <b>관리자 전용</b> — 관리자 정보가 판매자 채널로 새지 않게 물리적 분리.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 20 · DISCORD BOT (NEW) -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">신규 · 판매자 Discord 봇</div><h2>봇이 “판”을 깔고, 노트북 AI가 “발신”한다</h2><div class="rule"></div>
+    <div class="steps">
+      <div class="st"><div class="no">1</div><div><span class="b">링크코드 발급</span><span class="d"> 판매자 콘솔 → 1회용 코드 발급</span></div></div>
+      <div class="st"><div class="no">2</div><div><span class="b">봇 초대 후 <code>/연동 &lt;코드&gt;</code></span><span class="d"> → 봇이 API로 guild ↔ 상점 바인딩</span></div></div>
+      <div class="st"><div class="no">3</div><div><span class="b"><code>/생성</code></span><span class="d"> → 플랜별 카테고리·채널 생성 + 채널마다 웹훅 생성</span></div></div>
+      <div class="st"><div class="no">4</div><div><span class="b">웹훅 URL 저장</span><span class="d"> → 사이트 DB(discord_channels)에 기록</span></div></div>
+      <div class="st"><div class="no">5</div><div><span class="b">노트북 AI 발신</span><span class="d"> 저장된 웹훅으로 페르소나별 리포트 전송(“AI는 내 노트북에서”)</span></div></div>
+    </div>
+    <p class="foot">지표 명령(<code>/수익 /조회수 /일일리포트 /재고</code>)은 SQL 집계 숫자만 가져온다 — 여기서도 AI는 숫자를 만들지 않는다.</p>
+  </div></section>
+
+  <!-- 21 · PLAN -> CHANNEL -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">신규 · 플랜 → 채널/페르소나</div><h2>요금제가 페르소나 분배를 결정한다</h2><div class="rule"></div>
+    <div class="scroll"><table>
+      <tr><th>채널</th><th>페르소나 (Langfuse name)</th><th>FREE</th><th>BASIC</th><th>PRO</th><th>BUSINESS</th></tr>
+      <tr><td>봇-명령</td><td class="dim">— (슬래시 명령)</td><td class="ck">●</td><td class="ck">●</td><td class="ck">●</td><td class="ck">●</td></tr>
+      <tr><td>일일-리포트</td><td><code>daily-seller-report</code></td><td class="ck">●</td><td class="ck">●</td><td class="ck">●</td><td class="ck">●</td></tr>
+      <tr><td>문의-이관</td><td><code>customer-support-answer</code></td><td class="cx">·</td><td class="ck">●</td><td class="ck">●</td><td class="ck">●</td></tr>
+      <tr><td>월간-리포트</td><td><code>commerce-monthly-report</code></td><td class="cx">·</td><td class="cx">·</td><td class="ck">●</td><td class="ck">●</td></tr>
+      <tr><td>매출-인사이트</td><td><code>commerce-insight</code></td><td class="cx">·</td><td class="cx">·</td><td class="cx">·</td><td class="ck">●</td></tr>
+    </table></div>
+    <p class="foot">매핑의 <b>단일 진실 공급원</b>은 <code>discord_spec.py</code> 한 곳. 봇은 이 매핑을 API로 받아 그대로 만든다 → 어긋날 수 없다.
+      <b>관리자 전용</b> 페르소나는 어떤 판매자 플랜에도 안 들어간다.</p>
+  </div></section>
+
+  <!-- 22 · SECURITY -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">보안 · 인증</div><h2>경로마다 다른 자물쇠</h2><div class="rule"></div>
+    <div class="scroll"><table>
+      <tr><th>대상</th><th>방식</th><th>세부</th></tr>
+      <tr><td>고객 로그인</td><td>JWT (HS256)</td><td>TTL 7일 · <code>AUTH_SECRET_KEY</code> 서명</td></tr>
+      <tr><td>비밀번호</td><td>bcrypt</td><td>sha256로 먼저 다이제스트(72바이트 한계 회피) 후 해시</td></tr>
+      <tr><td>구글 로그인</td><td>tokeninfo 검증</td><td>audience == 우리 클라이언트 ID AND 이메일 인증됨</td></tr>
+      <tr><td>봇 내부 API</td><td>공유 비밀</td><td><code>X-Internal-Token</code> 상수시간 비교</td></tr>
+      <tr><td>Cron</td><td>Bearer</td><td><code>CRON_SECRET</code> · 비면 전부 401(닫힌 기본값)</td></tr>
+    </table></div>
+    <p class="foot">공통 철학: <b>비밀값이 비어 있으면 열어주는 게 아니라 잠근다</b>(fail-closed).</p>
+  </div></section>
+
+  <!-- 23 · LIMITS -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">Honesty · 한계와 로드맵</div><h2>지금 없는 것 (숨기지 않는다)</h2><div class="rule"></div>
+    <div class="cols">
+      <div class="card w">
+        <h4 class="warn">현재 한계</h4>
+        <ul class="muted" style="margin-top:0">
+          <li>진짜 <b>RAG 없음</b> — “조회”는 지식검색이 아니라 프롬프트 버전 조회</li>
+          <li>애플리케이션 레벨 <b>재시도 없음</b></li>
+          <li>코호트 기반 환불률 미구현</li>
+          <li>결제는 서버에서 <b>모사</b>(실 PG 검증 필요)</li>
+        </ul>
+      </div>
+      <div class="card g">
+        <h4 class="green">다음 단계</h4>
+        <ul class="muted" style="margin-top:0">
+          <li>지식문서 임베딩 → 실제 RAG</li>
+          <li>재시도·백오프</li>
+          <li>구독 결제와 기능 게이트</li>
+          <li>봇 라이브 E2E 검증 · Vercel 라우팅 정상화</li>
+        </ul>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 24 · CLOSING -->
+  <section class="slide"><div class="wrap" style="text-align:center">
+    <div class="eyebrow">요약</div>
+    <h2 style="display:block">한 문장으로</h2>
+    <div class="rule" style="margin:12px auto 24px"></div>
+    <p class="lead" style="margin:0 auto;max-width:72ch">
+      <b>사용자의 행동</b>은 멱등한 <b>이벤트</b>가 되고, <b>SQL</b>이 그것을 확정 숫자로 집계하며,
+      그 숫자는 <b>“누가 보는가”</b>에 따라 서로 다른 <b>페르소나</b>로 해석되어,
+      <b>OpenRouter</b>를 거쳐 <b>Langfuse에 추적</b>되고, 봇이 깐 <b>Discord</b> 채널·웹훅으로 전달된다.
+      AI는 끝까지 <b>숫자를 만들지 않고 해석만</b> 한다.</p>
+    <div class="pill-row" style="justify-content:center;margin-top:26px">
+      <span class="pill">숫자=SQL</span><span class="pill">해석=페르소나</span>
+      <span class="pill">추적=Langfuse</span><span class="pill">전달=Discord</span>
+    </div>
+    <p class="foot" style="margin-top:26px">AI Ops Studio · 감사합니다.</p>
+  </div></section>
+
+</div>
+
+<!-- chrome -->
+<div id="bar"></div>
+<div id="brand">AI Ops Studio</div>
+<div id="hud">
+  <button class="btn" onclick="AiDeck.notes()">🗒 대본(N)</button>
+  <button class="btn" onclick="AiDeck.full()">⛶ 전체화면(F)</button>
+  <button class="btn" onclick="AiDeck.help()">?</button>
+  <span id="count"><b>1</b> / 24</span>
+</div>
+
+<!-- speaker notes -->
+<div id="notes">
+  <div class="inner">
+    <div class="hd"><span class="t">발표 대본 · <span id="nnum">1</span></span><span class="foot" style="margin:0">N · Esc 로 닫기</span></div>
+    <div class="body" id="nbody"></div>
+  </div>
+</div>
+
+<div id="help" onclick="AiDeck.help()">
+  <div class="box" onclick="event.stopPropagation()">
+    <h3 style="margin-top:0">키보드 단축키</h3>
+    <div class="khint">
+      <kbd>→</kbd><span>다음 · <kbd>Space</kbd> <kbd>PgDn</kbd> 도 동일</span>
+      <kbd>←</kbd><span>이전 · <kbd>PgUp</kbd> 도 동일</span>
+      <kbd>N</kbd><span>발표 대본 열기/닫기</span>
+      <kbd>F</kbd><span>전체화면 토글</span>
+      <kbd>Esc</kbd><span>대본/도움말 닫기 · 전체화면 해제</span>
+      <kbd>Home</kbd><span>처음 · <kbd>End</kbd> 마지막</span>
+    </div>
+    <p class="foot">화면 오른쪽 절반 클릭=다음, 왼쪽=이전. URL <code>#/12</code>로 특정 장 바로가기.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  let i = 0;
+
+  // 슬라이드별 발표 대본 (index 0 = 1번 슬라이드)
+  const NOTES = [
+    "안녕하세요. 이 발표는 저희 커머스 플랫폼에서 'AI가 정확히 어디서, 어떻게 동작하는가'를 처음부터 끝까지 따라가는 자리입니다. 화면에 보이는 것처럼 페르소나가 7개고, API 서비스가 둘, 디스코드 봇이 하나입니다. 한 가지 큰 원칙만 기억하시면 됩니다 — 숫자는 코드가 계산하고, AI는 그 숫자를 해석만 합니다. 이 원칙이 발표 내내 반복됩니다.",
+    "오늘은 크게 네 덩어리로 나눠서 봅니다. 첫째는 뼈대 — 시스템이 어떻게 생겼고 무슨 라이브러리를 쓰는지. 둘째가 오늘의 핵심인 AI 파이프라인 — 사용자의 행동이 어떻게 페르소나로 연결되는지. 셋째와 넷째는 그 결과를 어떻게 추적하고 디스코드로 전달하는지입니다. 참고로 발표 중에 N 키를 누르면 지금 이 대본이 화면 아래에 뜹니다.",
+    "먼저 전체 지도입니다. 왼쪽이 고객 쪽 흐름이에요 — 리액트 쇼핑몰이 커머스 API를 부르고, 데이터는 Neon 포스트그레스에 쌓입니다. 오른쪽이 AI·운영 쪽입니다 — 코어 API가 OpenRouter로 LLM을 부르고 Langfuse로 추적하죠. 맨 아래 디스코드 봇만 별도 프로세스로, 판매자 서버에 들어가 채널을 깝니다. 두 API는 같은 배포 안의 두 서비스라, 프런트는 상대경로로 부릅니다.",
+    "라이브러리는 '어디서 일하는가'로 보시면 됩니다. 백엔드는 FastAPI 위에서, 특히 눈여겨볼 건 Langfuse가 감싼 OpenAI SDK예요 — 이걸로 OpenRouter를 부르면 모든 호출이 자동으로 추적됩니다. 프런트는 리액트에 리액트 쿼리, 봇은 discord.py죠. 가장 중요한 한 줄은 맨 아래입니다 — 모델이나 온도 값이 코드에 박혀 있지 않고 Langfuse 설정에서 옵니다. 그래서 모델을 바꿔도 재배포가 필요 없어요.",
+    "이게 이 시스템을 관통하는 단 하나의 원칙입니다. 세 단계로 보시죠. 먼저 판매·환불·조회를 불변 이벤트로 '쌓고', 정해진 시점에 SQL로 확정 숫자를 '집계'하고, 그 숫자만 프롬프트에 넣어 AI가 '해석'합니다. 모든 페르소나 프롬프트에 '숫자를 다시 계산하지 말고 해석만 하라'가 못박혀 있어요. 덕분에 환각 위험이 낮고, 같은 입력이면 같은 근거가 나오니 재현이 가능합니다.",
+    "그 숫자의 원천이 바로 이 이벤트 원장입니다. 핵심은 두 가지예요. 첫째, 상태가 아니라 이벤트를 쌓기 때문에 다음 달 환불이 이번 달 매출을 덮어쓰지 않습니다 — 발생 시점 기준으로 집계하니까요. 둘째, 각 이벤트에 고유 ID가 있어서, 재시도로 같은 취소가 두 번 들어와도 매출이 이중으로 잡히지 않습니다. 오른쪽이 실제로 쌓는 일곱 가지 이벤트 종류입니다.",
+    "지표가 실제로 어떻게 계산되는지입니다. 전부 SQL 집계라는 게 포인트예요. 순매출은 결제에서 환불을 빼고, 증감률은 전월 대비로 냅니다. 여기서 중요한 건 오른쪽 '안전장치' 열입니다 — 지난달이 0이면 증감률을 지어내지 않고 '비교 불가'로 비워요. 판매가 3건 미만이면 환불률에 '표본이 적다'는 경고를 붙입니다. 그리고 플랫폼 매출은 판매자 매출이 아니라 우리가 받는 수수료 더하기 플랜 요금입니다 — 무료 플랜은 아무리 많이 팔아도 기여도가 낮죠.",
+    "이 슬라이드가 오늘 발표의 다리입니다. 왼쪽이 사용자의 행동, 가운데가 그때 남는 이벤트, 오른쪽이 그걸 해석하는 페르소나예요. 상품을 보면 조회 이벤트가 남고 일일 리포트 페르소나가 해석합니다. 결제하면 매출 이벤트가 남고 인사이트 페르소나가 봅니다. 문의를 하면 분류 페르소나가 먼저 돌고요. 즉, 사용자가 어떤 행동을 하느냐가 어떤 이름의 어떤 페르소나가 도는지를 결정합니다. 다음 장부터 이 페르소나들을 하나씩 열어봅니다.",
+    "Langfuse를 왜 쓰냐면, 프롬프트를 코드 밖으로 꺼내기 위해서입니다. 개념 네 개만 보시죠 — name은 페르소나 식별자, production 라벨은 지금 돌 버전을 가리키는 포인터, config에는 모델과 온도가 프롬프트와 함께 저장됩니다. 그래서 오른쪽처럼, 새 버전에서 모델만 바꾸고 라벨을 옮기면 코드 재배포 없이 몇 분 안에 반영돼요. 혹시 설정이 엉뚱한 게이트웨이를 가리키면 코드가 예외를 던져서 사고를 막습니다.",
+    "이게 페르소나 일곱 개 전체입니다. 위 두 개가 고객 문의용, 가운데 두 개가 운영 리포트용, 아래 세 개가 판매자와 관리자용이에요. 맨 오른쪽 '노출' 열을 봐주세요 — 같은 조회수 숫자라도 판매자 본인이 보는 것과 관리자가 전체를 보는 건 완전히 다른 페르소나, 다른 API, 다른 디스코드 채널로 분리했습니다. 관리자 정보가 판매자에게 새면 안 되니까요. 온도도 작업 성격에 따라 0에서 0.3까지 다릅니다 — 분류는 0으로 딱딱하게, 리포트는 조금 유연하게.",
+    "문의 응대는 두 페르소나가 연달아 돕니다. 먼저 왼쪽, 분류기가 JSON으로만 답해요 — 카테고리, 위험도, 사람이 필요한지. 분쟁이나 소송, 고액 환불, 개인정보가 언급되면 위험도를 높음으로 올리고 사람에게 넘깁니다. 그 다음 오른쪽 답변 페르소나가 도는데, 규칙이 엄격해요 — 주어진 주문과 정책만 쓰고, 확인 안 된 배송일이나 환불 여부는 절대 추측하지 않습니다. 애매하면 상담원 이관을 명시하죠.",
+    "이 페이지가 제일 중요합니다. 문의 한 건이 들어와서 나갈 때까지 전 구간을 순서대로 보여드릴게요. 0번, 문의가 들어오면 응대 서비스가 시작합니다. 1번, Langfuse 트레이스를 여는데 요청 ID로 추적 ID를 고정해요 — 나중에 똑같이 재현하려고요. 2번에서 방금 본 분류가 돌고, 3번에서 실제 답변 프롬프트의 production 버전을 가져와 변수를 채웁니다. 4번에서 그 설정으로 모델을 확정하고, 5번에서 OpenRouter로 생성합니다. 마지막 6번, 위험한 문의면 운영 콘솔로 올리고 디스코드로 알립니다. 한 문장으로 요약하면 — 분류하고, 프롬프트 가져오고, 모델 정하고, 생성하고, 위험하면 사람에게 넘긴다. 이겁니다.",
+    "5번 '생성' 단계 안을 확대한 겁니다. 왼쪽 코드에서 눈여겨볼 건 세 가지예요. allow_fallbacks — 1차 제공자가 죽으면 자동으로 다른 데로 넘어갑니다. data_collection deny — 우리 데이터를 학습에 안 쓰는 경로만 강제해요. 그리고 langfuse_prompt — 이 생성을 프롬프트 버전에 연결해서 나중에 재현할 수 있게 합니다. fallback이 일어나면 실제로 쓴 모델이 요청한 모델과 다를 수 있는데, 그 실제 값을 그대로 기록합니다.",
+    "그럼 모델은 최종적으로 어떻게 정해지느냐. 우선순위가 셋입니다. 1순위는 Langfuse 프롬프트 설정, 여기 없는 값은 2순위인 코드 기본값으로 채우고, Langfuse 자체를 못 쓰면 3순위 기본 모델로 갑니다. 이 병합과 변수 치환, 캐싱을 compile 함수 하나가 담당해요. 그리고 이게 실제로 맞게 나가는지는 테스트가 요청 모양을 검증합니다.",
+    "리포트 계열 다섯 페르소나입니다. 왼쪽이 코드의 서비스 클래스, 가운데가 Langfuse 이름, 오른쪽이 언제 도는지예요. 매일 자정에 판매자 리포트, 매일 관리자 트래픽, 매월 점유율 비교가 자동으로 돕니다. 패턴은 모두 같아요 — 트레이스 열고, 프롬프트 가져오고, 코드가 계산한 집계 dict를 JSON으로 넣어서 생성합니다. 다시 강조하지만 숫자는 LLM이 만들지 않습니다.",
+    "그 중 판매자 일일 리포트를 예로 자세히 보죠. 왼쪽처럼 코드가 상품별 조회·판매·환불·재고를 뽑고, 최다 조회·최다 판매·품절·재고 임박까지 미리 계산해서 넘깁니다. AI는 그걸 인용만 해요. 오른쪽 프롬프트 규칙이 실무적으로 중요한데 — 조회는 많은데 재고가 부족하거나 0인 상품을 반드시 짚고, 마지막에 어떤 상품을 왜 채워야 하는지 구체적으로 제안하게 했습니다. 원인 단정은 금지하고 '추정됩니다'로 표현하게 했고요.",
+    "관측 가능성 이야기입니다. 왼쪽, 모든 호출이 trace, span, generation 구조로 남습니다. 추적 ID를 고정하니 같은 문의를 그대로 재현할 수 있어요. 오른쪽이 중요합니다 — 트레이스로 저장하기 전에 이메일, 전화번호, 카드번호를 정규식으로 가립니다. 관측을 위해 개인정보가 로그에 남으면 안 되니까요. 전량이 부담되면 샘플 비율로 조절합니다.",
+    "리포트는 사람이 안 눌러도 자동으로 돕니다. 매일 자정에 판매자 일일, 매일 새벽에 관리자 트래픽, 매월 1일에 점유율 비교예요. 실행 방식이 환경에 따라 갈리는데, 로컬이나 상시 서버는 백그라운드 루프가 시간을 재서 돌고, Vercel 같은 서버리스는 루프가 못 사니까 Vercel Cron이 대신 엔드포인트를 칩니다. 그 요청이 진짜 크론에서 온 건지 비밀키로 검증하고요.",
+    "결과를 디스코드로 보낼 때 두 가지를 신경 썼습니다. 첫째, 디스코드는 한 메시지가 2000자 제한이라, AI 리포트가 길면 왼쪽 코드처럼 문단 경계에서 잘라 여러 개로 순차 전송합니다. 둘째, 이 전송 함수는 절대 예외를 던지지 않아요 — 알림 실패가 AI 파이프라인 전체를 죽이면 안 되니까요. 그리고 판매자용 웹훅과 관리자용 웹훅을 물리적으로 분리해서, 관리자 정보가 판매자 채널로 새지 않게 했습니다.",
+    "여기서부터가 이번에 새로 만든 디스코드 봇입니다. 컨셉은 '봇이 판을 깔고, 노트북 AI가 발신한다'예요. 흐름은 다섯 단계입니다. 판매자 콘솔에서 1회용 코드를 받고, 봇을 초대한 뒤 서버에서 연동 명령으로 서버와 상점을 연결합니다. 그다음 생성 명령을 치면 봇이 플랜에 맞는 채널과 웹훅을 자동으로 깔고, 그 웹훅 주소를 사이트에 저장해요. 그러면 제 노트북의 AI가 그 웹훅으로 페르소나별 리포트를 쏩니다. 봇의 지표 명령들도 전부 SQL 집계 숫자만 가져옵니다.",
+    "그럼 어떤 채널이 깔리느냐 — 요금제가 결정합니다. 무료는 봇 명령과 일일 리포트만, 베이직부터 문의 이관, 프로부터 월간 리포트, 비즈니스는 매출 인사이트까지요. 오른쪽 채널마다 붙은 게 그 채널을 담당할 페르소나 이름입니다. 이 매핑은 코드 한 곳에만 정의해두고 봇이 API로 받아 그대로 만들기 때문에, 봇과 서버가 절대 어긋나지 않습니다. 그리고 관리자 전용 페르소나는 어떤 판매자 플랜에도 안 들어갑니다 — 경쟁사 데이터가 새면 안 되니까요.",
+    "보안은 경로마다 다른 자물쇠를 씁니다. 고객 로그인은 JWT, 비밀번호는 bcrypt인데 72바이트 한계를 피하려고 먼저 해시를 뜹니다. 구글 로그인은 토큰의 대상이 우리 것이 맞는지, 이메일이 인증됐는지 확인하고요. 봇 내부 API는 공유 비밀을 상수 시간으로 비교하고, 크론은 비밀키로 검증합니다. 공통 철학은 하나예요 — 비밀값이 비어 있으면 열어주는 게 아니라 잠급니다.",
+    "면접이나 리뷰에서 신뢰를 얻으려면 없는 것도 솔직히 말해야죠. 지금 한계는 — 진짜 RAG는 없고, 애플리케이션 레벨 재시도가 없고, 결제는 모사입니다. 다음 단계로는 지식문서 임베딩으로 실제 RAG, 재시도 로직, 구독 결제, 그리고 봇 라이브 검증과 Vercel 라우팅 정상화를 계획하고 있습니다.",
+    "마지막으로 한 문장으로 정리하겠습니다. 사용자의 행동은 멱등한 이벤트가 되고, SQL이 그걸 확정 숫자로 집계하며, 그 숫자는 '누가 보는가'에 따라 다른 페르소나로 해석되어, OpenRouter를 거쳐 Langfuse에 추적되고, 봇이 깐 디스코드 채널로 전달됩니다. 그리고 AI는 끝까지 숫자를 만들지 않고 해석만 합니다. 감사합니다. 질문 받겠습니다."
+  ];
+
+  const curEl = document.querySelector('#count b');
+  const bar = document.getElementById('bar');
+  const help = document.getElementById('help');
+  const notes = document.getElementById('notes');
+  const nbody = document.getElementById('nbody');
+  const nnum = document.getElementById('nnum');
+  document.querySelector('#count').innerHTML = '<b>1</b> / ' + total;
+
+  function clamp(n){ return Math.max(0, Math.min(total-1, n)); }
+  function renderNotes(){ nnum.textContent = (i+1)+' / '+total; nbody.textContent = NOTES[i] || '(대본 없음)'; }
+  function show(n, push){
+    i = clamp(n);
+    slides.forEach((s,idx)=> s.classList.toggle('active', idx===i));
+    curEl.textContent = i+1;
+    bar.style.width = (i/(total-1)*100) + '%';
+    slides[i].scrollTop = 0;
+    renderNotes();
+    if(push!==false) history.replaceState(null,'', '#/'+(i+1));
+  }
+  const next=()=>show(i+1), prev=()=>show(i-1);
+
+  function full(){
+    if(!document.fullscreenElement){ document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen(); }
+    else{ document.exitFullscreen&&document.exitFullscreen(); }
+  }
+  document.addEventListener('fullscreenchange', ()=>{
+    document.body.classList.toggle('fs', !!document.fullscreenElement);
+  });
+  function toggleNotes(){ notes.classList.toggle('show'); }
+  function toggleHelp(){ help.classList.toggle('show'); }
+
+  document.addEventListener('keydown', function(e){
+    const key = e.key;
+    if(key==='Escape'){
+      if(help.classList.contains('show')){ help.classList.remove('show'); return; }
+      if(notes.classList.contains('show')){ notes.classList.remove('show'); return; }
+      if(document.fullscreenElement){ document.exitFullscreen&&document.exitFullscreen(); }
+      return;
+    }
+    if(help.classList.contains('show')) return;
+    switch(key){
+      case 'ArrowRight': case 'PageDown': case ' ': case 'Enter':
+        e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'PageUp':
+        e.preventDefault(); prev(); break;
+      case 'Home': e.preventDefault(); show(0); break;
+      case 'End': e.preventDefault(); show(total-1); break;
+      case 'f': case 'F': full(); break;
+      case 'n': case 'N': toggleNotes(); break;
+      case '?': toggleHelp(); break;
+    }
+  });
+
+  // 클릭 존 (버튼/링크/노트 패널 클릭은 제외)
+  document.getElementById('deck').addEventListener('click', function(e){
+    if(e.target.closest('button,a,.btn')) return;
+    (e.clientX > window.innerWidth/2) ? next() : prev();
+  });
+
+  // 터치 스와이프
+  let tx=null;
+  window.addEventListener('touchstart', e=>{ tx=e.touches[0].clientX; }, {passive:true});
+  window.addEventListener('touchend', e=>{
+    if(tx===null) return;
+    const dx = e.changedTouches[0].clientX - tx;
+    if(Math.abs(dx)>50) dx<0?next():prev();
+    tx=null;
+  }, {passive:true});
+
+  function fromHash(){
+    const m = /^#\/(\d+)$/.exec(location.hash);
+    show(m ? parseInt(m[1],10)-1 : 0, false);
+  }
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
+
+  window.AiDeck = { next, prev, show, full, notes: toggleNotes, help: toggleHelp };
+})();
+</script>
+</body>
+</html>

@@ -1,45 +1,22 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "web": {
-      "root": "apps/demo-store/",
-      "framework": "vite"
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "buildCommand": "pnpm -r build",
+  "outputDirectory": "apps/demo-store/dist",
+  "functions": {
+    "api/commerce/index.py": {
+      "includeFiles": "services/mock-commerce-api/**",
+      "maxDuration": 30
     },
-    "core_api": {
-      "root": "services/core-api/",
-      "entrypoint": "app.main:app",
-      "functions": {
-        "app/main.py": {
-          "maxDuration": 120
-        }
-      },
-      "routes": [
-        {
-          "src": "/api/core/(.*)",
-          "transforms": [{ "type": "request.path", "op": "set", "args": "/$1" }]
-        }
-      ]
-    },
-    "commerce_api": {
-      "root": "services/mock-commerce-api/",
-      "entrypoint": "app.main:app",
-      "functions": {
-        "app/main.py": {
-          "maxDuration": 30
-        }
-      },
-      "routes": [
-        {
-          "src": "/api/commerce/(.*)",
-          "transforms": [{ "type": "request.path", "op": "set", "args": "/$1" }]
-        }
-      ]
+    "api/core/index.py": {
+      "includeFiles": "services/core-api/**",
+      "maxDuration": 120
     }
   },
   "rewrites": [
-    { "source": "/api/core/(.*)", "destination": { "service": "core_api" } },
-    { "source": "/api/commerce/(.*)", "destination": { "service": "commerce_api" } },
-    { "source": "/(.*)", "destination": { "service": "web" } }
+    { "source": "/api/commerce/(.*)", "destination": "/api/commerce/index" },
+    { "source": "/api/core/(.*)", "destination": "/api/core/index" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
     { "path": "/api/core/internal/cron/daily-seller-reports", "schedule": "0 0 * * *" },

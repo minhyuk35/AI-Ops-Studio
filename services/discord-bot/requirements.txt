@@ -1,0 +1,7 @@
+# AI Ops Studio 판매자 연동 Discord 봇 (독립 실행) 전용 의존성.
+# 메인 서비스(services/core-api, services/mock-commerce-api)와 별도로 설치한다:
+#   python -m venv .venv-bot
+#   .venv-bot\Scripts\pip install -r services/discord-bot/requirements.txt
+discord.py>=2.4,<3
+httpx>=0.28,<1
+python-dotenv>=1.1,<2
