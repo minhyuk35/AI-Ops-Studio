@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -103,6 +103,19 @@ class Settings(BaseSettings):
     # Bearer <this>). Empty means those endpoints refuse everything -- see
     # docs/vercel-deployment.md.
     cron_secret: str = ""
+
+    @field_validator("mock_commerce_api_url")
+    @classmethod
+    def _guard_localhost_commerce_url(cls, value: str) -> str:
+        """An explicit MOCK_COMMERCE_API_URL env var (e.g. pasted into
+        Vercel's dashboard from local .env) always wins over
+        default_factory, even when it's a localhost URL that can never work
+        inside a deployed function. localhost is only ever valid in local
+        dev, so ignore it there and recompute the real self-referencing URL.
+        """
+        if running_on_vercel() and "localhost" in value:
+            return _default_mock_commerce_api_url()
+        return value
 
     @property
     def cors_origin_list(self) -> list[str]:
