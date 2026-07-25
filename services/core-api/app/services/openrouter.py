@@ -13,6 +13,16 @@ from app.services.prompts import CompiledPrompt, PromptRepository
 
 HUMAN_HANDOFF_KEYWORDS = ("분쟁", "소송", "신고", "고액 환불", "개인정보 유출")
 
+# customer-support-answer.md rule 4 tells the answer persona to say a human
+# handoff is needed whenever cancel/refund *execution* requires approval --
+# independent of whether the question itself hit a HIGH-risk keyword above
+# (a plain "취소하고 싶어요" isn't a dispute/lawsuit/report, so triage alone
+# never flags it). Without this check the customer is told "상담원에게
+# 연결해 드릴게요" but no one is ever actually notified.
+def _answer_promises_handoff(answer: str) -> bool:
+    return "상담원" in answer and ("이관" in answer or "연결" in answer)
+
+
 _CATEGORIES = ("DELIVERY", "CANCEL", "REFUND", "OTHER")
 _RISKS = ("LOW", "MEDIUM", "HIGH")
 
@@ -81,7 +91,7 @@ class OpenRouterSupportService:
     def _run_pipeline(self, request: AIReplyRequest) -> AIReplyResponse:
         triage = self._classify_inquiry(request)
         compiled = self._compile_prompt(request)
-        requires_human = triage.requires_human or any(
+        question_flagged = triage.requires_human or any(
             keyword in request.question for keyword in HUMAN_HANDOFF_KEYWORDS
         )
 
@@ -100,6 +110,10 @@ class OpenRouterSupportService:
             )
 
         answer, resolved_model = self._generate_with_openrouter(request, compiled)
+        # OR'd with the question-side check rather than replacing it -- a
+        # HIGH-risk question must still escalate even if the model's answer
+        # happens not to repeat the handoff phrasing this time.
+        requires_human = question_flagged or _answer_promises_handoff(answer)
         return AIReplyResponse(
             answer=answer,
             model=resolved_model,
