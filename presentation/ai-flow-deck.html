@@ -594,7 +594,174 @@ completion = client.chat.completions.create(
       <b>관리자 전용</b> 페르소나는 어떤 판매자 플랜에도 안 들어간다.</p>
   </div></section>
 
-  <!-- 22 · SECURITY -->
+  <!-- 22 · AUTH DEEP DIVE -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">구현 상세 · 인증</div><h2>로그인 세 갈래: 자체 · 구글 · 내부 서비스</h2><div class="rule"></div>
+    <div class="cols-32">
+      <pre style="align-self:center"><code><span class="c2"># services/mock-commerce-api/app/auth.py</span>
+<span class="k">def</span> <span class="f">_digest</span>(password: str) -&gt; bytes:
+  <span class="k">return</span> hashlib.sha256(password.encode()).digest()
+
+<span class="k">def</span> <span class="f">hash_password</span>(password: str) -&gt; str:
+  <span class="k">return</span> bcrypt.hashpw(_digest(password),
+                       bcrypt.gensalt()).decode()
+
+<span class="k">def</span> <span class="f">create_access_token</span>(customer_id: str) -&gt; str:
+  payload = {<span class="s">"sub"</span>: customer_id, <span class="s">"iat"</span>: now,
+             <span class="s">"exp"</span>: now + timedelta(days=<span class="n">7</span>)}
+  <span class="k">return</span> jwt.encode(payload, SECRET, algorithm=<span class="s">"HS256"</span>)</code></pre>
+      <div class="card a">
+        <h4>왜 sha256을 먼저 거치나</h4>
+        <p class="muted" style="margin-top:0">bcrypt는 비밀번호를 <b>72바이트까지만</b> 본다. passlib의
+          CryptContext가 이 문제를 감싸주지만 <code>bcrypt&gt;=4.1</code>과 버전 감지 방식이 깨져있어,
+          <code>bcrypt</code>를 직접 호출하고 <b>sha256 다이제스트를 먼저</b> 떠서 길이 문제를 원천 차단했다.</p>
+        <h4>구글 로그인은 JWKS 대신 tokeninfo</h4>
+        <p class="muted" style="margin-top:0"><code>httpx.get(GOOGLE_TOKENINFO_URL, params={{"id_token":...}})</code>
+          로 검증 — <code>aud</code>가 우리 클라이언트 ID와 같고 <code>email_verified</code>가 참인지 코드가 직접 재확인한다.
+          Google이 "유효하다"고만 답해도, audience가 다르면 거부.</p>
+      </div>
+    </div>
+    <p class="foot">core-api는 이 JWT를 <b>직접 디코드하지 않는다</b> — <code>CommerceClient.verify_identity()</code>로 mock-commerce-api에
+      "이 토큰 누구 거야?"라고 물어본다. 발급자만 신뢰를 검증하는 리소스 서버 패턴.</p>
+  </div></section>
+
+  <!-- 23 · DUAL DB BACKEND -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">구현 상세 · 데이터베이스</div><h2>SQLite ↔ Postgres, 호출부는 그대로</h2><div class="rule"></div>
+    <div class="cols-32">
+      <pre style="align-self:center"><code><span class="c2"># db_compat.py — sqlite3.Connection과 같은 표면을 흉내</span>
+<span class="k">class</span> PostgresConnection:
+  <span class="k">def</span> <span class="f">execute</span>(self, sql, params=<span class="k">None</span>):
+    cur = self._conn.cursor()
+    cur.execute(_rewrite_sql(sql), params)
+    <span class="k">return</span> cur   <span class="c2"># dict_row → dict처럼 접근</span>
+
+<span class="k">def</span> <span class="f">_rewrite_sql</span>(sql: str) -&gt; str:
+  <span class="c2"># INSERT OR IGNORE → ON CONFLICT DO NOTHING</span>
+  <span class="c2"># LIKE → ILIKE, :name → %(name)s, ? → %s</span>
+  ...</code></pre>
+      <div class="card p">
+        <p class="muted" style="margin-top:0"><code>is_postgres()</code>가 <code>DATABASE_URL</code>이
+          <code>postgres(ql)://</code>로 시작하는지만 본다. 나머지 코드는 <code>connection.execute(sql, params)</code>를
+          <b>그대로</b> 부른다 — 호출부를 하나도 안 건드리고 백엔드를 스위칭.</p>
+        <p class="foot" style="margin-top:10px">정규식 치환이라 완벽하지 않다 — <code>rowid</code>(SQLite 전용)나
+          JOIN된 테이블 컬럼의 <code>GROUP BY</code> 관용 처리 차이는 실제로 배포 후 발견해서 SQL 자체를 고쳤다
+          (다음 장 트러블슈팅 참고).</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 24 · DISCORD BOT TWO MODES -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">구현 상세 · Discord 봇</div><h2>같은 봇, 두 가지 실행 방식</h2><div class="rule"></div>
+    <div class="cols">
+      <div class="card a">
+        <h4>Gateway 방식 · <code>bot.py</code></h4>
+        <ul class="muted" style="margin-top:0">
+          <li><code>discord.py</code>의 <code>Client</code> — 상시 WebSocket 연결</li>
+          <li><code>@tree.command()</code>로 슬래시 명령 등록</li>
+          <li><code>on_guild_join</code> 환영 메시지 가능 (Gateway 전용 이벤트)</li>
+          <li>상시 프로세스 필요 — 로컬 PC · Render 등</li>
+        </ul>
+      </div>
+      <div class="card p">
+        <h4>HTTP Interactions · <code>interactions_app.py</code></h4>
+        <ul class="muted" style="margin-top:0">
+          <li>연결 없음 — Discord가 매 명령을 <b>POST 한 번</b>으로 보냄</li>
+          <li><code>PyNaCl</code>의 <code>VerifyKey.verify()</code>로 Ed25519 서명 검증</li>
+          <li>3초 내 <code>defer</code> 응답 후 <code>BackgroundTasks</code>로 실제 처리 + 후속 웹훅 전송</li>
+          <li><b>Vercel Function으로 나머지 API와 함께 배포 가능</b></li>
+        </ul>
+      </div>
+    </div>
+    <pre style="margin-top:14px"><code><span class="k">def</span> <span class="f">verify_signature</span>(signature, timestamp, body: bytes) -&gt; bool:
+  <span class="k">try</span>:
+    VerifyKey(bytes.fromhex(PUBLIC_KEY)).verify(
+      timestamp.encode() + body, bytes.fromhex(signature))
+    <span class="k">return</span> <span class="k">True</span>
+  <span class="k">except</span> BadSignatureError:
+    <span class="k">return</span> <span class="k">False</span></code></pre>
+    <p class="foot">HTTP 방식은 Gateway 세션이 없어 Discord 멤버 목록에 <b>"오프라인"</b>으로 보인다 — 슬래시 명령 동작과는 무관한 화면 표시일 뿐.</p>
+  </div></section>
+
+  <!-- 25 · FRONTEND STACK -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">구현 상세 · 프런트엔드</div><h2>React Query로 서버 상태, GSAP로 연출</h2><div class="rule"></div>
+    <div class="cols-32">
+      <pre style="align-self:center"><code><span class="c2">// 서버 상태: TanStack Query</span>
+<span class="k">const</span> cart = useQuery({
+  queryKey: [<span class="s">"cart"</span>, cartId],
+  queryFn: () =&gt; getCart(cartId),
+});
+<span class="k">const</span> addToCart = useMutation({
+  mutationFn: (item) =&gt; postCartItem(cartId, item),
+  onSuccess: () =&gt; queryClient.invalidateQueries(
+    {queryKey: [<span class="s">"cart"</span>, cartId]}),
+});
+
+<span class="c2">// 연출: GSAP</span>
+gsap.context(() =&gt; {
+  gsap.fromTo(<span class="s">".hero-reveal"</span>,
+    {opacity:<span class="n">0</span>, y:<span class="n">34</span>}, {opacity:<span class="n">1</span>, y:<span class="n">0</span>});
+});</code></pre>
+      <div class="card c">
+        <h4>왜 이 조합</h4>
+        <ul class="muted" style="margin-top:0">
+          <li><b>useQuery/useMutation</b>이 로딩·에러·캐시·재조회를 다 처리 — 상품/장바구니/주문/문의 20곳 넘게 재사용</li>
+          <li><code>onSuccess</code>의 <code>invalidateQueries</code>가 관련 화면을 자동 갱신 (장바구니 담기 → 헤더 배지 즉시 반영)</li>
+          <li><code>gsap.context()</code>로 스코프를 잡아 언마운트 시 <code>ctx.revert()</code> 한 번에 정리 — 메모리 누수 방지</li>
+          <li><code>gsap.quickTo()</code>는 마우스 추적처럼 매 프레임 갱신되는 값 전용 — 매번 새 트윈을 만들지 않음</li>
+        </ul>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 26 · VERCEL ARCHITECTURE -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">구현 상세 · 배포</div><h2>서버리스 함수 3개가 사이트 하나처럼</h2><div class="rule"></div>
+    <div class="cols-32">
+      <pre style="align-self:center"><code><span class="c2"># api/commerce/index.py — Vercel 진입점</span>
+sys.path.insert(<span class="n">0</span>, <span class="s">"services/mock-commerce-api"</span>)
+<span class="k">from</span> app.main <span class="k">import</span> app <span class="k">as</span> commerce_app
+
+<span class="nd">@asynccontextmanager</span>
+<span class="k">async</span> <span class="k">def</span> <span class="f">lifespan</span>(_):
+  <span class="k">async</span> <span class="k">with</span> commerce_app.router.lifespan_context(
+      commerce_app):
+    <span class="k">yield</span>   <span class="c2"># 서브앱 startup(DB 초기화)도 같이 실행</span>
+
+app = FastAPI(lifespan=lifespan)
+app.mount(<span class="s">"/api/commerce"</span>, commerce_app)</code></pre>
+      <div class="card w">
+        <p class="muted" style="margin-top:0"><code>vercel.json</code>의 <code>functions[...].includeFiles</code>가
+          <code>services/mock-commerce-api/**</code>를 함수 번들에 강제 포함시킨다. <code>rewrites</code>가
+          <code>/api/commerce/(.*)</code>를 이 함수로, 그 외 경로는 SPA의 <code>index.html</code>로 보낸다.</p>
+        <p class="foot" style="margin-top:10px">세 함수(commerce·core·discord)가 <b>한 배포</b> 안에 살아서 프런트는
+          전부 상대경로로 부른다 — CORS도, 별도 도메인 관리도 필요 없다.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 27 · TROUBLESHOOTING WAR STORY -->
+  <section class="slide"><div class="wrap">
+    <div class="snum"></div>
+    <div class="eyebrow">실전 트러블슈팅</div><h2>“자기 자신을 부르는 URL”이 세 번 틀렸던 이야기</h2><div class="rule"></div>
+    <div class="steps">
+      <div class="st"><div class="no">1</div><div><span class="b">증상</span><span class="d"> core-api가 자기 배포 안의 commerce-api를 호출하는 AI 리포트만 전부 500 — 순수 조회 API는 멀쩡</span></div></div>
+      <div class="st"><div class="no">2</div><div><span class="b">1차 원인</span><span class="d"> <code>VERCEL_URL</code> 시스템 변수 노출 토글이 꺼져 있으면 기본 URL이 <code>localhost:8001</code>로 폴백 — 함수 안엔 아무도 안 듣는 포트</span></div></div>
+      <div class="st"><div class="no">3</div><div><span class="b">2차 원인</span><span class="d"> Vercel 대시보드에 로컬 <code>.env</code>에서 복사해온 <code>MOCK_COMMERCE_API_URL=localhost:8001</code>이 그대로 박혀 있어 기본값 계산 자체를 덮어씀</span></div></div>
+      <div class="st"><div class="no">4</div><div><span class="b">3차 원인</span><span class="d"> 그걸 고쳐도 <code>VERCEL_URL</code>은 배포마다 바뀌는 해시 도메인이라 <b>Deployment Protection</b>에 걸려 로그인 페이지로 302 리다이렉트 — <code>httpx</code>는 자동으로 안 따라가서 리다이렉트 응답을 JSON으로 파싱하려다 즉시 500</span></div></div>
+      <div class="st"><div class="no">5</div><div><span class="b">해결</span><span class="d"> 자기참조 URL을 <code>CORS_ORIGINS</code>의 안정적인 프로덕션 도메인에서 우선 계산하도록 변경 — 실제 배포에 curl로 직접 재현하며 한 겹씩 확인</span></div></div>
+    </div>
+    <p class="foot">교훈: 서버리스 환경변수는 "설정했으니 될 것"이 아니라 <b>배포된 함수에서 직접 확인</b>해야 한다 — 로컬 재현이 안 통하는 클래스의 버그였다.</p>
+  </div></section>
+
+  <!-- 28 · SECURITY -->
   <section class="slide"><div class="wrap">
     <div class="snum"></div>
     <div class="eyebrow">보안 · 인증</div><h2>경로마다 다른 자물쇠</h2><div class="rule"></div>
@@ -661,7 +828,7 @@ completion = client.chat.completions.create(
   <button class="btn" onclick="AiDeck.notes()">🗒 대본(N)</button>
   <button class="btn" onclick="AiDeck.full()">⛶ 전체화면(F)</button>
   <button class="btn" onclick="AiDeck.help()">?</button>
-  <span id="count"><b>1</b> / 24</span>
+  <span id="count"><b>1</b> / 30</span>
 </div>
 
 <!-- speaker notes -->
@@ -716,18 +883,24 @@ completion = client.chat.completions.create(
     "결과를 디스코드로 보낼 때 두 가지를 신경 썼습니다. 첫째, 디스코드는 한 메시지가 2000자 제한이라, AI 리포트가 길면 왼쪽 코드처럼 문단 경계에서 잘라 여러 개로 순차 전송합니다. 둘째, 이 전송 함수는 절대 예외를 던지지 않아요 — 알림 실패가 AI 파이프라인 전체를 죽이면 안 되니까요. 그리고 판매자용 웹훅과 관리자용 웹훅을 물리적으로 분리해서, 관리자 정보가 판매자 채널로 새지 않게 했습니다.",
     "여기서부터가 이번에 새로 만든 디스코드 봇입니다. 컨셉은 '봇이 판을 깔고, 노트북 AI가 발신한다'예요. 흐름은 다섯 단계입니다. 판매자 콘솔에서 1회용 코드를 받고, 봇을 초대한 뒤 서버에서 연동 명령으로 서버와 상점을 연결합니다. 그다음 생성 명령을 치면 봇이 플랜에 맞는 채널과 웹훅을 자동으로 깔고, 그 웹훅 주소를 사이트에 저장해요. 그러면 제 노트북의 AI가 그 웹훅으로 페르소나별 리포트를 쏩니다. 봇의 지표 명령들도 전부 SQL 집계 숫자만 가져옵니다.",
     "그럼 어떤 채널이 깔리느냐 — 요금제가 결정합니다. 무료는 봇 명령과 일일 리포트만, 베이직부터 문의 이관, 프로부터 월간 리포트, 비즈니스는 매출 인사이트까지요. 오른쪽 채널마다 붙은 게 그 채널을 담당할 페르소나 이름입니다. 이 매핑은 코드 한 곳에만 정의해두고 봇이 API로 받아 그대로 만들기 때문에, 봇과 서버가 절대 어긋나지 않습니다. 그리고 관리자 전용 페르소나는 어떤 판매자 플랜에도 안 들어갑니다 — 경쟁사 데이터가 새면 안 되니까요.",
+    "여기부터는 AI 바깥의 구현도 라이브러리·함수 단위로 짚어보겠습니다. 먼저 인증이에요. 왼쪽 코드가 실제 로그인 함수들입니다. 비밀번호는 bcrypt로 해시하는데, bcrypt가 72바이트까지만 본다는 제약이 있어서 sha256으로 먼저 다이제스트를 뜨고 그걸 해시합니다. 로그인 토큰은 PyJWT로 발급하고 7일 유효기간을 둡니다. 구글 로그인은 JWKS 서명 검증 대신 구글의 tokeninfo 엔드포인트를 호출해서, audience가 우리 클라이언트 ID와 같고 이메일이 인증됐는지 코드가 직접 재확인해요. 그리고 core-api는 이 토큰을 스스로 해독하지 않고, 발급자인 커머스 API에게 '이 토큰 누구 거야'라고 물어보는 방식을 씁니다.",
+    "다음은 데이터베이스입니다. 이 프로젝트는 로컬은 SQLite, 배포는 Postgres를 씁니다. 핵심은 왼쪽 코드처럼 PostgresConnection이라는 클래스가 sqlite3의 커넥션과 똑같은 인터페이스를 흉내 낸다는 거예요 — execute, executemany 다 그대로 씁니다. SQL 문법 차이는 정규식으로 치환해요 — INSERT OR IGNORE를 ON CONFLICT DO NOTHING으로, LIKE를 ILIKE로 바꾸는 식입니다. 덕분에 나머지 코드는 한 줄도 안 건드리고 백엔드를 바꿀 수 있었는데, 이 정규식 치환이 완벽하지 않아서 실제로 두 가지 버그를 배포 후에 잡았습니다 — 그건 잠시 뒤 트러블슈팅에서 자세히 다룰게요.",
+    "디스코드 봇은 사실 같은 봇인데 실행 방식이 두 가지입니다. 왼쪽은 원래 방식인 Gateway — discord.py로 상시 웹소켓을 열어두는 방식이에요. 오른쪽이 이번에 새로 만든 HTTP Interactions 방식인데, 연결을 안 열어두고 디스코드가 명령이 올 때마다 POST 요청 하나를 보내는 구조입니다. 여기서 중요한 게 서명 검증이에요 — 아래 코드처럼 PyNaCl로 Ed25519 서명을 검증해서, 진짜 디스코드에서 온 요청인지 확인합니다. 이 방식의 장점은 서버리스인 Vercel 함수로 나머지 API랑 같이 배포할 수 있다는 거예요. 대신 상시 연결이 없어서 디스코드 화면엔 봇이 '오프라인'으로 보이는데, 이건 화면 표시일 뿐 슬래시 명령 동작에는 전혀 영향이 없습니다.",
+    "프런트엔드는 두 라이브러리가 축입니다. 서버 데이터는 전부 TanStack Query — useQuery, useMutation이 로딩·에러·캐시·재조회를 다 처리해주고, 장바구니에 담으면 onSuccess에서 관련 쿼리를 무효화해서 헤더 배지가 자동으로 갱신돼요. 화면 연출은 GSAP을 씁니다 — 히어로 문구가 떠오르는 효과, 마우스를 따라가는 움직임 같은 게 다 GSAP이에요. gsap.context로 스코프를 잡아두면 컴포넌트가 사라질 때 한 번에 정리가 돼서 메모리 누수를 막습니다.",
+    "배포 구조도 짚고 넘어가겠습니다. 실제로는 서버리스 함수가 세 개예요 — 커머스, 코어, 디스코드. 왼쪽 코드처럼 각 진입점이 실제 서비스의 FastAPI 앱을 통째로 import해서 자기 경로 아래에 마운트합니다. 서브앱의 lifespan, 그러니까 시작할 때 DB를 초기화하는 로직도 바깥 앱이 뜰 때 같이 실행되게 직접 열어줘요. vercel.json의 includeFiles가 각 서비스 코드를 함수 번들에 강제로 포함시키고, rewrites가 경로별로 어느 함수로 보낼지 정합니다. 이 덕분에 프런트는 전부 상대경로로 부르고, CORS 설정도 따로 필요 없습니다.",
+    "실전 트러블슈팅 하나를 공유하겠습니다. 오늘 겪은 실제 사례예요. 증상은 이랬습니다 — AI 리포트만 유독 500 에러가 나는데, 순수 조회 API는 멀쩡했어요. 파봤더니 원인이 세 겹이었습니다. 1차로, 서버가 자기 자신을 호출할 URL을 계산하는 로직이 Vercel의 특정 환경변수 노출 설정에 의존하고 있었는데, 그게 꺼져 있으면 존재하지도 않는 로컬호스트로 기본값이 잡혔어요. 2차로, 그걸 고치고 보니 실은 대시보드에 로컬 개발용 URL이 그대로 환경변수로 박혀 있어서 그 기본값 계산 자체를 덮어쓰고 있었습니다. 3차로, 그것도 고쳤는데 여전히 안 됐어요 — 이번엔 그 URL이 배포마다 바뀌는 고유 도메인이었는데, 그 도메인이 Vercel의 배포 보호 기능에 걸려서 서버 대 서버 호출이 로그인 페이지로 리다이렉트되고 있었습니다. 최종적으로는 안정적인 프로덕션 도메인을 우선 쓰도록 바꿔서 해결했어요. 이 사례를 공유하는 이유는, 로컬에서는 재현이 안 되고 실제 배포 환경에서 직접 curl로 확인해야만 잡히는 클래스의 버그였기 때문입니다.",
     "보안은 경로마다 다른 자물쇠를 씁니다. 고객 로그인은 JWT, 비밀번호는 bcrypt인데 72바이트 한계를 피하려고 먼저 해시를 뜹니다. 구글 로그인은 토큰의 대상이 우리 것이 맞는지, 이메일이 인증됐는지 확인하고요. 봇 내부 API는 공유 비밀을 상수 시간으로 비교하고, 크론은 비밀키로 검증합니다. 공통 철학은 하나예요 — 비밀값이 비어 있으면 열어주는 게 아니라 잠급니다.",
     "면접이나 리뷰에서 신뢰를 얻으려면 없는 것도 솔직히 말해야죠. 지금 한계는 — 진짜 RAG는 없고, 애플리케이션 레벨 재시도가 없고, 결제는 모사입니다. 다음 단계로는 지식문서 임베딩으로 실제 RAG, 재시도 로직, 구독 결제, 그리고 봇 라이브 검증과 Vercel 라우팅 정상화를 계획하고 있습니다.",
     "마지막으로 한 문장으로 정리하겠습니다. 사용자의 행동은 멱등한 이벤트가 되고, SQL이 그걸 확정 숫자로 집계하며, 그 숫자는 '누가 보는가'에 따라 다른 페르소나로 해석되어, OpenRouter를 거쳐 Langfuse에 추적되고, 봇이 깐 디스코드 채널로 전달됩니다. 그리고 AI는 끝까지 숫자를 만들지 않고 해석만 합니다. 감사합니다. 질문 받겠습니다."
   ];
 
-  const curEl = document.querySelector('#count b');
   const bar = document.getElementById('bar');
   const help = document.getElementById('help');
   const notes = document.getElementById('notes');
   const nbody = document.getElementById('nbody');
   const nnum = document.getElementById('nnum');
   document.querySelector('#count').innerHTML = '<b>1</b> / ' + total;
+  const curEl = document.querySelector('#count b');
 
   function clamp(n){ return Math.max(0, Math.min(total-1, n)); }
   function renderNotes(){ nnum.textContent = (i+1)+' / '+total; nbody.textContent = NOTES[i] || '(대본 없음)'; }
