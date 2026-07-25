@@ -40,7 +40,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from formatting import format_daily, format_revenue, format_status, format_stock, format_views
 from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
-from provisioning import provision_channels
+from provisioning import provision_channels, sync_missing_channels
 
 PING = 1
 APPLICATION_COMMAND = 2
@@ -186,6 +186,63 @@ def _handle_execute(interaction: dict, background_tasks: BackgroundTasks) -> dic
     background_tasks.add_task(
         _run_execute_and_followup, guild_id, code, wipe_all, interaction["token"]
     )
+    return {"type": DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE}
+
+
+async def _run_update_and_followup(guild_id: str, interaction_token: str) -> None:
+    """/업데이트: unlike /실행, never wipes anything -- only adds channels
+    the org's current plan unlocks but doesn't have yet (a plan upgrade, or
+    a channel type added to discord_spec.CHANNEL_SPECS after the seller
+    already ran /실행 once, e.g. 주문-알림)."""
+    rest = DiscordRestClient(BOT_TOKEN)
+    commerce = _commerce_client()
+    try:
+        org = await commerce.org(guild_id)
+    except CommerceApiError as exc:
+        hint = "\n먼저 `/실행`을 실행하세요." if exc.status_code == 404 else ""
+        await rest.send_followup(APPLICATION_ID, interaction_token, f"❌ {exc}{hint}")
+        return
+
+    plan_channels = org.get("plan_channels") or []
+    existing_channels = org.get("channels") or []
+    existing_keys = {c.get("channel_key") for c in existing_channels}
+    missing = [c for c in plan_channels if c.get("channel_key") not in existing_keys]
+    if not missing:
+        await rest.send_followup(
+            APPLICATION_ID, interaction_token, "✅ 이미 최신 상태입니다 — 추가할 채널이 없습니다."
+        )
+        return
+
+    try:
+        category_name = str(org.get("category_name") or CATEGORY_NAME)
+        updated = await sync_missing_channels(
+            rest,
+            guild_id=guild_id,
+            bot_user_id=APPLICATION_ID,
+            category_name=category_name,
+            plan_channels=plan_channels,
+            existing_channels=existing_channels,
+        )
+        await commerce.save_channels(guild_id, updated)
+        added_names = ", ".join(f"#{c['name']}" for c in missing)
+        await rest.send_followup(
+            APPLICATION_ID, interaction_token, f"✅ 새 채널이 추가됐습니다: {added_names}"
+        )
+    except DiscordApiError as exc:
+        await rest.send_followup(
+            APPLICATION_ID,
+            interaction_token,
+            f"❌ 권한 또는 API 오류: {exc}\n봇에 **채널 관리**와 **웹훅 관리** 권한을 주세요.",
+        )
+
+
+def _handle_update(interaction: dict, background_tasks: BackgroundTasks) -> dict:
+    if not _has_manage_guild(interaction):
+        return _message("❌ 이 명령은 **서버 관리** 권한이 필요합니다.")
+    guild_id = str(interaction.get("guild_id") or "")
+    if not guild_id:
+        return _message("서버에서만 사용할 수 있습니다.")
+    background_tasks.add_task(_run_update_and_followup, guild_id, interaction["token"])
     return {"type": DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE}
 
 
@@ -384,6 +441,8 @@ async def interactions(request: Request, background_tasks: BackgroundTasks) -> R
 
     if name == "실행":
         payload = _handle_execute(interaction, background_tasks)
+    elif name == "업데이트":
+        payload = _handle_update(interaction, background_tasks)
     elif name in handlers:
         payload = await handlers[name]()
     else:

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
@@ -1014,6 +1015,7 @@ async def confirm_payment(payload: PaymentConfirm) -> dict[str, object]:
             """,
             (now, payload.order_id),
         )
+        order_org_id = infer_order_org_id(connection, payload.order_id)
         record_event(
             connection,
             event_type="PAYMENT_CONFIRMED",
@@ -1021,8 +1023,9 @@ async def confirm_payment(payload: PaymentConfirm) -> dict[str, object]:
             order_id=payload.order_id,
             amount=payload.amount,
             occurred_at=now,
-            org_id=infer_order_org_id(connection, payload.order_id),
+            org_id=order_org_id,
         )
+        _notify_new_order(connection, payload.order_id, order_org_id)
         return {"payment": payment, "order": order_payload(connection, payload.order_id)}
 
 
@@ -1330,6 +1333,59 @@ def _org_by_guild(connection, guild_id: str) -> dict[str, object] | None:
         "SELECT * FROM organizations WHERE discord_guild_id = ?", (guild_id,)
     ).fetchone()
     return dict(row) if row is not None else None
+
+
+_LOW_STOCK_THRESHOLD = 3  # matches analytics.py's seller_daily_snapshot low_stock cutoff
+
+
+def _notify_new_order(connection, order_id: str, org_id: str) -> None:
+    """Posts a confirmation to the seller's own 주문-알림 Discord channel
+    once payment is confirmed. Deliberately not AI-narrated (no LLM call,
+    no Langfuse persona) -- this is exactly the kind of fact a template can
+    state precisely, so it's cheaper and faster than routing it through
+    core-api's AI pipeline. Best-effort: a missing webhook or a Discord
+    hiccup must never fail the payment confirmation that triggered this.
+    """
+    webhook_row = connection.execute(
+        "SELECT webhook_url FROM discord_channels WHERE org_id = ? AND channel_key = 'orders'",
+        (org_id,),
+    ).fetchone()
+    webhook_url = webhook_row["webhook_url"] if webhook_row else None
+    if not webhook_url:
+        return
+
+    items = connection.execute(
+        """
+        SELECT oi.product_name, oi.option_text, oi.quantity, v.stock
+        FROM order_items oi
+        LEFT JOIN variants v ON v.id = oi.variant_id
+        WHERE oi.order_id = ?
+        """,
+        (order_id,),
+    ).fetchall()
+    order = connection.execute(
+        "SELECT total FROM orders WHERE id = ?", (order_id,)
+    ).fetchone()
+
+    lines = ["🛒 **새 주문이 들어왔어요!** 재고 확인 후 자동 승인 완료.\n"]
+    low_stock_names: list[str] = []
+    for item in items:
+        stock = item["stock"]
+        stock_note = f"재고 {stock}개 남음" if stock is not None else "재고 확인 불가"
+        name, option, qty = item["product_name"], item["option_text"], item["quantity"]
+        lines.append(f"· {name} ({option}) {qty}개 · {stock_note}")
+        if stock is not None and 0 <= stock <= _LOW_STOCK_THRESHOLD:
+            low_stock_names.append(str(name))
+    if order:
+        lines.append(f"\n주문 금액: {int(order['total']):,}원 · 주문번호 {order_id}")
+    if low_stock_names:
+        restock_names = ", ".join(low_stock_names)
+        lines.append(f"\n⚠️ 재고가 얼마 안 남았어요 — {restock_names} 채워주시는 게 좋을 것 같아요!")
+
+    try:
+        httpx.post(webhook_url, json={"content": "\n".join(lines)}, timeout=10)
+    except httpx.HTTPError:
+        pass
 
 
 def _discord_channels_payload(connection, org_id: str) -> list[dict[str, object]]:

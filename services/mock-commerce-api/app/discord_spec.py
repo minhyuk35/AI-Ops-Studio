@@ -6,9 +6,10 @@
 플랜별 채널 구성에서 절대 어긋나지 않는다.
 
 각 채널의 ``persona``는 Langfuse prompt name이다. 봇은 채널과 웹훅만
-"판까지" 깔아 두고, 실제 AI 리포트 생성·발신은 판매자 노트북에서 이 웹훅
-URL로 진행한다(요구사항: "AI 관련은 내 노트북에서"). ``persona``가 None인
-채널(봇-명령)은 사람이 슬래시 명령을 입력하는 용도라 페르소나가 없다.
+"판까지" 깔아 두고, 실제 리포트 생성·발신은 core-api가 이 웹훅 URL로
+진행한다. ``persona``가 None인 채널(봇-명령, 주문-알림)은 사람이 슬래시
+명령을 입력하거나(봇-명령) 코드가 집계한 숫자만 그대로 알리는(주문-알림)
+용도라 AI 페르소나가 없다.
 
 관리자 전용 페르소나(platform-daily-traffic, seller-market-share-report)는
 판매자에게 노출되면 안 되므로 어떤 판매자 플랜에도 포함하지 않는다.
@@ -26,6 +27,11 @@ CHANNEL_SPECS: dict[str, dict[str, str | None]] = {
         "name": "봇-명령",
         "persona": None,
         "topic": "슬래시 명령(/수익 · /조회수 · /일일리포트 · /재고)으로 지표를 즉시 조회",
+    },
+    "orders": {
+        "name": "주문-알림",
+        "persona": None,
+        "topic": "결제 확인된 새 주문을 재고 확인 후 자동 알림 (AI 해석 없이 코드가 집계한 숫자만)",
     },
     "daily": {
         "name": "일일-리포트",
@@ -51,10 +57,10 @@ CHANNEL_SPECS: dict[str, dict[str, str | None]] = {
 
 # 플랜 → 포함 채널(순서 = 생성 순서). 상위 플랜은 하위 플랜을 포함한다.
 PLAN_CHANNELS: dict[str, list[str]] = {
-    "FREE": ["commands", "daily"],
-    "BASIC": ["commands", "daily", "support"],
-    "PRO": ["commands", "daily", "support", "monthly"],
-    "BUSINESS": ["commands", "daily", "support", "monthly", "insight"],
+    "FREE": ["commands", "orders", "daily"],
+    "BASIC": ["commands", "orders", "daily", "support"],
+    "PRO": ["commands", "orders", "daily", "support", "monthly"],
+    "BUSINESS": ["commands", "orders", "daily", "support", "monthly", "insight"],
 }
 
 # 실제 배포(플랜 판매) 전까지는 플랜 제한 없이 전체 채널 세트로 기능 검증만

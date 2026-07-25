@@ -40,6 +40,11 @@ COMMANDS = [
         ],
     },
     {
+        "name": "업데이트",
+        "description": "플랜 변경 등으로 새로 생긴 채널만 추가합니다 (기존 채널은 그대로 둠).",
+        "options": [],
+    },
+    {
         "name": "수익",
         "description": "이 상점의 월 매출 요약을 조회합니다.",
         "options": [
