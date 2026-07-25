@@ -131,10 +131,20 @@ async def create_reply(
         except Exception:  # noqa: BLE001 - order may have shipped meanwhile; don't break the reply
             auto_cancelled = False
         if auto_cancelled:
+            # Replaces the answer outright rather than appending to it --
+            # the persona's original text says "AI인 제가 직접 처리할 수
+            # 없어 상담원 연결이 필요합니다" (rule 4 always claims this for
+            # any cancel needing execution approval), which directly
+            # contradicts a confirmation tacked on right after it. The
+            # cancellation already happened by this point, so the customer
+            # should see one consistent message, not the AI's stale claim
+            # that it couldn't do this itself.
             response = response.model_copy(
                 update={
-                    "answer": response.answer
-                    + "\n\n✅ 배송 전 상태로 확인되어 주문이 자동으로 취소·환불 처리되었습니다.",
+                    "answer": (
+                        "네, 확인해보니 아직 배송 준비 중인 주문이라 바로 취소해 드렸습니다. "
+                        "결제하신 금액은 환불 처리됩니다. 이용해주셔서 감사합니다."
+                    ),
                     "requires_human": False,
                 }
             )
