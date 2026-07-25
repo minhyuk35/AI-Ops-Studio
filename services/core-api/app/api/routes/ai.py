@@ -131,22 +131,27 @@ async def create_reply(
         except Exception:  # noqa: BLE001 - order may have shipped meanwhile; don't break the reply
             auto_cancelled = False
         if auto_cancelled:
-            # Replaces the answer outright rather than appending to it --
-            # the persona's original text says "AI인 제가 직접 처리할 수
-            # 없어 상담원 연결이 필요합니다" (rule 4 always claims this for
-            # any cancel needing execution approval), which directly
-            # contradicts a confirmation tacked on right after it. The
-            # cancellation already happened by this point, so the customer
-            # should see one consistent message, not the AI's stale claim
-            # that it couldn't do this itself.
-            response = response.model_copy(
+            # The original answer was generated before the code decided to
+            # auto-cancel, so it still says "AI인 제가 직접 처리할 수 없어
+            # 상담원 연결이 필요합니다" -- stale and self-contradictory now
+            # that the cancellation already happened. Re-run the *same*
+            # Langfuse-driven persona with a system-authored note describing
+            # what actually happened, so the confirmation the customer sees
+            # is still AI-generated (not a hardcoded Python string) -- code
+            # performs the action, AI still does 100% of the narrating.
+            confirmation_request = payload.model_copy(
                 update={
-                    "answer": (
-                        "네, 확인해보니 아직 배송 준비 중인 주문이라 바로 취소해 드렸습니다. "
-                        "결제하신 금액은 환불 처리됩니다. 이용해주셔서 감사합니다."
-                    ),
-                    "requires_human": False,
+                    "question": (
+                        "[시스템 알림] 이 주문은 배송 전 상태로 확인되어 방금 자동으로 "
+                        "취소 및 환불 처리가 완료되었습니다. 이미 완료된 사실을 고객에게 "
+                        "친절하게 안내하는 답변만 작성하세요. 상담원 연결이나 추가 확인이 "
+                        "필요하다는 말은 하지 마세요."
+                    )
                 }
+            )
+            confirmation = await run_in_threadpool(service.generate_reply, confirmation_request)
+            response = response.model_copy(
+                update={"answer": confirmation.answer, "requires_human": False}
             )
 
     # Which seller does this inquiry belong to, so it shows up on *their*
