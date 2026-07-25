@@ -3,10 +3,13 @@
 판매자가 자기 Discord 서버에 초대해서 쓰는 봇이다. 상시 실행(Gateway)되며
 아래 슬래시 명령을 제공한다:
 
-  /연동 <코드>     판매자 콘솔에서 발급받은 코드로 이 서버를 상점에 연결
-  /생성            판매자 플랜에 맞는 카테고리·채널을 (재)생성하고 채널마다
-                   웹훅을 만들어 사이트에 저장 — 실제 AI 리포트 발신은 노트북이
-                   이 웹훅 URL로 담당한다(요구사항: "AI는 내 노트북에서")
+  /실행 [코드] [전체초기화]  아직 연동 전이면 코드로 이 서버를 상점에 연결하고,
+                   이어서(또는 이미 연동돼 있으면 바로) 플랜에 맞는 카테고리·
+                   채널을 (재)생성하고 채널마다 웹훅을 만들어 사이트에 저장한다
+                   — 실제 AI 리포트 발신은 노트북이 이 웹훅 URL로 담당한다
+                   (요구사항: "AI는 내 노트북에서"). 판매자 계정 하나는 디스코드
+                   서버 하나로 고정되므로(커머스 API가 강제), 다시 실행해도
+                   같은 서버라면 채널만 재생성된다.
   /수익 [기간]     이 상점의 월 매출 요약
   /조회수 [날짜]   이 상점의 오늘 상품 조회수
   /일일리포트 [날짜] 오늘의 조회·판매·환불·재고 스냅샷(코드 집계 숫자)
@@ -98,8 +101,8 @@ class AiOpsBot(discord.Client):
             await channel.send(
                 "👋 **AI Ops Studio 봇**을 초대해주셔서 감사합니다!\n"
                 "1) 판매자 콘솔에서 **연동 코드**를 발급받은 뒤\n"
-                "2) 이 서버에서 `/연동 코드:<발급코드>` 를 입력하고\n"
-                "3) `/생성` 을 실행하면 플랜에 맞는 채널과 웹훅이 자동으로 만들어집니다."
+                "2) 이 서버에서 `/실행 코드:<발급코드>` 를 입력하면 상점 연동과 "
+                "채널·웹훅 생성이 한 번에 끝납니다."
             )
 
 
@@ -111,36 +114,47 @@ async def _guild_id_str(interaction: discord.Interaction) -> str:
 def register_commands(bot: AiOpsBot) -> None:
     tree = bot.tree
 
-    @tree.command(name="연동", description="발급받은 코드로 이 서버를 상점에 연결합니다.")
-    @app_commands.describe(코드="판매자 콘솔에서 발급받은 연동 코드")
+    @tree.command(
+        name="실행",
+        description="연동 코드로 상점을 연결하고, 플랜에 맞는 채널·웹훅을 (재)생성합니다.",
+    )
+    @app_commands.describe(
+        코드="아직 연동 전이라면 판매자 콘솔에서 발급받은 코드(이미 연동됐다면 비워도 됨)",
+        전체초기화="봇 카테고리 외 다른 채널까지 모두 삭제 후 재생성(주의)",
+    )
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def link(interaction: discord.Interaction, 코드: str) -> None:
-        await interaction.response.defer(ephemeral=True)
-        try:
-            data = await bot.api.link(await _guild_id_str(interaction), 코드.strip().upper())
-        except CommerceApiError as exc:
-            await interaction.followup.send(f"❌ {exc}", ephemeral=True)
-            return
-        await interaction.followup.send(
-            f"✅ **{data.get('org_name', '상점')}** 연동 완료! 요금제: **{data.get('plan')}**\n"
-            "이제 `/생성` 을 실행해 채널을 만드세요.",
-            ephemeral=True,
-        )
-
-    @tree.command(name="생성", description="플랜에 맞는 카테고리·채널·웹훅을 (재)생성합니다.")
-    @app_commands.describe(전체초기화="봇 카테고리 외 다른 채널까지 모두 삭제 후 재생성(주의)")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def provision(interaction: discord.Interaction, 전체초기화: bool = False) -> None:
+    async def execute(
+        interaction: discord.Interaction, 코드: str | None = None, 전체초기화: bool = False
+    ) -> None:
         await interaction.response.defer()
         guild = interaction.guild
         if guild is None:
             await interaction.followup.send("서버에서만 사용할 수 있습니다.")
             return
+        guild_id = await _guild_id_str(interaction)
+
+        # 이미 연동된 서버면 코드 없이 바로 채널 재생성으로 넘어간다. 아직
+        # 연동 전이면(404) 코드가 있어야만 진행한다 — 판매자 계정 하나는
+        # 디스코드 서버 하나로 고정되므로(커머스 API가 강제), 여기서 연동에
+        # 성공하면 이후로는 이 서버가 그 상점의 고정 서버가 된다.
         try:
-            org = await bot.api.org(await _guild_id_str(interaction))
+            org = await bot.api.org(guild_id)
         except CommerceApiError as exc:
-            await interaction.followup.send(f"❌ {exc}\n먼저 `/연동` 을 실행하세요.")
-            return
+            if exc.status_code != 404:
+                await interaction.followup.send(f"❌ {exc}")
+                return
+            if not 코드:
+                await interaction.followup.send(
+                    "❌ 아직 연동되지 않은 서버입니다. 판매자 콘솔에서 발급받은 연동 코드를 "
+                    "`코드:` 옵션에 넣어 `/실행 코드:<코드>` 로 다시 실행해주세요."
+                )
+                return
+            try:
+                await bot.api.link(guild_id, 코드.strip().upper())
+                org = await bot.api.org(guild_id)
+            except CommerceApiError as link_exc:
+                await interaction.followup.send(f"❌ {link_exc}")
+                return
 
         category_name = str(org.get("category_name") or "AI OPS STUDIO")
         plan_channels = org.get("plan_channels") or []
@@ -154,16 +168,16 @@ def register_commands(bot: AiOpsBot) -> None:
             )
             return
 
-        await bot.api.save_channels(await _guild_id_str(interaction), stored)
+        await bot.api.save_channels(guild_id, stored)
         summary = "\n".join(
             f"· #{c['channel_name']}"
             + (f" — `{c['persona']}` 페르소나" if c.get("persona") else " — 봇 명령용")
             for c in stored
         )
         shop = org.get("org_name", "상점")
-        header = f"✅ **{shop}**({org.get('plan')}) 채널 {len(stored)}개 생성 완료"
         await interaction.followup.send(
-            f"{header}\n{summary}\n\n각 채널에 웹훅을 만들어 사이트에 저장했습니다. "
+            f"✅ **{shop}** 세팅이 완료되었습니다!\n{summary}\n\n"
+            "각 채널에 웹훅을 만들어 사이트에 저장했습니다. "
             "AI 리포트는 노트북에서 이 웹훅으로 전송하세요."
         )
 
@@ -218,7 +232,7 @@ async def _metric_reply(bot, interaction, kind, formatter, *, period=None, date=
             await _guild_id_str(interaction), kind, period=period, date=date
         )
     except CommerceApiError as exc:
-        hint = "\n먼저 `/연동` 을 실행하세요." if exc.status_code == 404 else ""
+        hint = "\n먼저 `/실행` 을 실행하세요." if exc.status_code == 404 else ""
         await interaction.followup.send(f"❌ {exc}{hint}")
         return
     await interaction.followup.send(formatter(data))
@@ -243,15 +257,15 @@ async def _provision_channels(
     if wipe_all:
         for channel in list(guild.channels):
             try:
-                await channel.delete(reason="AI Ops Studio /생성 전체초기화")
+                await channel.delete(reason="AI Ops Studio /실행 전체초기화")
             except (discord.Forbidden, discord.HTTPException):
                 continue
     else:
         for category in list(guild.categories):
             if category.name == category_name:
                 for channel in list(category.channels):
-                    await channel.delete(reason="AI Ops Studio /생성 재생성")
-                await category.delete(reason="AI Ops Studio /생성 재생성")
+                    await channel.delete(reason="AI Ops Studio /실행 재생성")
+                await category.delete(reason="AI Ops Studio /실행 재생성")
 
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=True),

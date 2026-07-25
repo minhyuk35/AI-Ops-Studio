@@ -57,6 +57,11 @@ PLAN_CHANNELS: dict[str, list[str]] = {
     "BUSINESS": ["commands", "daily", "support", "monthly", "insight"],
 }
 
+# 실제 배포(플랜 판매) 전까지는 플랜 제한 없이 전체 채널 세트로 기능 검증만
+# 한다. PLAN_CHANNELS 매핑 자체는 그대로 남겨두고 이 스위치 하나만 바꾸면
+# 되므로, 나중에 플랜 게이팅을 켤 때 이 파일 밖은 손댈 필요가 없다.
+PLAN_GATING_ENABLED = False
+
 
 def normalize_plan(plan: str | None) -> str:
     candidate = (plan or "FREE").upper()
@@ -64,6 +69,12 @@ def normalize_plan(plan: str | None) -> str:
 
 
 def channels_for_plan(plan: str | None) -> list[dict[str, str | None]]:
-    """플랜에 해당하는 채널 스펙 목록(생성 순서대로)."""
+    """플랜에 해당하는 채널 스펙 목록(생성 순서대로).
+
+    PLAN_GATING_ENABLED가 False인 동안은 plan 값과 무관하게 전체 채널
+    세트를 돌려준다.
+    """
+    if not PLAN_GATING_ENABLED:
+        return [{"channel_key": key, **CHANNEL_SPECS[key]} for key in CHANNEL_SPECS]
     keys = PLAN_CHANNELS[normalize_plan(plan)]
     return [{"channel_key": key, **CHANNEL_SPECS[key]} for key in keys]

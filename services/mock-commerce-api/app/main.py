@@ -1394,6 +1394,15 @@ async def internal_discord_link(
         ).fetchone()
         if org is None:
             raise HTTPException(status_code=404, detail="유효하지 않은 연동 코드입니다.")
+        # 판매자 계정 하나 = 디스코드 서버 하나로 고정한다. 이미 다른 서버에
+        # 연동된 상점이 새 코드로 재연동을 시도하면 거부한다(같은 서버로의
+        # 재연동은 멱등하게 허용 — 봇 재시작 등으로 /실행을 다시 돌리는 경우).
+        current_guild_id = org["discord_guild_id"]
+        if current_guild_id and current_guild_id != payload.guild_id:
+            raise HTTPException(
+                status_code=409,
+                detail="이 상점은 이미 다른 디스코드 서버에 연동되어 있습니다.",
+            )
         existing = _org_by_guild(connection, payload.guild_id)
         if existing is not None and existing["id"] != org["id"]:
             raise HTTPException(

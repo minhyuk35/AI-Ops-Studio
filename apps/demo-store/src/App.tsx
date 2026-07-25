@@ -1150,14 +1150,14 @@ function SellerDiscordPanel({ token }: { token: string }) {
               <code style={{ fontSize: "1.1em", letterSpacing: "0.1em" }}>{code}</code>{" "}
               <button className="ghost" onClick={() => copy(code)}>복사</button>
               <br />
-              <small>서버에서 <code>/연동 코드:{code}</code> 를 입력하세요. (1회용)</small>
+              <small>서버에서 <code>/실행 코드:{code}</code> 를 입력하세요. (1회용)</small>
             </p>
           )}
         </div>
       </div>
 
       <div className="console-card" style={{ marginTop: 16 }}>
-        <h4>3 · 서버에서 <code>/생성</code> 실행 → 아래 채널이 자동 생성됩니다</h4>
+        <h4>3 · 서버에서 <code>/실행</code> 실행 → 아래 채널이 자동 생성됩니다</h4>
         {status.isLoading && <p className="empty">불러오는 중…</p>}
         <ul>
           {(data?.plan_channels ?? []).map((channel) => (
