@@ -1439,6 +1439,26 @@ async def internal_discord_org(
         return payload
 
 
+@app.get("/internal/discord/channels-by-org")
+async def internal_discord_channels_by_org(
+    org_id: str = Query(min_length=1, max_length=64),
+    x_internal_token: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Same channel/webhook lookup as /internal/discord/org, but keyed by
+    org_id -- used by core-api's scheduled cron reports (app/services/
+    scheduler.py), which iterate every active org and don't have a
+    per-seller guild_id or customer JWT to work with.
+    """
+    require_internal_token(x_internal_token)
+    with closing(connect()) as connection:
+        org = connection.execute(
+            "SELECT * FROM organizations WHERE id = ?", (org_id,)
+        ).fetchone()
+        if org is None:
+            raise HTTPException(status_code=404, detail="존재하지 않는 상점입니다.")
+        return _discord_status_payload(connection, dict(org))
+
+
 @app.put("/internal/discord/channels")
 async def internal_discord_channels(
     payload: DiscordChannelsRequest,

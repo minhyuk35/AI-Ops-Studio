@@ -60,12 +60,10 @@ class DailySellerReportScheduler:
         settings: Settings,
         commerce: CommerceClient,
         report_service: SellerDailyReportService,
-        notifier: DiscordNotifier,
     ) -> None:
         self.settings = settings
         self.commerce = commerce
         self.report_service = report_service
-        self.notifier = notifier
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -84,7 +82,12 @@ class DailySellerReportScheduler:
                 logger.exception("daily seller report run failed")
 
     async def run_once(self) -> list[dict[str, object]]:
-        """Generate + (if configured) send today's report for every active seller."""
+        """Generate + (if linked) send today's report for every active seller.
+
+        Each org's own "일일-리포트" channel webhook, looked up by org_id --
+        never a single fixed webhook, or every seller's report would land in
+        the same (someone else's, or the platform's dev/test) channel.
+        """
         orgs = await self.commerce.list_active_organizations()
         results: list[dict[str, object]] = []
         for org in orgs:
@@ -92,10 +95,12 @@ class DailySellerReportScheduler:
                 snapshot = await self.commerce.get_seller_daily_snapshot(org["id"], None)
                 report = await asyncio.to_thread(self.report_service.generate_report, snapshot)
                 sent = False
-                if self.notifier.enabled:
+                webhook_url = await self.commerce.get_org_discord_webhook(org["id"], "daily")
+                if webhook_url:
+                    notifier = DiscordNotifier(webhook_url, self.settings.discord_timeout_seconds)
                     header = f"**{report.org_name} · {report.date} 일일 리포트**"
                     message = f"{header}\n\n{report.report}"
-                    sent = await asyncio.to_thread(self.notifier.send, message)
+                    sent = await asyncio.to_thread(notifier.send, message)
                 results.append({"org_id": org["id"], "discord_sent": sent})
             except Exception:
                 logger.exception("daily seller report failed for org %s", org["id"])

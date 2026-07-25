@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from app.services.commerce_client import CommerceClient
 
 
-def _extract_token(authorization: str | None) -> str:
+def extract_token(authorization: str | None) -> str:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
     return authorization.split(" ", 1)[1].strip()
@@ -12,7 +12,7 @@ def _extract_token(authorization: str | None) -> str:
 async def require_identity(
     authorization: str | None, commerce: CommerceClient
 ) -> dict[str, object]:
-    token = _extract_token(authorization)
+    token = extract_token(authorization)
     profile = await commerce.verify_identity(token)
     if profile is None:
         raise HTTPException(status_code=401, detail="로그인이 필요합니다.")

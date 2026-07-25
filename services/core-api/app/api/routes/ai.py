@@ -29,7 +29,7 @@ from app.services.commerce_ai import (
 )
 from app.services.commerce_client import CommerceClient
 from app.services.discord import DiscordNotifier
-from app.services.identity import require_admin, require_org_access
+from app.services.identity import extract_token, require_admin, require_org_access
 from app.services.inquiry_store import inquiry_store
 from app.services.openrouter import OpenRouterSupportService
 from app.services.prompts import PromptRepository
@@ -164,16 +164,23 @@ async def seller_daily_report(
     payload: SellerDailyReportRequest,
     service: Annotated[SellerDailyReportService, Depends(get_seller_report_service)],
     commerce: Annotated[CommerceClient, Depends(get_commerce_client)],
-    notifier: Annotated[DiscordNotifier, Depends(get_discord_notifier)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> SellerDailyReportResponse:
     await require_org_access(payload.org_id, authorization, commerce)
     snapshot = await commerce.get_seller_daily_snapshot(payload.org_id, payload.date)
     report = await run_in_threadpool(service.generate_report, snapshot)
     discord_sent = False
-    if payload.send_discord and notifier.enabled:
-        message = f"**{report.org_name} · {report.date} 일일 리포트**\n\n{report.report}"
-        discord_sent = await run_in_threadpool(notifier.send, message)
+    if payload.send_discord:
+        # The seller's own linked Discord server's "일일-리포트" channel
+        # webhook -- never the platform's fixed admin/test webhook, which
+        # lives in a dev server no seller can see.
+        webhook_url = await commerce.get_seller_discord_webhook(
+            extract_token(authorization), "daily"
+        )
+        if webhook_url:
+            message = f"**{report.org_name} · {report.date} 일일 리포트**\n\n{report.report}"
+            seller_notifier = DiscordNotifier(webhook_url, get_settings().discord_timeout_seconds)
+            discord_sent = await run_in_threadpool(seller_notifier.send, message)
     return report.model_copy(update={"discord_sent": discord_sent})
 
 

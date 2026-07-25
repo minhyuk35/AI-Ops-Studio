@@ -17,6 +17,7 @@ class CommerceClient:
     def __init__(self, settings: Settings) -> None:
         self._base_url = settings.mock_commerce_api_url.rstrip("/")
         self._timeout = settings.mock_commerce_timeout_seconds
+        self._internal_token = settings.discord_bot_shared_secret
 
     async def get_revenue_summary(self, period: str | None) -> dict[str, object]:
         return await self._get("/analytics/summary", {"period": period} if period else None)
@@ -55,6 +56,51 @@ class CommerceClient:
         except httpx.HTTPError:
             return None
         return str(data["org_id"])
+
+    async def get_seller_discord_webhook(self, token: str, channel_key: str) -> str | None:
+        """The seller's own Discord webhook for one channel (e.g. "daily"),
+        set up by their own bot linking (see services/discord-bot), not the
+        platform's fixed admin/test webhook. Returns None if the org hasn't
+        linked Discord yet or never provisioned that channel. Used by the
+        seller-facing "Discord로 전송" button, which already has the
+        seller's own bearer token.
+        """
+        async with httpx.AsyncClient(base_url=self._base_url, timeout=self._timeout) as client:
+            response = await client.get(
+                "/sellers/me/discord", headers={"Authorization": f"Bearer {token}"}
+            )
+            if response.status_code != 200:
+                return None
+            return self._extract_channel_webhook(response.json(), channel_key)
+
+    async def get_org_discord_webhook(self, org_id: str, channel_key: str) -> str | None:
+        """Same lookup as get_seller_discord_webhook, but by org_id via the
+        internal shared secret instead of a customer bearer token -- used by
+        the scheduled daily-report cron (app/services/scheduler.py), which
+        walks every active org and has neither a guild_id nor a JWT to work
+        with. Returns None (silently) if DISCORD_BOT_SHARED_SECRET isn't
+        configured, the org hasn't linked Discord, or that channel doesn't
+        exist yet -- same as get_seller_discord_webhook's "not set up" case.
+        """
+        if not self._internal_token:
+            return None
+        async with httpx.AsyncClient(base_url=self._base_url, timeout=self._timeout) as client:
+            response = await client.get(
+                "/internal/discord/channels-by-org",
+                params={"org_id": org_id},
+                headers={"X-Internal-Token": self._internal_token},
+            )
+            if response.status_code != 200:
+                return None
+            return self._extract_channel_webhook(response.json(), channel_key)
+
+    @staticmethod
+    def _extract_channel_webhook(payload: dict[str, Any], channel_key: str) -> str | None:
+        for channel in payload.get("channels", []):
+            if channel.get("channel_key") == channel_key:
+                webhook_url = channel.get("webhook_url")
+                return str(webhook_url) if webhook_url else None
+        return None
 
     async def verify_identity(self, token: str) -> dict[str, object] | None:
         """Resolve a customer JWT to their profile (id, role, organization).

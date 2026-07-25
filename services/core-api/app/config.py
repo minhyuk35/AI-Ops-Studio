@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     admin_discord_webhook_url: str = ""
     discord_timeout_seconds: float = Field(default=10, ge=1, le=30)
 
+    # Shared with services/discord-bot and mock-commerce-api's
+    # require_internal_token -- lets core-api look up a seller's own
+    # per-org Discord webhook (GET /internal/discord/channels-by-org)
+    # instead of only having the platform's fixed admin/test webhook.
+    discord_bot_shared_secret: str = ""
+
     # Verifies Vercel Cron requests to app/api/routes/cron.py (Authorization:
     # Bearer <this>). Empty means those endpoints refuse everything -- see
     # docs/vercel-deployment.md.

@@ -22,7 +22,6 @@ from app.services.scheduler import (
 
 settings = get_settings()
 _commerce = CommerceClient(settings)
-_seller_notifier = DiscordNotifier(settings.discord_webhook_url, settings.discord_timeout_seconds)
 _admin_notifier = DiscordNotifier(
     settings.admin_discord_webhook_url, settings.discord_timeout_seconds
 )
@@ -31,7 +30,6 @@ seller_report_scheduler = DailySellerReportScheduler(
     settings,
     _commerce,
     SellerDailyReportService(settings, PromptRepository(settings)),
-    _seller_notifier,
 )
 platform_traffic_scheduler = PlatformTrafficScheduler(
     settings,

@@ -27,7 +27,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.api.routes.ai import (
     get_admin_discord_notifier,
-    get_discord_notifier,
     get_market_share_service,
     get_platform_traffic_service,
     get_seller_report_service,
@@ -68,9 +67,8 @@ def _verify_cron_request(authorization: str | None, settings: Settings) -> None:
 def get_daily_seller_report_scheduler(
     commerce: Annotated[CommerceClient, Depends(get_commerce_client)],
     report_service: Annotated[SellerDailyReportService, Depends(get_seller_report_service)],
-    notifier: Annotated[DiscordNotifier, Depends(get_discord_notifier)],
 ) -> DailySellerReportScheduler:
-    return DailySellerReportScheduler(get_settings(), commerce, report_service, notifier)
+    return DailySellerReportScheduler(get_settings(), commerce, report_service)
 
 
 @lru_cache
