@@ -91,6 +91,9 @@ def get_market_share_service() -> SellerMarketShareService:
     return SellerMarketShareService(settings, PromptRepository(settings))
 
 
+_CANCELLABLE_ORDER_STATUSES = {"PENDING_PAYMENT", "PREPARING"}
+
+
 @router.post("/reply", response_model=AIReplyResponse)
 async def create_reply(
     payload: AIReplyRequest,
@@ -99,6 +102,35 @@ async def create_reply(
     commerce: Annotated[CommerceClient, Depends(get_commerce_client)],
 ) -> AIReplyResponse:
     response = await run_in_threadpool(service.generate_reply, payload)
+
+    # LOW-risk order cancellation, before shipping, executes immediately
+    # instead of just telling the customer it's "possible" -- code performs
+    # the action (same endpoint the customer's own cancel button calls),
+    # never the LLM. Only for the exact case that's already safe by the
+    # site's own rules: PENDING_PAYMENT/PREPARING orders can already be
+    # self-service cancelled, this just skips the click.
+    order_status = str(payload.order_context.get("status") or "") if payload.order_context else ""
+    auto_cancelled = False
+    if (
+        response.category == "CANCEL"
+        and response.risk == "LOW"
+        and not response.requires_human
+        and payload.order_id
+        and order_status in _CANCELLABLE_ORDER_STATUSES
+    ):
+        try:
+            await commerce.cancel_order(payload.order_id, "AI 자동 취소 - 배송 전 단순 변심")
+            auto_cancelled = True
+        except Exception:  # noqa: BLE001 - order may have shipped meanwhile; don't break the reply
+            auto_cancelled = False
+        if auto_cancelled:
+            response = response.model_copy(
+                update={
+                    "answer": response.answer
+                    + "\n\n✅ 배송 전 상태로 확인되어 주문이 자동으로 취소·환불 처리되었습니다."
+                }
+            )
+
     # Which seller does this inquiry belong to, so it shows up on *their*
     # console instead of only the platform-wide inbox — resolved from the
     # order, never trusted from the client-supplied organization_id.
@@ -113,27 +145,109 @@ async def create_reply(
             "trace_id": response.trace_id or payload.request_id,
         }
     )
-    if final.requires_human:
-        message = (
-            f"**상담원 이관 필요**\n분류: {final.category} · 위험도: {final.risk}\n"
-            f"문의: {payload.question[:300]}\n문의 ID: {inquiry_id}"
+
+    # The seller's own "문의-이관" channel webhook, auto-provisioned by
+    # /실행 and stored in discord_channels -- no env var, no manual setup.
+    # Falls back to the platform's admin/dev webhook only when this inquiry
+    # can't be attributed to a seller (no order_id) or that seller hasn't
+    # linked Discord yet, so escalations never just silently vanish.
+    seller_webhook_url = (
+        await commerce.get_org_discord_webhook(org_id, "support") if org_id else None
+    )
+    target_notifier = (
+        DiscordNotifier(seller_webhook_url, get_settings().discord_timeout_seconds)
+        if seller_webhook_url
+        else notifier
+    )
+    if target_notifier.enabled:
+        await run_in_threadpool(
+            _notify_discord, target_notifier, final, payload, inquiry_id, auto_cancelled
         )
-        # The seller's own "문의-이관" channel webhook, auto-provisioned by
-        # /실행 and stored in discord_channels -- no env var, no manual
-        # setup. Falls back to the platform's admin/dev webhook only when
-        # this inquiry can't be attributed to a seller (no order_id) or
-        # that seller hasn't linked Discord yet, so escalations never just
-        # silently vanish.
-        seller_webhook_url = (
-            await commerce.get_org_discord_webhook(org_id, "support") if org_id else None
-        )
-        if seller_webhook_url:
-            timeout = get_settings().discord_timeout_seconds
-            seller_notifier = DiscordNotifier(seller_webhook_url, timeout)
-            await run_in_threadpool(seller_notifier.send, message)
-        elif notifier.enabled:
-            await run_in_threadpool(notifier.send, message)
     return final
+
+
+def _notify_discord(
+    notifier: DiscordNotifier,
+    final: AIReplyResponse,
+    payload: AIReplyRequest,
+    inquiry_id: str,
+    auto_cancelled: bool,
+) -> bool:
+    """Builds and sends the right embed for the outcome that just happened:
+    an informational summary (auto-cancelled), a two-button approve/reply
+    prompt (MEDIUM risk), or a single-button escalation (HIGH risk / any
+    other requires_human trigger). LOW risk that wasn't auto-cancelled sends
+    nothing -- routine FAQ-style answers shouldn't page a seller's Discord.
+    """
+    question_preview = payload.question[:300]
+    if auto_cancelled:
+        embed = {
+            "title": "✅ 자동 처리 완료",
+            "description": f"문의: {question_preview}",
+            "color": 0x4ADE80,
+            "fields": [
+                {
+                    "name": "처리 내용",
+                    "value": "배송 전 주문을 자동으로 취소·환불했습니다.",
+                    "inline": False,
+                },
+                {"name": "문의 ID", "value": inquiry_id, "inline": False},
+            ],
+        }
+        return notifier.send_embed(embed)
+
+    if final.requires_human:
+        embed = {
+            "title": "🚨 상담원 이관 필요",
+            "description": f"문의: {question_preview}",
+            "color": 0xF87171,
+            "fields": [
+                {"name": "분류", "value": final.category, "inline": True},
+                {"name": "위험도", "value": final.risk, "inline": True},
+                {"name": "문의 ID", "value": inquiry_id, "inline": False},
+            ],
+        }
+        components = [
+            {
+                "type": 1,
+                "components": [
+                    {
+                        "type": 2,
+                        "style": 2,
+                        "label": "답변하기",
+                        "custom_id": f"reply:{inquiry_id}",
+                    },
+                ],
+            }
+        ]
+        return notifier.send_embed(embed, components)
+
+    if final.risk == "MEDIUM":
+        embed = {
+            "title": "🟡 확인 필요",
+            "description": (
+                f"문의: {question_preview}\n\n**AI 제안 답변**\n{final.answer[:600]}\n\n"
+                "이런 식으로 해결해도 될까요?"
+            ),
+            "color": 0xFBBF24,
+            "fields": [
+                {"name": "분류", "value": final.category, "inline": True},
+                {"name": "위험도", "value": final.risk, "inline": True},
+                {"name": "문의 ID", "value": inquiry_id, "inline": False},
+            ],
+        }
+        components = [
+            {
+                "type": 1,
+                "components": [
+                    {"type": 2, "style": 3, "label": "승인", "custom_id": f"approve:{inquiry_id}"},
+                    {"type": 2, "style": 2, "label": "답변", "custom_id": f"reply:{inquiry_id}"},
+                ],
+            }
+        ]
+        return notifier.send_embed(embed, components)
+
+    return False
 
 
 @router.get("/commerce-insight", response_model=CommerceInsightResponse)

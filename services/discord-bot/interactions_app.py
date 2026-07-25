@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 
+import httpx
 from api_client import CommerceApiError, CommerceClient
 from discord_rest import DiscordApiError, DiscordRestClient
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
@@ -43,9 +44,13 @@ from provisioning import provision_channels
 
 PING = 1
 APPLICATION_COMMAND = 2
+MESSAGE_COMPONENT = 3
+MODAL_SUBMIT = 5
 PONG = 1
 CHANNEL_MESSAGE_WITH_SOURCE = 4
 DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE = 5
+MODAL = 9
+EPHEMERAL = 1 << 6
 MANAGE_GUILD_PERMISSION = 1 << 5
 
 app = FastAPI()
@@ -59,6 +64,21 @@ PUBLIC_KEY = _env("DISCORD_PUBLIC_KEY")
 BOT_TOKEN = _env("DISCORD_BOT_TOKEN")
 APPLICATION_ID = _env("DISCORD_APPLICATION_ID")
 COMMERCE_API_BASE = _env("DISCORD_BOT_API_BASE", "http://localhost:8001")
+
+
+def _default_core_api_base() -> str:
+    """core-api owns the inquiries endpoints (문의 승인/답변) -- a separate
+    base from COMMERCE_API_BASE, but in production both live under the same
+    Vercel deployment (see vercel.json), so derive it from
+    DISCORD_BOT_API_BASE rather than requiring yet another env var to be
+    set by hand: .../api/commerce -> .../api/core.
+    """
+    if COMMERCE_API_BASE.endswith("/api/commerce"):
+        return COMMERCE_API_BASE[: -len("/api/commerce")] + "/api/core"
+    return "http://localhost:8000"
+
+
+CORE_API_BASE = _env("DISCORD_BOT_CORE_API_BASE") or _default_core_api_base()
 SHARED_SECRET = _env("DISCORD_BOT_SHARED_SECRET")
 CATEGORY_NAME = "AI OPS STUDIO"
 
@@ -144,7 +164,7 @@ async def _run_execute_and_followup(
             interaction_token,
             f"✅ **{shop}** 세팅이 완료되었습니다!\n{summary}\n\n"
             "각 채널에 웹훅을 만들어 사이트에 저장했습니다. "
-            "AI 리포트는 노트북에서 이 웹훅으로 전송하세요.",
+            "일일 리포트와 문의 이관 알림이 이제 이 채널들로 자동 전송됩니다.",
         )
     except DiscordApiError as exc:
         await rest.send_followup(
@@ -195,6 +215,120 @@ async def _handle_status(interaction: dict) -> dict:
     return _message(format_status(data))
 
 
+def _reply_modal(inquiry_id: str) -> dict:
+    return {
+        "type": MODAL,
+        "data": {
+            "custom_id": f"reply_modal:{inquiry_id}",
+            "title": "고객에게 답변 보내기",
+            "components": [
+                {
+                    "type": 1,
+                    "components": [
+                        {
+                            "type": 4,
+                            "custom_id": "reply_text",
+                            "style": 2,
+                            "label": "답변 내용",
+                            "min_length": 1,
+                            "max_length": 1000,
+                            "required": True,
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+
+
+def _handle_component(interaction: dict, background_tasks: BackgroundTasks) -> dict:
+    custom_id = str(interaction.get("data", {}).get("custom_id") or "")
+    kind, _, inquiry_id = custom_id.partition(":")
+    if not inquiry_id:
+        return _message("❌ 알 수 없는 버튼입니다.", response_type=CHANNEL_MESSAGE_WITH_SOURCE)
+    if kind == "reply":
+        return _reply_modal(inquiry_id)
+    if kind == "approve":
+        background_tasks.add_task(_run_approve_and_followup, inquiry_id, interaction["token"])
+        return {
+            "type": DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {"flags": EPHEMERAL},
+        }
+    return _message("❌ 알 수 없는 버튼입니다.", response_type=CHANNEL_MESSAGE_WITH_SOURCE)
+
+
+def _extract_modal_value(interaction: dict, custom_id: str) -> str:
+    for row in interaction.get("data", {}).get("components", []):
+        for component in row.get("components", []):
+            if component.get("custom_id") == custom_id:
+                return str(component.get("value", ""))
+    return ""
+
+
+def _handle_modal_submit(interaction: dict, background_tasks: BackgroundTasks) -> dict:
+    custom_id = str(interaction.get("data", {}).get("custom_id") or "")
+    kind, _, inquiry_id = custom_id.partition(":")
+    if kind != "reply_modal" or not inquiry_id:
+        return _message("❌ 처리할 수 없는 제출입니다.", response_type=CHANNEL_MESSAGE_WITH_SOURCE)
+    reply_text = _extract_modal_value(interaction, "reply_text").strip()
+    if not reply_text:
+        return _message("❌ 답변 내용을 입력해주세요.", response_type=CHANNEL_MESSAGE_WITH_SOURCE)
+    background_tasks.add_task(
+        _run_reply_and_followup, inquiry_id, reply_text, interaction["token"]
+    )
+    return {"type": DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, "data": {"flags": EPHEMERAL}}
+
+
+async def _run_approve_and_followup(inquiry_id: str, interaction_token: str) -> None:
+    """POST /api/v1/inquiries/{id}/approve on core-api -- accepts the AI's
+    proposed answer as final, and for a CANCEL-category inquiry tied to an
+    order, actually executes that cancellation (see the endpoint's own
+    docstring). Protected by the same shared secret as every other bot ->
+    server call, since unlike a reply this can mutate a real order.
+    """
+    rest = DiscordRestClient(BOT_TOKEN)
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                f"{CORE_API_BASE}/api/v1/inquiries/{inquiry_id}/approve",
+                headers={"X-Internal-Token": SHARED_SECRET},
+            )
+            response.raise_for_status()
+            data = response.json()
+        action = data.get("action")
+        text = (
+            "✅ 승인 처리되었습니다 — 주문이 취소·환불 처리되었습니다."
+            if action == "CANCELLED"
+            else "✅ 승인 처리되었습니다 — 문의가 해결됨으로 표시되었습니다."
+        )
+        await rest.send_followup(APPLICATION_ID, interaction_token, text, ephemeral=True)
+    except httpx.HTTPError as exc:
+        await rest.send_followup(
+            APPLICATION_ID, interaction_token, f"❌ 승인 처리에 실패했습니다: {exc}", ephemeral=True
+        )
+
+
+async def _run_reply_and_followup(inquiry_id: str, reply_text: str, interaction_token: str) -> None:
+    """PATCH /api/v1/inquiries/{id} on core-api -- appends the seller's own
+    reply to the inquiry (role "agent") and marks it resolved. The customer
+    sees it appear in their own 문의 내역 chat panel (polls every 5s)."""
+    rest = DiscordRestClient(BOT_TOKEN)
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.patch(
+                f"{CORE_API_BASE}/api/v1/inquiries/{inquiry_id}",
+                json={"status": "RESOLVED", "note": reply_text},
+            )
+            response.raise_for_status()
+        await rest.send_followup(
+            APPLICATION_ID, interaction_token, "✅ 고객에게 답변을 전송했습니다.", ephemeral=True
+        )
+    except httpx.HTTPError as exc:
+        await rest.send_followup(
+            APPLICATION_ID, interaction_token, f"❌ 답변 전송에 실패했습니다: {exc}", ephemeral=True
+        )
+
+
 def verify_signature(signature: str | None, timestamp: str | None, body: bytes) -> bool:
     if not signature or not timestamp or not PUBLIC_KEY:
         return False
@@ -225,6 +359,16 @@ async def interactions(request: Request, background_tasks: BackgroundTasks) -> R
 
     if interaction_type == PING:
         return Response(content='{"type":1}', media_type="application/json")
+
+    if interaction_type == MESSAGE_COMPONENT:
+        payload = _handle_component(interaction, background_tasks)
+        body_out = json.dumps(payload, ensure_ascii=False)
+        return Response(content=body_out, media_type="application/json")
+
+    if interaction_type == MODAL_SUBMIT:
+        payload = _handle_modal_submit(interaction, background_tasks)
+        body_out = json.dumps(payload, ensure_ascii=False)
+        return Response(content=body_out, media_type="application/json")
 
     if interaction_type != APPLICATION_COMMAND:
         return Response(content='{"type":1}', media_type="application/json")

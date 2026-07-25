@@ -1,3 +1,5 @@
+from typing import Any
+
 import httpx
 
 # Discord hard-limits a single webhook message's content field to 2000
@@ -64,3 +66,23 @@ class DiscordNotifier:
             except httpx.HTTPError:
                 return sent_any
         return sent_any
+
+    def send_embed(
+        self, embed: dict[str, Any], components: list[dict[str, Any]] | None = None
+    ) -> bool:
+        """Support-inquiry notifications (escalation, approve/reply buttons,
+        auto-resolution summaries) -- richer than a plain report string, so
+        they get a real embed instead of _chunk_content()'s markdown text.
+        Same never-raise contract as send().
+        """
+        if not self.enabled:
+            return False
+        payload: dict[str, Any] = {"embeds": [embed]}
+        if components:
+            payload["components"] = components
+        try:
+            response = httpx.post(self._webhook_url, json=payload, timeout=self._timeout)
+            response.raise_for_status()
+            return True
+        except httpx.HTTPError:
+            return False

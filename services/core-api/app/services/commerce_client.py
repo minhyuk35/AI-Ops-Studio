@@ -57,6 +57,18 @@ class CommerceClient:
             return None
         return str(data["org_id"])
 
+    async def cancel_order(self, order_id: str, reason: str) -> dict[str, object]:
+        """Same endpoint the customer's own "주문 취소" button calls. Used by
+        the support pipeline to auto-execute a LOW-risk pre-shipment
+        cancellation instead of just talking about it -- raises on failure
+        (e.g. the order shipped in the meantime) so the caller can decide
+        whether to fall back to a human.
+        """
+        async with httpx.AsyncClient(base_url=self._base_url, timeout=self._timeout) as client:
+            response = await client.post(f"/orders/{order_id}/cancel", json={"reason": reason})
+            response.raise_for_status()
+            return response.json()
+
     async def get_seller_discord_webhook(self, token: str, channel_key: str) -> str | None:
         """The seller's own Discord webhook for one channel (e.g. "daily"),
         set up by their own bot linking (see services/discord-bot), not the

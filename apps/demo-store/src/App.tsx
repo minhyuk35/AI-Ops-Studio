@@ -244,6 +244,10 @@ export function App() {
     queryKey: ["inquiry", selectedInquiryId],
     queryFn: () => getInquiry(selectedInquiryId!),
     enabled: Boolean(selectedInquiryId),
+    // Sellers can reply from Discord (see the escalation embed's 답변 버튼) —
+    // poll while a conversation is open so that reply shows up without the
+    // customer having to manually refresh the page.
+    refetchInterval: 5000,
   });
 
   const setCart = (next: Cart) => queryClient.setQueryData(["cart", cartId, couponCode], next);
@@ -652,7 +656,14 @@ function OrdersPage({ orders, onOrder }: { orders: Order[]; onOrder: (id: string
 
 function OrderPage({ order, onCancel, onReturn }: { order: Order; onCancel: () => void; onReturn: () => void }) { return <main className="store-section order-detail"><SectionTitle eyebrow={order.id} title={statusLabel[order.status] ?? order.status} /><div className="order-columns"><section><h2>주문 상품</h2>{order.items.map((item) => <article key={item.id}><div><b>{item.product_name}</b><span>{item.option_text} · {item.quantity}개</span></div><strong>{won.format(item.line_total)}</strong></article>)}</section><aside className="summary"><h2>결제 정보</h2><p><span>상품금액</span><b>{won.format(order.subtotal)}</b></p><p><span>할인</span><b>−{won.format(order.discount)}</b></p><p><span>배송비</span><b>{won.format(order.shipping_fee)}</b></p><p className="total"><span>결제금액</span><strong>{won.format(order.total)}</strong></p></aside></div><section className="shipment"><h2>배송 정보</h2><div className="timeline"><i className="done" /><i className={order.status !== "PENDING_PAYMENT" ? "done" : ""} /><i className={["SHIPPING", "DELIVERED"].includes(order.status) ? "done" : ""} /><i className={order.status === "DELIVERED" ? "done" : ""} /></div><div className="timeline-labels"><span>주문접수</span><span>상품준비</span><span>배송중</span><span>배송완료</span></div><p>{order.shipment?.carrier ?? "택배사 배정 전"} · {order.shipment?.tracking_number ?? "송장번호 준비 중"} · 도착 예정 {order.shipment?.eta ?? "확인 중"}</p></section><section className="address"><h2>받는 분</h2><p>{order.recipient} · {order.phone}</p><p>({order.postal_code}) {order.address1} {order.address2}</p></section><div className="claim-actions">{["PENDING_PAYMENT", "PREPARING"].includes(order.status) && <button onClick={onCancel}>주문 취소</button>}{order.status === "DELIVERED" && <button onClick={onReturn}>반품 신청</button>}</div>{order.claims.length > 0 && <section><h2>취소·반품 내역</h2>{order.claims.map((claim) => <p key={claim.id}>{claim.type} · {claim.status} · 환불 예정 {won.format(claim.refund_amount)}</p>)}</section>}</main>; }
 
-function InquiryPage({ inquiries, selected, onSelect }: { inquiries: Inquiry[]; selected?: Inquiry; onSelect: (id: string) => void }) { return <main className="store-section"><SectionTitle eyebrow="SUPPORT" title="문의 내역" /><div className="inquiry-layout"><div className="inquiry-list">{inquiries.map((item) => <button key={item.id} onClick={() => onSelect(item.id)}><span>{item.category}</span><div><b>{item.subject}</b><small>{item.status} · 메시지 {item.message_count ?? 0}개</small></div></button>)}{!inquiries.length && <div className="empty">아직 문의 내역이 없습니다. 오른쪽 아래 AI 고객지원을 이용해보세요.</div>}</div>{selected && <section className="conversation"><h2>{selected.subject}</h2>{selected.messages?.map((message) => <div className={`bubble ${message.role}`} key={message.id}><b>{message.role === "user" ? "나" : "AI 고객지원"}</b><div className="markdown-body"><ReactMarkdown>{message.content}</ReactMarkdown></div><small>{new Date(message.created_at).toLocaleString("ko-KR")}</small></div>)}</section>}</div></main>; }
+function InquiryPage({ inquiries, selected, onSelect }: { inquiries: Inquiry[]; selected?: Inquiry; onSelect: (id: string) => void }) {
+  const scrollRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [selected?.id, selected?.messages?.length]);
+  return <main className="store-section"><SectionTitle eyebrow="SUPPORT" title="문의 내역" /><div className="inquiry-layout"><div className="inquiry-list">{inquiries.map((item) => <button key={item.id} onClick={() => onSelect(item.id)}><span>{item.category}</span><div><b>{item.subject}</b><small>{item.status} · 메시지 {item.message_count ?? 0}개</small></div></button>)}{!inquiries.length && <div className="empty">아직 문의 내역이 없습니다. 오른쪽 아래 AI 고객지원을 이용해보세요.</div>}</div>{selected && <section className="conversation" ref={scrollRef}><h2>{selected.subject}</h2>{selected.messages?.map((message) => <div className={`bubble ${message.role}`} key={message.id}><b>{message.role === "user" ? "나" : message.role === "assistant" ? "AI 고객지원" : "판매자"}</b><div className="markdown-body"><ReactMarkdown>{message.content}</ReactMarkdown></div><small>{new Date(message.created_at).toLocaleString("ko-KR")}</small></div>)}</section>}</div></main>;
+}
 
 function SupportChat({ order, product, customerId, onSaved }: { order: Order | null; product: ProductDetail | null; customerId: string; onSaved: () => void }) {
   const [open, setOpen] = useState(false);

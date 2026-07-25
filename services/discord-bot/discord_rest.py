@@ -85,11 +85,21 @@ class DiscordRestClient:
         )
 
     async def send_followup(
-        self, application_id: str, interaction_token: str, content: str
+        self,
+        application_id: str,
+        interaction_token: str,
+        content: str,
+        *,
+        ephemeral: bool = False,
     ) -> None:
-        """Post the deferred reply -- interaction_token is valid for 15 minutes."""
+        """Post the deferred reply -- interaction_token is valid for 15 minutes.
+        ephemeral=True (flags 1<<6) makes it visible only to the seller who
+        clicked the button/submitted the modal, not the whole channel."""
+        payload: dict[str, Any] = {"content": content[:2000]}
+        if ephemeral:
+            payload["flags"] = 1 << 6
         await self._request(
             "POST",
             f"/webhooks/{application_id}/{interaction_token}",
-            json={"content": content[:2000]},
+            json=payload,
         )
