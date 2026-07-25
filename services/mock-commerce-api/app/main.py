@@ -198,7 +198,7 @@ def fetch_product(connection, identifier: str) -> dict[str, object]:
         JOIN categories c ON c.id = p.category_id
         LEFT JOIN variants v ON v.product_id = p.id
         WHERE p.id = ? OR p.slug = ?
-        GROUP BY p.id
+        GROUP BY p.id, c.name, c.slug
         """,
         (identifier, identifier),
     ).fetchone()
@@ -243,7 +243,7 @@ def cart_payload(connection, cart_id: str, coupon_code: str | None = None) -> di
         FROM cart_items ci
         JOIN variants v ON v.id = ci.variant_id
         JOIN products p ON p.id = v.product_id
-        WHERE ci.cart_id = ? ORDER BY ci.rowid
+        WHERE ci.cart_id = ? ORDER BY ci.id
         """,
         (cart_id,),
     ).fetchall()
@@ -451,7 +451,7 @@ async def list_products(
             FROM products p JOIN categories c ON c.id = p.category_id
             LEFT JOIN variants v ON v.product_id = p.id
             LEFT JOIN organizations o ON o.id = p.org_id
-            {where} GROUP BY p.id ORDER BY {order_by}
+            {where} GROUP BY p.id, c.name, c.slug ORDER BY {order_by}
             """,
             parameters,
         ).fetchall()
@@ -1214,7 +1214,7 @@ async def list_events(
         rows = connection.execute(
             f"""
             SELECT * FROM commerce_events {where}
-            ORDER BY occurred_at DESC, rowid DESC LIMIT ?
+            ORDER BY occurred_at DESC, created_at DESC LIMIT ?
             """,
             [*parameters, limit],
         ).fetchall()
