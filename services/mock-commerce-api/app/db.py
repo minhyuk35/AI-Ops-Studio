@@ -399,98 +399,116 @@ def initialize_database() -> None:
             "discord_linked_at": "TEXT",
         }
         _ensure_columns(connection, "organizations", organization_columns)  # type: ignore[arg-type]
-        connection.execute(
-            """
-            INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
-            VALUES(?,?,?,?,?,?,?)
-            ON CONFLICT(id) DO UPDATE SET
-                password_hash = CASE WHEN customers.password_hash = '' THEN excluded.password_hash
-                                      ELSE customers.password_hash END
-            """,
-            (
-                "cus_demo",
-                "demo@example.com",
-                "김민지",
-                "010-0000-0000",
-                hash_password(DEMO_CUSTOMER_PASSWORD),
-                0,
-                utc_now(),
-            ),
-        )
-        connection.executemany(
-            """
-            INSERT INTO categories(id, slug, name, sort_order) VALUES(?,?,?,?)
-            ON CONFLICT(id) DO UPDATE SET
-                slug = excluded.slug,
-                name = excluded.name,
-                sort_order = excluded.sort_order
-            """,
-            CATEGORIES,
-        )
-        for product in PRODUCTS:
+
+        # The catalog upsert loop below is one insert+delete+upsert per
+        # product (~100 round trips for the 34-product seed catalog alone).
+        # On SQLite that's free (local file), so it always runs there to
+        # keep local dev's catalog fresh on every restart. On Postgres,
+        # initialize_database() reruns on every Vercel cold start (no
+        # persistent process to have already run it once) -- paying that
+        # round-trip cost on every cold start, on top of real network
+        # latency to the DB, is what made product listing feel slow. Skip
+        # the whole seed cascade once the catalog already exists; schema
+        # creation/_ensure_columns above still always run so a future
+        # schema change still reaches an already-seeded Postgres DB.
+        catalog_seeded = is_postgres() and connection.execute(
+            "SELECT 1 FROM products WHERE id = ?", ("prd_001",)
+        ).fetchone()
+        if not catalog_seeded:
             connection.execute(
                 """
-                INSERT INTO products(
-                    id, slug, category_id, brand, name, description, material, care,
-                    image, price, compare_at_price, rating, review_count, created_at
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
+                VALUES(?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
-                    slug = excluded.slug,
-                    category_id = excluded.category_id,
-                    brand = excluded.brand,
-                    name = excluded.name,
-                    description = excluded.description,
-                    material = excluded.material,
-                    care = excluded.care,
-                    image = excluded.image,
-                    price = excluded.price,
-                    compare_at_price = excluded.compare_at_price,
-                    rating = excluded.rating,
-                    review_count = excluded.review_count
+                    password_hash = CASE
+                        WHEN customers.password_hash = '' THEN excluded.password_hash
+                        ELSE customers.password_hash
+                    END
                 """,
                 (
-                    product["id"],
-                    product["slug"],
-                    product["category_id"],
-                    product["brand"],
-                    product["name"],
-                    product["description"],
-                    product["material"],
-                    product["care"],
-                    product["image"],
-                    product["price"],
-                    product["compare_at_price"],
-                    product["rating"],
-                    product["review_count"],
+                    "cus_demo",
+                    "demo@example.com",
+                    "김민지",
+                    "010-0000-0000",
+                    hash_password(DEMO_CUSTOMER_PASSWORD),
+                    0,
                     utc_now(),
                 ),
             )
-            variant_ids = [variant[0] for variant in product["variants"]]
-            placeholders = ",".join("?" for _ in variant_ids)
-            connection.execute(
-                f"DELETE FROM variants WHERE product_id = ? AND id NOT IN ({placeholders})",
-                [product["id"], *variant_ids],
-            )
             connection.executemany(
                 """
-                INSERT INTO variants(
-                    id, product_id, sku, color, size, price, stock
-                ) VALUES(?,?,?,?,?,?,?)
+                INSERT INTO categories(id, slug, name, sort_order) VALUES(?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
-                    product_id = excluded.product_id,
-                    sku = excluded.sku,
-                    color = excluded.color,
-                    size = excluded.size,
-                    price = excluded.price
+                    slug = excluded.slug,
+                    name = excluded.name,
+                    sort_order = excluded.sort_order
                 """,
-                [(v[0], product["id"], *v[1:]) for v in product["variants"]],
+                CATEGORIES,
             )
-        connection.execute(
-            "DELETE FROM categories WHERE id NOT IN (SELECT DISTINCT category_id FROM products)"
-        )
-        _seed_orders(connection)  # type: ignore[arg-type]
-        _sync_seed_orders(connection)  # type: ignore[arg-type]
-        _seed_test_accounts(connection)  # type: ignore[arg-type]
+            for product in PRODUCTS:
+                connection.execute(
+                    """
+                    INSERT INTO products(
+                        id, slug, category_id, brand, name, description, material, care,
+                        image, price, compare_at_price, rating, review_count, created_at
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        slug = excluded.slug,
+                        category_id = excluded.category_id,
+                        brand = excluded.brand,
+                        name = excluded.name,
+                        description = excluded.description,
+                        material = excluded.material,
+                        care = excluded.care,
+                        image = excluded.image,
+                        price = excluded.price,
+                        compare_at_price = excluded.compare_at_price,
+                        rating = excluded.rating,
+                        review_count = excluded.review_count
+                    """,
+                    (
+                        product["id"],
+                        product["slug"],
+                        product["category_id"],
+                        product["brand"],
+                        product["name"],
+                        product["description"],
+                        product["material"],
+                        product["care"],
+                        product["image"],
+                        product["price"],
+                        product["compare_at_price"],
+                        product["rating"],
+                        product["review_count"],
+                        utc_now(),
+                    ),
+                )
+                variant_ids = [variant[0] for variant in product["variants"]]
+                placeholders = ",".join("?" for _ in variant_ids)
+                connection.execute(
+                    f"DELETE FROM variants WHERE product_id = ? AND id NOT IN ({placeholders})",
+                    [product["id"], *variant_ids],
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO variants(
+                        id, product_id, sku, color, size, price, stock
+                    ) VALUES(?,?,?,?,?,?,?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        product_id = excluded.product_id,
+                        sku = excluded.sku,
+                        color = excluded.color,
+                        size = excluded.size,
+                        price = excluded.price
+                    """,
+                    [(v[0], product["id"], *v[1:]) for v in product["variants"]],
+                )
+            connection.execute(
+                "DELETE FROM categories WHERE id NOT IN (SELECT DISTINCT category_id FROM products)"
+            )
+            _seed_orders(connection)  # type: ignore[arg-type]
+            _sync_seed_orders(connection)  # type: ignore[arg-type]
+            _seed_test_accounts(connection)  # type: ignore[arg-type]
         # These two seed demo sellers with hundreds of individual
         # PRODUCT_VIEWED/order events (one INSERT per view, per catalog
         # entry). On a persistent host that cost is paid once at process
