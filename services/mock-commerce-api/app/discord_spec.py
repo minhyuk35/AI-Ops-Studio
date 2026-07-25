@@ -63,10 +63,7 @@ PLAN_CHANNELS: dict[str, list[str]] = {
     "BUSINESS": ["commands", "orders", "daily", "support", "monthly", "insight"],
 }
 
-# 실제 배포(플랜 판매) 전까지는 플랜 제한 없이 전체 채널 세트로 기능 검증만
-# 한다. PLAN_CHANNELS 매핑 자체는 그대로 남겨두고 이 스위치 하나만 바꾸면
-# 되므로, 나중에 플랜 게이팅을 켤 때 이 파일 밖은 손댈 필요가 없다.
-PLAN_GATING_ENABLED = False
+PLAN_GATING_ENABLED = True
 
 
 def normalize_plan(plan: str | None) -> str:

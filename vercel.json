@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "buildCommand": "pnpm -r build",
+  "buildCommand": "pnpm -r build && cp -r apps/ops-console/dist apps/demo-store/dist/console",
   "outputDirectory": "apps/demo-store/dist",
   "functions": {
     "api/commerce/index.py": {

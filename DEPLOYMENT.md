@@ -98,6 +98,21 @@ curl -s https://ai-ops-studio-demo-store.vercel.app/api/core/health
 1번은 200인데 2번이 500이면 → **`DATABASE_URL` 환경변수**를 확인(이때는 진짜 DB
 문제). Vercel의 **Functions 로그**에서 스택트레이스를 볼 수 있다.
 
+## 총관리자·판매자 운영 콘솔 (ops-console)
+
+`apps/ops-console`은 demo-store와 별도의 SPA로, 루트 `vercel.json`의
+`buildCommand`가 `pnpm -r build`(전체 워크스페이스 빌드) 후
+`cp -r apps/ops-console/dist apps/demo-store/dist/console`로 demo-store의
+빌드 출력물 안에 정적 파일을 그대로 얹는 방식으로 같이 배포된다 — 별도
+Vercel 프로젝트나 환경 변수 설정이 필요 없다(demo-store 빌드와 같은
+`VITE_COMMERCE_API_URL=/api/commerce`/`VITE_CORE_API_URL=/api/core`를
+그대로 물려받음). `apps/ops-console/vite.config.ts`의 `base: "/console/"`가
+이 서브패스 배포를 위한 설정이다.
+
+배포 후 접속: `https://ai-ops-studio-demo-store.vercel.app/console/`
+(판매자/관리자 계정으로 로그인 — 역할에 따라 메뉴가 갈린다. 계정 목록은
+`docs/test-accounts.txt` 참고, 이 파일은 gitignore돼 있어 커밋되지 않는다.)
+
 ## 구글 로그인 프로덕션 전환
 
 1. Google Cloud Console → 사용자 인증 정보 → 해당 OAuth 클라이언트.

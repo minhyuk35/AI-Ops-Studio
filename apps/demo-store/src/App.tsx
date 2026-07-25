@@ -982,7 +982,6 @@ function LoginPage({
       <div className="auth-divider"><span>또는</span></div>
       <GoogleSignInButton onSuccess={onLoggedIn} onError={onError} />
       <p className="auth-switch">아직 계정이 없으신가요? <button className="link" onClick={onGoToSignup}>회원가입</button></p>
-      <p className="demo-note">데모 계정: demo@example.com / demo1234</p>
     </main>
   );
 }
