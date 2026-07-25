@@ -12,7 +12,9 @@ import {
   addCartItem,
   askSupport,
   AuthResponse,
+  cancelMyOrder,
   cancelOrder,
+  completeMyOrderRefund,
   confirmPayment,
   createDiscordLinkCode,
   createMyProduct,
@@ -25,6 +27,7 @@ import {
   getInquiries,
   getInquiry,
   getMe,
+  getMyOrders,
   getMyProducts,
   getOrder,
   getOrders,
@@ -173,6 +176,7 @@ const statusLabel: Record<string, string> = {
   DELIVERED: "배송 완료",
   CANCELLED: "주문 취소",
   RETURN_REQUESTED: "반품 접수",
+  REFUNDED: "환불 완료",
 };
 const inquiryStatusLabel: Record<string, string> = {
   RECEIVED: "접수",
@@ -963,7 +967,7 @@ function SellerConsolePage({
   onError: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"dashboard" | "inquiries" | "products" | "discord">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "orders" | "inquiries" | "products" | "discord">("dashboard");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -1016,6 +1020,7 @@ function SellerConsolePage({
       />
       <div className="console-tabs">
         <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>오늘의 대시보드</button>
+        <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}>주문 관리</button>
         <button className={tab === "inquiries" ? "active" : ""} onClick={() => setTab("inquiries")}>문의</button>
         <button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}>상품 관리</button>
         <button className={tab === "discord" ? "active" : ""} onClick={() => setTab("discord")}>디스코드 연동</button>
@@ -1024,6 +1029,8 @@ function SellerConsolePage({
       {tab === "discord" && <SellerDiscordPanel token={auth.access_token} />}
 
       {tab === "dashboard" && orgId && <SellerDailyDashboard token={auth.access_token} orgId={orgId} />}
+
+      {tab === "orders" && orgId && <SellerOrdersPanel token={auth.access_token} orgId={orgId} />}
 
       {tab === "inquiries" && orgId && <SellerInquiriesPanel token={auth.access_token} orgId={orgId} />}
 
@@ -1255,6 +1262,50 @@ function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function SellerOrdersPanel({ token, orgId }: { token: string; orgId: string }) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ["seller-orders", orgId],
+    queryFn: () => getMyOrders(token),
+  });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["seller-orders", orgId] });
+  const cancel = useMutation({
+    mutationFn: (orderId: string) => cancelMyOrder(token, orderId),
+    onSuccess: invalidate,
+  });
+  const refund = useMutation({
+    mutationFn: (orderId: string) => completeMyOrderRefund(token, orderId),
+    onSuccess: invalidate,
+  });
+  return (
+    <div className="console-panel">
+      {query.isLoading && <p className="empty">불러오는 중…</p>}
+      {!query.isLoading && !query.data?.length && <p className="empty">아직 이 상점 상품으로 들어온 주문이 없습니다.</p>}
+      <div className="seller-product-list">
+        {query.data?.map((order) => (
+          <article className="seller-order-row" key={order.id}>
+            <div>
+              <h3>{order.items[0]?.product_name}{order.items.length > 1 && ` 외 ${order.items.length - 1}건`}</h3>
+              <small>
+                {order.id} · {order.recipient} · {order.phone} · ({order.postal_code}) {order.address1} {order.address2}
+              </small>
+              <small>{statusLabel[order.status] ?? order.status} · {won.format(order.total)}</small>
+            </div>
+            <div className="seller-order-actions">
+              {["PENDING_PAYMENT", "PREPARING"].includes(order.status) && (
+                <button disabled={cancel.isPending} onClick={() => cancel.mutate(order.id)}>주문 취소</button>
+              )}
+              {order.status === "RETURN_REQUESTED" && (
+                <button className="primary dark" disabled={refund.isPending} onClick={() => refund.mutate(order.id)}>환불 처리</button>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }

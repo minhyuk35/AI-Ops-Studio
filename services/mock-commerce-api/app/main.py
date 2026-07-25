@@ -1372,6 +1372,82 @@ async def create_discord_link_code(
         return payload
 
 
+@app.get("/sellers/me/orders")
+async def list_my_orders_as_seller(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    """Which orders were placed for *this seller's* products -- who ordered,
+    what they ordered, and where it's shipping. Orders are single-seller
+    (see infer_order_org_id), so this is a straight join, not a per-item
+    filter of a mixed-seller order.
+    """
+    with closing(connect()) as connection:
+        org = require_seller_org(connection, authorization)
+        ids = connection.execute(
+            """
+            SELECT DISTINCT oi.order_id, o.ordered_at FROM order_items oi
+            JOIN products p ON p.id = oi.product_id
+            JOIN orders o ON o.id = oi.order_id
+            WHERE p.org_id = ?
+            ORDER BY o.ordered_at DESC
+            """,
+            (org["id"],),
+        ).fetchall()
+        return [order_payload(connection, row["order_id"]) for row in ids]
+
+
+@app.post("/sellers/me/orders/{order_id}/complete-refund")
+async def seller_complete_refund(
+    order_id: str, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    """Seller-side counterpart to the customer's return request
+    (POST /orders/{id}/returns): approves the most recent pending RETURN
+    claim, actually completing the refund. request_return() explicitly
+    stops short of this -- "REFUND_COMPLETED is emitted separately once a
+    return actually finishes" -- this endpoint is that missing second step.
+    """
+    with transaction() as connection:
+        org = require_seller_org(connection, authorization)
+        order = connection.execute(
+            "SELECT * FROM orders WHERE id = ?", (order_id,)
+        ).fetchone()
+        if order is None:
+            raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+        if infer_order_org_id(connection, order_id) != org["id"]:
+            raise HTTPException(status_code=403, detail="본인 상점의 주문만 처리할 수 있습니다.")
+        claim = connection.execute(
+            """
+            SELECT * FROM claims WHERE order_id = ? AND type = 'RETURN' AND status = 'REQUESTED'
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (order_id,),
+        ).fetchone()
+        if claim is None:
+            raise HTTPException(status_code=409, detail="처리할 반품·환불 신청이 없습니다.")
+        now = utc_now()
+        connection.execute(
+            "UPDATE claims SET status = 'REFUNDED', updated_at = ? WHERE id = ?",
+            (now, claim["id"]),
+        )
+        connection.execute(
+            "UPDATE orders SET status = 'REFUNDED', updated_at = ? WHERE id = ?",
+            (now, order_id),
+        )
+        connection.execute(
+            "UPDATE payments SET status = 'REFUNDED' WHERE order_id = ?", (order_id,)
+        )
+        record_event(
+            connection,
+            event_type="REFUND_COMPLETED",
+            external_event_id=f"{order_id}:REFUND_COMPLETED:RETURN",
+            order_id=order_id,
+            refund_amount=int(claim["refund_amount"]),
+            occurred_at=now,
+            org_id=org["id"],
+        )
+        return order_payload(connection, order_id)
+
+
 @app.get("/sellers/me/discord")
 async def get_discord_status(
     authorization: str | None = Header(default=None),

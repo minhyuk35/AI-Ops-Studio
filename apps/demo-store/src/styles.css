@@ -175,6 +175,11 @@ a { color: inherit; }
 .seller-product-row img { width: 64px; height: 64px; object-fit: cover; filter: grayscale(1); }
 .seller-product-row h3 { margin: 0; font-size: 15px; }
 .seller-product-row small { color: var(--muted); }
+.seller-order-row { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 14px 16px; background: white; }
+.seller-order-row h3 { margin: 0 0 4px; font-size: 15px; }
+.seller-order-row small { display: block; color: var(--muted); }
+.seller-order-actions { display: flex; gap: 8px; flex: none; }
+.seller-order-actions button { white-space: nowrap; }
 .seller-stock-field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .seller-stock-field input { width: 64px; padding: 7px; border: 1px solid var(--line-strong); text-align: center; }
 .admin-org-list { display: grid; gap: 1px; max-width: 820px; background: var(--line-strong); border: 1px solid var(--line-strong); }

@@ -4,7 +4,8 @@ export type OrderStatus =
   | "SHIPPING"
   | "DELIVERED"
   | "CANCELLED"
-  | "RETURN_REQUESTED";
+  | "RETURN_REQUESTED"
+  | "REFUNDED";
 
 export interface Category {
   id: string;

@@ -246,6 +246,21 @@ export interface SellerProductInput {
   stock: number;
 }
 
+export const getMyOrders = (token: string) =>
+  request<Order[]>(`${commerceBaseUrl}/sellers/me/orders`, authGet(token));
+
+export const cancelMyOrder = (token: string, orderId: string) =>
+  request<Order>(
+    `${commerceBaseUrl}/orders/${orderId}/cancel`,
+    json("POST", { reason: "판매자 취소 처리" }, token),
+  );
+
+export const completeMyOrderRefund = (token: string, orderId: string) =>
+  request<Order>(
+    `${commerceBaseUrl}/sellers/me/orders/${orderId}/complete-refund`,
+    json("POST", {}, token),
+  );
+
 export const getMyProducts = (token: string) =>
   request<SellerProduct[]>(`${commerceBaseUrl}/sellers/me/products`, authGet(token));
 
