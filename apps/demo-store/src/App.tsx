@@ -1306,17 +1306,20 @@ function SellerProductsPanel({
   return (
     <>
       {showForm && (
-        <form className="auth-form seller-product-form" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
+        <form className="form-grid seller-product-form" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
           <label>상품명<input required value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} /></label>
           <label>카테고리<CategorySelect categories={categories} leafCategories={leafCategories} value={form.category_id} onChange={(id) => setForm((c) => ({ ...c, category_id: id }))} /></label>
-          <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))} /></label>
+          <label className="wide">설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))} /></label>
           <label>소재<input value={form.material} onChange={(e) => setForm((c) => ({ ...c, material: e.target.value }))} /></label>
           <label>관리 방법<input value={form.care} onChange={(e) => setForm((c) => ({ ...c, care: e.target.value }))} /></label>
           <label>기준가(원)<input required type="number" min={1} value={form.price} onChange={(e) => setForm((c) => ({ ...c, price: e.target.value }))} /></label>
           <label>정가(할인 전, 선택)<input type="number" min={1} value={form.compare_at_price} onChange={(e) => setForm((c) => ({ ...c, compare_at_price: e.target.value }))} /></label>
-          <label>상품 이미지<ImageUrlListEditor images={images} onChange={setImages} /></label>
-          <label>옵션(색상·사이즈·재고)<VariantListEditor variants={variants} onChange={setVariants} /></label>
-          <button className="primary dark block" disabled={create.isPending}>{create.isPending ? "등록 중…" : "상품 등록"}</button>
+          <label className="wide">상품 이미지<ImageUrlListEditor images={images} onChange={setImages} /></label>
+          <label className="wide">옵션(색상·사이즈·재고)<VariantListEditor variants={variants} onChange={setVariants} /></label>
+          <div className="form-actions wide">
+            <button type="button" className="ghost" onClick={onCloseForm}>취소</button>
+            <button className="primary dark" disabled={create.isPending}>{create.isPending ? "등록 중…" : "상품 등록"}</button>
+          </div>
         </form>
       )}
       <div className="seller-product-list">
@@ -1430,6 +1433,7 @@ function SellerProductRow({
           categories={categories}
           leafCategories={leafCategories}
           onSaved={() => { invalidate(); onToggleEdit(); }}
+          onCancel={onToggleEdit}
           onError={onError}
         />
       )}
@@ -1495,6 +1499,7 @@ function SellerProductEditForm({
   categories,
   leafCategories,
   onSaved,
+  onCancel,
   onError,
 }: {
   product: SellerProduct;
@@ -1502,6 +1507,7 @@ function SellerProductEditForm({
   categories: Category[];
   leafCategories: Category[];
   onSaved: () => void;
+  onCancel: () => void;
   onError: (message: string) => void;
 }) {
   const [form, setForm] = useState({
@@ -1533,16 +1539,19 @@ function SellerProductEditForm({
   });
 
   return (
-    <form className="auth-form seller-product-form seller-product-edit-form" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+    <form className="form-grid seller-product-form seller-product-edit-form" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
       <label>상품명<input required value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} /></label>
       <label>카테고리<CategorySelect categories={categories} leafCategories={leafCategories} value={form.category_id} onChange={(id) => setForm((c) => ({ ...c, category_id: id }))} /></label>
-      <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))} /></label>
+      <label className="wide">설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))} /></label>
       <label>소재<input value={form.material} onChange={(e) => setForm((c) => ({ ...c, material: e.target.value }))} /></label>
       <label>관리 방법<input value={form.care} onChange={(e) => setForm((c) => ({ ...c, care: e.target.value }))} /></label>
       <label>기준가(원)<input required type="number" min={1} value={form.price} onChange={(e) => setForm((c) => ({ ...c, price: e.target.value }))} /></label>
       <label>정가(할인 전, 선택)<input type="number" min={1} value={form.compare_at_price} onChange={(e) => setForm((c) => ({ ...c, compare_at_price: e.target.value }))} /></label>
-      <label>상품 이미지<ImageUrlListEditor images={images} onChange={setImages} /></label>
-      <button className="primary dark block" disabled={save.isPending}>{save.isPending ? "저장 중…" : "저장"}</button>
+      <label className="wide">상품 이미지<ImageUrlListEditor images={images} onChange={setImages} /></label>
+      <div className="form-actions wide">
+        <button type="button" className="ghost" onClick={onCancel}>취소</button>
+        <button className="primary dark" disabled={save.isPending}>{save.isPending ? "저장 중…" : "저장"}</button>
+      </div>
     </form>
   );
 }
@@ -1929,7 +1938,7 @@ function MarketSharePanel({ token }: { token: string }) {
           </div>
           <div className="seller-product-list">
             {snapshot.sellers.map((seller) => (
-              <article className="seller-product-row" key={seller.org_id}>
+              <article className="market-share-row" key={seller.org_id}>
                 <div>
                   <h3>{seller.org_name} · {planLabel[seller.plan] ?? seller.plan}</h3>
                   <small>판매액 {won.format(seller.gross_revenue)} · 수수료+플랜 {won.format(seller.platform_contribution)}</small>
