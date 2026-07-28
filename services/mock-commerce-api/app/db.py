@@ -104,7 +104,9 @@ CREATE TABLE IF NOT EXISTS products (
     review_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     color_family TEXT,
-    style_tags TEXT
+    style_tags TEXT,
+    images TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS variants (
@@ -443,6 +445,11 @@ def initialize_database() -> None:
         _ensure_columns(connection, "products", {"org_id": "TEXT"})  # type: ignore[arg-type]
         product_style_columns = {"color_family": "TEXT", "style_tags": "TEXT"}
         _ensure_columns(connection, "products", product_style_columns)  # type: ignore[arg-type]
+        product_listing_columns = {
+            "images": "TEXT",
+            "is_active": "INTEGER NOT NULL DEFAULT 1",
+        }
+        _ensure_columns(connection, "products", product_listing_columns)  # type: ignore[arg-type]
         _ensure_columns(connection, "categories", {"parent_id": "TEXT"})  # type: ignore[arg-type]
         event_columns = {"customer_id": "TEXT"}
         _ensure_columns(connection, "commerce_events", event_columns)  # type: ignore[arg-type]

@@ -100,8 +100,9 @@ a { color: inherit; }
 .subcategory-tabs { display: flex; gap: 4px; overflow-x: auto; margin-top: 2px; }
 .subcategory-tabs button { padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; white-space: nowrap; cursor: pointer; font-size: 12.5px; color: var(--muted); }
 .subcategory-tabs button.active { border-color: var(--ink); color: var(--ink); font-weight: 700; }
-.ai-recs-section { padding-top: 0; }
-.ai-recs-title { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }
+.ai-recs-section { padding-top: 46px; padding-bottom: 24px; }
+.ai-recs-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.ai-recs-title .link { margin-top: 2px; }
 .ai-recs-title h2 { font-size: clamp(24px,2.6vw,34px); }
 .ai-recs-basis { margin: -14px 0 34px; color: var(--muted); font-size: 14px; }
 .ai-rec-row { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
@@ -200,6 +201,26 @@ a { color: inherit; }
 .seller-order-actions button { white-space: nowrap; }
 .seller-stock-field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .seller-stock-field input { width: 64px; padding: 7px; border: 1px solid var(--line-strong); text-align: center; }
+.ghost { padding: 7px 12px; border: 1px solid var(--line-strong); background: transparent; font-size: 12px; cursor: pointer; }
+.repeat-field { display: grid; gap: 8px; }
+.repeat-row { display: flex; gap: 8px; }
+.repeat-row input { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--line-strong); background: white; }
+.variant-row { display: grid; grid-template-columns: 1fr 1fr 90px 110px auto; gap: 8px; align-items: center; }
+.variant-row input { min-width: 0; padding: 10px; border: 1px solid var(--line-strong); background: white; }
+.seller-product-row-full { max-width: 760px; margin-bottom: 1px; padding: 16px; background: white; border: 1px solid var(--line-strong); }
+.seller-product-summary { display: grid; grid-template-columns: 64px 1fr auto; gap: 16px; align-items: center; }
+.seller-product-summary img { width: 64px; height: 64px; object-fit: cover; filter: grayscale(1); }
+.seller-product-summary h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.seller-product-summary small { color: var(--muted); }
+.seller-product-row-actions { display: flex; gap: 8px; flex: none; }
+.tag-inactive { padding: 3px 8px; border-radius: 999px; background: #f3f3f3; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+.seller-product-edit-form { max-width: none; margin: 16px 0 4px; }
+.seller-variant-list { display: grid; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.seller-variant-row { display: grid; grid-template-columns: 1fr 130px 130px auto; gap: 10px; align-items: center; font-size: 13px; }
+.seller-variant-row label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.seller-variant-row input { width: 70px; padding: 7px; border: 1px solid var(--line-strong); text-align: center; }
+.seller-variant-add { grid-template-columns: 1fr 1fr 90px auto; }
+.seller-variant-add input { width: auto; text-align: left; }
 .admin-org-list { display: grid; gap: 1px; max-width: 820px; background: var(--line-strong); border: 1px solid var(--line-strong); }
 .admin-org-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 18px 20px; background: white; }
 .admin-org-row h3 { margin: 8px 0 4px; }

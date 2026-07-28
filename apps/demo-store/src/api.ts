@@ -272,12 +272,21 @@ export interface SellerProduct {
   material: string;
   care: string;
   image: string;
+  images: string[];
   price: number;
   compare_at_price: number | null;
   rating: number;
   review_count: number;
   created_at: string;
+  is_active: boolean;
   variants: SellerVariant[];
+}
+
+export interface SellerVariantInput {
+  color: string;
+  size: string;
+  stock: number;
+  price?: number;
 }
 
 export interface SellerProductInput {
@@ -286,12 +295,22 @@ export interface SellerProductInput {
   description: string;
   material?: string;
   care?: string;
-  image?: string;
+  images: string[];
   price: number;
   compare_at_price?: number;
-  color: string;
-  size: string;
-  stock: number;
+  variants: SellerVariantInput[];
+}
+
+export interface SellerProductUpdateInput {
+  name: string;
+  category_id: string;
+  description: string;
+  material?: string;
+  care?: string;
+  images: string[];
+  price: number;
+  compare_at_price?: number;
+  is_active: boolean;
 }
 
 export const getMyOrders = (token: string) =>
@@ -324,6 +343,24 @@ export const updateMyVariant = (
   request<SellerProduct>(
     `${commerceBaseUrl}/sellers/me/products/${productId}/variants/${variantId}`,
     json("PATCH", input, token),
+  );
+
+export const updateMyProduct = (token: string, productId: string, input: SellerProductUpdateInput) =>
+  request<SellerProduct>(
+    `${commerceBaseUrl}/sellers/me/products/${productId}`,
+    json("PATCH", input, token),
+  );
+
+export const createMyProductVariant = (token: string, productId: string, input: SellerVariantInput) =>
+  request<SellerProduct>(
+    `${commerceBaseUrl}/sellers/me/products/${productId}/variants`,
+    json("POST", input, token),
+  );
+
+export const deleteMyProductVariant = (token: string, productId: string, variantId: string) =>
+  request<SellerProduct>(
+    `${commerceBaseUrl}/sellers/me/products/${productId}/variants/${variantId}`,
+    json("DELETE", undefined, token),
   );
 
 export interface DiscordPlanChannel {

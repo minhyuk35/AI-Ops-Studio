@@ -41,9 +41,7 @@ NEW_PRODUCT = {
     "material": "폴리에스터 100%",
     "care": "드라이클리닝",
     "price": 89000,
-    "color": "블랙",
-    "size": "L",
-    "stock": 5,
+    "variants": [{"color": "블랙", "size": "L", "stock": 5}],
 }
 
 

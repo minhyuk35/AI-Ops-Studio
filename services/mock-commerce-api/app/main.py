@@ -145,18 +145,37 @@ class SellerActivateRequest(BaseModel):
     shop_category: str = Field(min_length=2, max_length=40)
 
 
+class SellerVariantInput(BaseModel):
+    color: str = Field(min_length=1, max_length=30)
+    size: str = Field(min_length=1, max_length=20)
+    stock: int = Field(ge=0)
+    # None = 상품 기준가(SellerProductCreate.price)를 그대로 사용 -- 옵션마다
+    # 다른 가격을 매기고 싶을 때만 채운다.
+    price: int | None = Field(default=None, gt=0)
+
+
 class SellerProductCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     category_id: str = Field(min_length=1, max_length=50)
     description: str = Field(min_length=5, max_length=1000)
     material: str = Field(default="", max_length=200)
     care: str = Field(default="", max_length=200)
-    image: str = Field(default="", max_length=500)
+    images: list[str] = Field(default_factory=list, max_length=8)
     price: int = Field(gt=0)
     compare_at_price: int | None = Field(default=None, gt=0)
-    color: str = Field(min_length=1, max_length=30)
-    size: str = Field(min_length=1, max_length=20)
-    stock: int = Field(ge=0)
+    variants: list[SellerVariantInput] = Field(min_length=1, max_length=20)
+
+
+class SellerProductUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    category_id: str = Field(min_length=1, max_length=50)
+    description: str = Field(min_length=5, max_length=1000)
+    material: str = Field(default="", max_length=200)
+    care: str = Field(default="", max_length=200)
+    images: list[str] = Field(default_factory=list, max_length=8)
+    price: int = Field(gt=0)
+    compare_at_price: int | None = Field(default=None, gt=0)
+    is_active: bool = True
 
 
 class SellerVariantUpdate(BaseModel):
@@ -192,6 +211,21 @@ class DiscordChannelsRequest(BaseModel):
     channels: list[DiscordChannelUpsert] = Field(min_length=1, max_length=20)
 
 
+def _images_list(product: dict[str, object]) -> list[str]:
+    """products.images is a comma-separated URL list (same pattern as
+    style_tags); products.image stays the single "cover" image so every
+    existing call site that reads it (cards, cart, orders, recommendations)
+    keeps working untouched. Falls back to the cover image alone when a
+    product predates multi-image support.
+    """
+    raw = str(product.get("images") or "")
+    urls = [url.strip() for url in raw.split(",") if url.strip()]
+    if urls:
+        return urls
+    cover = product.get("image")
+    return [str(cover)] if cover else []
+
+
 def fetch_product(connection, identifier: str) -> dict[str, object]:
     product = connection.execute(
         """
@@ -200,7 +234,7 @@ def fetch_product(connection, identifier: str) -> dict[str, object]:
         FROM products p
         JOIN categories c ON c.id = p.category_id
         LEFT JOIN variants v ON v.product_id = p.id
-        WHERE p.id = ? OR p.slug = ?
+        WHERE (p.id = ? OR p.slug = ?) AND p.is_active = 1
         GROUP BY p.id, c.name, c.slug
         """,
         (identifier, identifier),
@@ -209,6 +243,7 @@ def fetch_product(connection, identifier: str) -> dict[str, object]:
         raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
     result = dict(product)
     result["in_stock"] = int(result.pop("total_stock")) > 0
+    result["images"] = _images_list(result)
     result["variants"] = [
         dict(row)
         for row in connection.execute(
@@ -451,6 +486,9 @@ async def list_products(
     # A suspended seller's listings disappear from the public catalog, even
     # though the rows stay in the DB (so reactivating the seller restores them).
     clauses.append("(p.org_id IS NULL OR o.status IS NULL OR o.status != 'SUSPENDED')")
+    # A seller-paused listing (판매 중지) also disappears from the public
+    # catalog without deleting the row -- same "hide, don't destroy" pattern.
+    clauses.append("p.is_active = 1")
     where = f"WHERE {' AND '.join(clauses)}"
     with closing(connect()) as connection:
         rows = connection.execute(
@@ -468,6 +506,7 @@ async def list_products(
         for row in rows:
             product = dict(row)
             product["in_stock"] = int(product.pop("total_stock")) > 0
+            product["images"] = _images_list(product)
             products.append(product)
         return products
 
@@ -644,6 +683,7 @@ async def activate_seller(
 
 def seller_product_payload(connection, product_row) -> dict[str, object]:
     product = dict(product_row)
+    product["images"] = _images_list(product)
     product["variants"] = [
         dict(row)
         for row in connection.execute(
@@ -666,6 +706,12 @@ async def list_my_products(
         return [seller_product_payload(connection, row) for row in rows]
 
 
+_DEFAULT_PRODUCT_IMAGE = (
+    "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab"
+    "?auto=format&fit=crop&w=1200&q=85"
+)
+
+
 @app.post("/sellers/me/products", status_code=201)
 async def create_my_product(
     payload: SellerProductCreate, authorization: str | None = Header(default=None)
@@ -680,16 +726,15 @@ async def create_my_product(
         product_id = f"prd_{uuid4().hex[:12]}"
         slug = f"{product_id}-{uuid4().hex[:6]}"
         now = utc_now()
-        default_image = (
-            "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab"
-            "?auto=format&fit=crop&w=1200&q=85"
-        )
+        images = [url.strip() for url in payload.images if url.strip()]
+        cover_image = images[0] if images else _DEFAULT_PRODUCT_IMAGE
         connection.execute(
             """
             INSERT INTO products(
                 id, slug, category_id, org_id, brand, name, description, material, care,
-                image, price, compare_at_price, rating, review_count, created_at
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                image, images, price, compare_at_price, rating, review_count, created_at,
+                is_active
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
             """,
             (
                 product_id,
@@ -701,7 +746,8 @@ async def create_my_product(
                 payload.description,
                 payload.material,
                 payload.care,
-                payload.image.strip() or default_image,
+                cover_image,
+                ",".join(images),
                 payload.price,
                 payload.compare_at_price,
                 0,
@@ -709,6 +755,91 @@ async def create_my_product(
                 now,
             ),
         )
+        for variant in payload.variants:
+            variant_id = f"var_{uuid4().hex[:12]}"
+            sku = f"{product_id[:10]}-{uuid4().hex[:6]}".upper()
+            connection.execute(
+                """
+                INSERT INTO variants(id, product_id, sku, color, size, price, stock)
+                VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    variant_id,
+                    product_id,
+                    sku,
+                    variant.color,
+                    variant.size,
+                    variant.price or payload.price,
+                    variant.stock,
+                ),
+            )
+        product_row = connection.execute(
+            "SELECT * FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        return seller_product_payload(connection, product_row)
+
+
+@app.patch("/sellers/me/products/{product_id}")
+async def update_my_product(
+    product_id: str,
+    payload: SellerProductUpdate,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    with transaction() as connection:
+        org = require_seller_org(connection, authorization)
+        product = connection.execute(
+            "SELECT id FROM products WHERE id = ? AND org_id = ?", (product_id, org["id"])
+        ).fetchone()
+        if product is None:
+            raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+        category = connection.execute(
+            "SELECT id FROM categories WHERE id = ?", (payload.category_id,)
+        ).fetchone()
+        if category is None:
+            raise HTTPException(status_code=400, detail="존재하지 않는 카테고리입니다.")
+        images = [url.strip() for url in payload.images if url.strip()]
+        cover_image = images[0] if images else _DEFAULT_PRODUCT_IMAGE
+        connection.execute(
+            """
+            UPDATE products SET
+                name = ?, category_id = ?, description = ?, material = ?, care = ?,
+                image = ?, images = ?, price = ?, compare_at_price = ?, is_active = ?
+            WHERE id = ?
+            """,
+            (
+                payload.name,
+                payload.category_id,
+                payload.description,
+                payload.material,
+                payload.care,
+                cover_image,
+                ",".join(images),
+                payload.price,
+                payload.compare_at_price,
+                1 if payload.is_active else 0,
+                product_id,
+            ),
+        )
+        product_row = connection.execute(
+            "SELECT * FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        return seller_product_payload(connection, product_row)
+
+
+@app.post("/sellers/me/products/{product_id}/variants", status_code=201)
+async def create_my_product_variant(
+    product_id: str,
+    payload: SellerVariantInput,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    with transaction() as connection:
+        org = require_seller_org(connection, authorization)
+        product = connection.execute(
+            "SELECT id, price FROM products WHERE id = ? AND org_id = ?",
+            (product_id, org["id"]),
+        ).fetchone()
+        if product is None:
+            raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
         variant_id = f"var_{uuid4().hex[:12]}"
         sku = f"{product_id[:10]}-{uuid4().hex[:6]}".upper()
         connection.execute(
@@ -722,10 +853,49 @@ async def create_my_product(
                 sku,
                 payload.color,
                 payload.size,
-                payload.price,
+                payload.price or product["price"],
                 payload.stock,
             ),
         )
+        product_row = connection.execute(
+            "SELECT * FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        return seller_product_payload(connection, product_row)
+
+
+@app.delete("/sellers/me/products/{product_id}/variants/{variant_id}")
+async def delete_my_product_variant(
+    product_id: str,
+    variant_id: str,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    with transaction() as connection:
+        org = require_seller_org(connection, authorization)
+        product = connection.execute(
+            "SELECT id FROM products WHERE id = ? AND org_id = ?", (product_id, org["id"])
+        ).fetchone()
+        if product is None:
+            raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+        variant = connection.execute(
+            "SELECT id FROM variants WHERE id = ? AND product_id = ?", (variant_id, product_id)
+        ).fetchone()
+        if variant is None:
+            raise HTTPException(status_code=404, detail="옵션을 찾을 수 없습니다.")
+        remaining = connection.execute(
+            "SELECT COUNT(*) c FROM variants WHERE product_id = ?", (product_id,)
+        ).fetchone()
+        if int(remaining["c"]) <= 1:
+            raise HTTPException(status_code=409, detail="최소 1개의 옵션은 남아 있어야 합니다.")
+        ordered = connection.execute(
+            "SELECT 1 FROM order_items WHERE variant_id = ? LIMIT 1", (variant_id,)
+        ).fetchone()
+        if ordered is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="주문 이력이 있는 옵션은 삭제할 수 없습니다. 재고를 0으로 설정해주세요.",
+            )
+        connection.execute("DELETE FROM cart_items WHERE variant_id = ?", (variant_id,))
+        connection.execute("DELETE FROM variants WHERE id = ?", (variant_id,))
         product_row = connection.execute(
             "SELECT * FROM products WHERE id = ?", (product_id,)
         ).fetchone()
@@ -1437,6 +1607,7 @@ def _load_catalog_attrs(connection) -> dict[str, dict[str, object]]:
         LEFT JOIN variants v ON v.product_id = p.id
         LEFT JOIN organizations o ON o.id = p.org_id
         WHERE (p.org_id IS NULL OR o.status IS NULL OR o.status != 'SUSPENDED')
+              AND p.is_active = 1
         GROUP BY p.id, c.name, c.slug, c.parent_id
         """
     ).fetchall()

@@ -18,8 +18,10 @@ import {
   confirmPayment,
   createDiscordLinkCode,
   createMyProduct,
+  createMyProductVariant,
   createOrder,
   deleteCartItem,
+  deleteMyProductVariant,
   DiscordStatus,
   getCart,
   getCategories,
@@ -53,10 +55,13 @@ import {
   SellerMarketShareReport,
   SellerProduct,
   SellerProductInput,
+  SellerProductUpdateInput,
+  SellerVariantInput,
   signup,
   SignupInput,
   tagProductAttributes,
   updateCartItem,
+  updateMyProduct,
   updateMyVariant,
   updateOrganizationStatus,
 } from "./api";
@@ -1142,54 +1147,9 @@ function SellerConsolePage({
   onBack: () => void;
   onError: (message: string) => void;
 }) {
-  const queryClient = useQueryClient();
   const [tab, setTab] = useState<"dashboard" | "orders" | "inquiries" | "products" | "discord">("dashboard");
   const [showForm, setShowForm] = useState(false);
-  // 상품은 항상 소분류(leaf)에 등록 — 대분류는 상품 필터링용일 뿐 상품이 직접 속하지 않음.
-  // leaf = 이 카테고리를 parent로 둔 다른 카테고리가 없는 카테고리(소분류, 또는 소분류가 없는 "신발" 자신).
-  const leafCategories = categories.filter((c) => !categories.some((other) => other.parent_id === c.id));
-  const [form, setForm] = useState({
-    name: "",
-    category_id: leafCategories[0]?.id ?? "",
-    description: "",
-    price: "",
-    color: "",
-    size: "",
-    stock: "1",
-  });
   const orgId = auth.customer.organization?.id;
-  const products = useQuery({
-    queryKey: ["seller-products", auth.customer.id],
-    queryFn: () => getMyProducts(auth.access_token),
-    enabled: tab === "products",
-  });
-  const create = useMutation({
-    mutationFn: () =>
-      createMyProduct(auth.access_token, {
-        name: form.name,
-        category_id: form.category_id,
-        description: form.description,
-        price: Number(form.price),
-        color: form.color,
-        size: form.size,
-        stock: Number(form.stock),
-      } satisfies SellerProductInput),
-    onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ["seller-products", auth.customer.id] });
-      setShowForm(false);
-      setForm({ name: "", category_id: leafCategories[0]?.id ?? "", description: "", price: "", color: "", size: "", stock: "1" });
-      // AI 추천 엔진용 색상/스타일 태깅 — best-effort, 실패해도 상품 등록은 이미 끝난 상태.
-      tagProductAttributes(created.id).catch(() => {});
-    },
-    onError: (error: Error) => onError(error.message),
-  });
-  const updateStock = useMutation({
-    mutationFn: ({ product, stock }: { product: SellerProduct; stock: number }) =>
-      updateMyVariant(auth.access_token, product.id, product.variants[0].id, { stock }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["seller-products", auth.customer.id] }),
-    onError: (error: Error) => onError(error.message),
-  });
-  const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   return (
     <main className="store-section profile-page console-page">
@@ -1216,63 +1176,374 @@ function SellerConsolePage({
       {tab === "inquiries" && orgId && <SellerInquiriesPanel token={auth.access_token} orgId={orgId} />}
 
       {tab === "products" && (
-        <>
-          {showForm && (
-            <form
-              className="auth-form seller-product-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                create.mutate();
-              }}
-            >
-              <label>상품명<input required value={form.name} onChange={(e) => update("name", e.target.value)} /></label>
-              <label>카테고리
-                <select value={form.category_id} onChange={(e) => update("category_id", e.target.value)}>
-                  {categories.filter((c) => !c.parent_id).map((parent) => {
-                    const kids = leafCategories.filter((c) => c.parent_id === parent.id);
-                    const options = kids.length ? kids : leafCategories.filter((c) => c.id === parent.id);
-                    return <optgroup key={parent.id} label={parent.name}>{options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>;
-                  })}
-                </select>
-              </label>
-              <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
-              <label>가격(원)<input required type="number" min={1} value={form.price} onChange={(e) => update("price", e.target.value)} /></label>
-              <label>색상<input required value={form.color} onChange={(e) => update("color", e.target.value)} /></label>
-              <label>사이즈<input required value={form.size} onChange={(e) => update("size", e.target.value)} /></label>
-              <label>초기 재고<input required type="number" min={0} value={form.stock} onChange={(e) => update("stock", e.target.value)} /></label>
-              <button className="primary dark block" disabled={create.isPending}>{create.isPending ? "등록 중…" : "상품 등록"}</button>
-            </form>
-          )}
-          <div className="seller-product-list">
-            {products.isLoading && <p className="empty">불러오는 중…</p>}
-            {products.data?.map((product) => (
-              <article className="seller-product-row" key={product.id}>
-                <img src={product.image} alt={product.name} />
-                <div>
-                  <h3>{product.name}</h3>
-                  <small>{product.variants[0]?.color} / {product.variants[0]?.size} · {won.format(product.price)}</small>
-                </div>
-                <label className="seller-stock-field">
-                  재고
-                  <input
-                    type="number"
-                    min={0}
-                    defaultValue={product.variants[0]?.stock ?? 0}
-                    onBlur={(event) => {
-                      const stock = Number(event.target.value);
-                      if (!Number.isNaN(stock) && stock !== product.variants[0]?.stock) {
-                        updateStock.mutate({ product, stock });
-                      }
-                    }}
-                  />
-                </label>
-              </article>
-            ))}
-            {!products.isLoading && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
-          </div>
-        </>
+        <SellerProductsPanel
+          token={auth.access_token}
+          customerId={auth.customer.id}
+          categories={categories}
+          showForm={showForm}
+          onCloseForm={() => setShowForm(false)}
+          onError={onError}
+        />
       )}
     </main>
+  );
+}
+
+// 상품은 항상 소분류(leaf)에 등록 — 대분류는 상품 필터링용일 뿐 상품이 직접 속하지 않음.
+// leaf = 이 카테고리를 parent로 둔 다른 카테고리가 없는 카테고리(소분류, 또는 소분류가 없는 "신발" 자신).
+function leafCategoriesOf(categories: Category[]) {
+  return categories.filter((c) => !categories.some((other) => other.parent_id === c.id));
+}
+
+function CategorySelect({ categories, leafCategories, value, onChange }: { categories: Category[]; leafCategories: Category[]; value: string; onChange: (id: string) => void }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      {categories.filter((c) => !c.parent_id).map((parent) => {
+        const kids = leafCategories.filter((c) => c.parent_id === parent.id);
+        const options = kids.length ? kids : leafCategories.filter((c) => c.id === parent.id);
+        return <optgroup key={parent.id} label={parent.name}>{options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>;
+      })}
+    </select>
+  );
+}
+
+function ImageUrlListEditor({ images, onChange }: { images: string[]; onChange: (next: string[]) => void }) {
+  const update = (index: number, value: string) => onChange(images.map((url, i) => (i === index ? value : url)));
+  const remove = (index: number) => onChange(images.filter((_, i) => i !== index));
+  return (
+    <div className="repeat-field">
+      {images.map((url, index) => (
+        <div className="repeat-row" key={index}>
+          <input placeholder="https://images.example.com/..." value={url} onChange={(e) => update(index, e.target.value)} />
+          {images.length > 1 && <button type="button" className="ghost" onClick={() => remove(index)}>삭제</button>}
+        </div>
+      ))}
+      <button type="button" className="link" onClick={() => onChange([...images, ""])}>+ 이미지 URL 추가</button>
+    </div>
+  );
+}
+
+interface VariantDraft { color: string; size: string; stock: string; price: string }
+
+function VariantListEditor({ variants, onChange }: { variants: VariantDraft[]; onChange: (next: VariantDraft[]) => void }) {
+  const update = (index: number, key: keyof VariantDraft, value: string) =>
+    onChange(variants.map((variant, i) => (i === index ? { ...variant, [key]: value } : variant)));
+  const remove = (index: number) => onChange(variants.filter((_, i) => i !== index));
+  return (
+    <div className="repeat-field">
+      {variants.map((variant, index) => (
+        <div className="variant-row" key={index}>
+          <input placeholder="색상" required value={variant.color} onChange={(e) => update(index, "color", e.target.value)} />
+          <input placeholder="사이즈" required value={variant.size} onChange={(e) => update(index, "size", e.target.value)} />
+          <input placeholder="재고" type="number" min={0} required value={variant.stock} onChange={(e) => update(index, "stock", e.target.value)} />
+          <input placeholder="가격(선택)" type="number" min={1} value={variant.price} onChange={(e) => update(index, "price", e.target.value)} />
+          {variants.length > 1 && <button type="button" className="ghost" onClick={() => remove(index)}>삭제</button>}
+        </div>
+      ))}
+      <button type="button" className="link" onClick={() => onChange([...variants, { color: "", size: "", stock: "1", price: "" }])}>+ 옵션 추가</button>
+    </div>
+  );
+}
+
+function SellerProductsPanel({
+  token,
+  customerId,
+  categories,
+  showForm,
+  onCloseForm,
+  onError,
+}: {
+  token: string;
+  customerId: string;
+  categories: Category[];
+  showForm: boolean;
+  onCloseForm: () => void;
+  onError: (message: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const leafCategories = leafCategoriesOf(categories);
+  const emptyForm = { name: "", category_id: leafCategories[0]?.id ?? "", description: "", price: "", compare_at_price: "", material: "", care: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [images, setImages] = useState<string[]>([""]);
+  const [variants, setVariants] = useState<VariantDraft[]>([{ color: "", size: "", stock: "1", price: "" }]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const products = useQuery({
+    queryKey: ["seller-products", customerId],
+    queryFn: () => getMyProducts(token),
+  });
+
+  const create = useMutation({
+    mutationFn: () =>
+      createMyProduct(token, {
+        name: form.name,
+        category_id: form.category_id,
+        description: form.description,
+        material: form.material,
+        care: form.care,
+        images: images.filter((url) => url.trim()),
+        price: Number(form.price),
+        compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : undefined,
+        variants: variants.map((variant) => ({
+          color: variant.color,
+          size: variant.size,
+          stock: Number(variant.stock),
+          price: variant.price ? Number(variant.price) : undefined,
+        })),
+      } satisfies SellerProductInput),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["seller-products", customerId] });
+      onCloseForm();
+      setForm(emptyForm);
+      setImages([""]);
+      setVariants([{ color: "", size: "", stock: "1", price: "" }]);
+      // AI 추천 엔진용 색상/스타일 태깅 — best-effort, 실패해도 상품 등록은 이미 끝난 상태.
+      tagProductAttributes(created.id).catch(() => {});
+    },
+    onError: (error: Error) => onError(error.message),
+  });
+
+  return (
+    <>
+      {showForm && (
+        <form className="auth-form seller-product-form" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
+          <label>상품명<input required value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} /></label>
+          <label>카테고리<CategorySelect categories={categories} leafCategories={leafCategories} value={form.category_id} onChange={(id) => setForm((c) => ({ ...c, category_id: id }))} /></label>
+          <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))} /></label>
+          <label>소재<input value={form.material} onChange={(e) => setForm((c) => ({ ...c, material: e.target.value }))} /></label>
+          <label>관리 방법<input value={form.care} onChange={(e) => setForm((c) => ({ ...c, care: e.target.value }))} /></label>
+          <label>기준가(원)<input required type="number" min={1} value={form.price} onChange={(e) => setForm((c) => ({ ...c, price: e.target.value }))} /></label>
+          <label>정가(할인 전, 선택)<input type="number" min={1} value={form.compare_at_price} onChange={(e) => setForm((c) => ({ ...c, compare_at_price: e.target.value }))} /></label>
+          <label>상품 이미지<ImageUrlListEditor images={images} onChange={setImages} /></label>
+          <label>옵션(색상·사이즈·재고)<VariantListEditor variants={variants} onChange={setVariants} /></label>
+          <button className="primary dark block" disabled={create.isPending}>{create.isPending ? "등록 중…" : "상품 등록"}</button>
+        </form>
+      )}
+      <div className="seller-product-list">
+        {products.isLoading && <p className="empty">불러오는 중…</p>}
+        {products.data?.map((product) => (
+          <SellerProductRow
+            key={product.id}
+            product={product}
+            token={token}
+            customerId={customerId}
+            categories={categories}
+            leafCategories={leafCategories}
+            editing={editingId === product.id}
+            onToggleEdit={() => setEditingId((current) => (current === product.id ? null : product.id))}
+            onError={onError}
+          />
+        ))}
+        {!products.isLoading && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
+      </div>
+    </>
+  );
+}
+
+function SellerProductRow({
+  product,
+  token,
+  customerId,
+  categories,
+  leafCategories,
+  editing,
+  onToggleEdit,
+  onError,
+}: {
+  product: SellerProduct;
+  token: string;
+  customerId: string;
+  categories: Category[];
+  leafCategories: Category[];
+  editing: boolean;
+  onToggleEdit: () => void;
+  onError: (message: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["seller-products", customerId] });
+  const [newVariant, setNewVariant] = useState({ color: "", size: "", stock: "1" });
+
+  const toggleActive = useMutation({
+    mutationFn: () =>
+      updateMyProduct(token, product.id, {
+        name: product.name,
+        category_id: product.category_id,
+        description: product.description,
+        material: product.material,
+        care: product.care,
+        images: product.images,
+        price: product.price,
+        compare_at_price: product.compare_at_price ?? undefined,
+        is_active: !product.is_active,
+      } satisfies SellerProductUpdateInput),
+    onSuccess: invalidate,
+    onError: (error: Error) => onError(error.message),
+  });
+
+  const addVariant = useMutation({
+    mutationFn: (input: SellerVariantInput) => createMyProductVariant(token, product.id, input),
+    onSuccess: () => {
+      invalidate();
+      setNewVariant({ color: "", size: "", stock: "1" });
+    },
+    onError: (error: Error) => onError(error.message),
+  });
+
+  const updateVariant = useMutation({
+    mutationFn: ({ variantId, stock, price }: { variantId: string; stock: number; price?: number }) =>
+      updateMyVariant(token, product.id, variantId, { stock, price }),
+    onSuccess: invalidate,
+    onError: (error: Error) => onError(error.message),
+  });
+
+  const removeVariant = useMutation({
+    mutationFn: (variantId: string) => deleteMyProductVariant(token, product.id, variantId),
+    onSuccess: invalidate,
+    onError: (error: Error) => onError(error.message),
+  });
+
+  return (
+    <article className="seller-product-row-full">
+      <div className="seller-product-summary">
+        <img src={product.images[0] ?? product.image} alt={product.name} />
+        <div>
+          <h3>{product.name} {!product.is_active && <span className="tag-inactive">판매 중지</span>}</h3>
+          <small>{won.format(product.price)}{product.compare_at_price ? <> · <del>{won.format(product.compare_at_price)}</del></> : null}</small>
+        </div>
+        <div className="seller-product-row-actions">
+          <button type="button" className="ghost" onClick={onToggleEdit}>{editing ? "닫기" : "수정"}</button>
+          <button
+            type="button"
+            className={product.is_active ? "danger-button" : "primary dark"}
+            disabled={toggleActive.isPending}
+            onClick={() => toggleActive.mutate()}
+          >
+            {product.is_active ? "판매 중지" : "판매 재개"}
+          </button>
+        </div>
+      </div>
+
+      {editing && (
+        <SellerProductEditForm
+          product={product}
+          token={token}
+          categories={categories}
+          leafCategories={leafCategories}
+          onSaved={() => { invalidate(); onToggleEdit(); }}
+          onError={onError}
+        />
+      )}
+
+      <div className="seller-variant-list">
+        {product.variants.map((variant) => (
+          <div className="seller-variant-row" key={variant.id}>
+            <span>{variant.color} / {variant.size}</span>
+            <label>
+              재고
+              <input
+                type="number"
+                min={0}
+                defaultValue={variant.stock}
+                onBlur={(event) => {
+                  const stock = Number(event.target.value);
+                  if (!Number.isNaN(stock) && stock !== variant.stock) {
+                    updateVariant.mutate({ variantId: variant.id, stock, price: variant.price });
+                  }
+                }}
+              />
+            </label>
+            <label>
+              가격
+              <input
+                type="number"
+                min={1}
+                defaultValue={variant.price}
+                onBlur={(event) => {
+                  const price = Number(event.target.value);
+                  if (!Number.isNaN(price) && price > 0 && price !== variant.price) {
+                    updateVariant.mutate({ variantId: variant.id, stock: variant.stock, price });
+                  }
+                }}
+              />
+            </label>
+            {product.variants.length > 1 && (
+              <button type="button" className="ghost" disabled={removeVariant.isPending} onClick={() => removeVariant.mutate(variant.id)}>삭제</button>
+            )}
+          </div>
+        ))}
+        <div className="seller-variant-row seller-variant-add">
+          <input placeholder="색상" value={newVariant.color} onChange={(e) => setNewVariant((c) => ({ ...c, color: e.target.value }))} />
+          <input placeholder="사이즈" value={newVariant.size} onChange={(e) => setNewVariant((c) => ({ ...c, size: e.target.value }))} />
+          <input placeholder="재고" type="number" min={0} value={newVariant.stock} onChange={(e) => setNewVariant((c) => ({ ...c, stock: e.target.value }))} />
+          <button
+            type="button"
+            className="link"
+            disabled={!newVariant.color.trim() || !newVariant.size.trim() || addVariant.isPending}
+            onClick={() => addVariant.mutate({ color: newVariant.color, size: newVariant.size, stock: Number(newVariant.stock) || 0 })}
+          >
+            + 옵션 추가
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SellerProductEditForm({
+  product,
+  token,
+  categories,
+  leafCategories,
+  onSaved,
+  onError,
+}: {
+  product: SellerProduct;
+  token: string;
+  categories: Category[];
+  leafCategories: Category[];
+  onSaved: () => void;
+  onError: (message: string) => void;
+}) {
+  const [form, setForm] = useState({
+    name: product.name,
+    category_id: product.category_id,
+    description: product.description,
+    material: product.material,
+    care: product.care,
+    price: String(product.price),
+    compare_at_price: product.compare_at_price ? String(product.compare_at_price) : "",
+  });
+  const [images, setImages] = useState<string[]>(product.images.length ? product.images : [""]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      updateMyProduct(token, product.id, {
+        name: form.name,
+        category_id: form.category_id,
+        description: form.description,
+        material: form.material,
+        care: form.care,
+        images: images.filter((url) => url.trim()),
+        price: Number(form.price),
+        compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : undefined,
+        is_active: product.is_active,
+      } satisfies SellerProductUpdateInput),
+    onSuccess: onSaved,
+    onError: (error: Error) => onError(error.message),
+  });
+
+  return (
+    <form className="auth-form seller-product-form seller-product-edit-form" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
+      <label>상품명<input required value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} /></label>
+      <label>카테고리<CategorySelect categories={categories} leafCategories={leafCategories} value={form.category_id} onChange={(id) => setForm((c) => ({ ...c, category_id: id }))} /></label>
+      <label>설명<textarea required minLength={5} rows={3} value={form.description} onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))} /></label>
+      <label>소재<input value={form.material} onChange={(e) => setForm((c) => ({ ...c, material: e.target.value }))} /></label>
+      <label>관리 방법<input value={form.care} onChange={(e) => setForm((c) => ({ ...c, care: e.target.value }))} /></label>
+      <label>기준가(원)<input required type="number" min={1} value={form.price} onChange={(e) => setForm((c) => ({ ...c, price: e.target.value }))} /></label>
+      <label>정가(할인 전, 선택)<input type="number" min={1} value={form.compare_at_price} onChange={(e) => setForm((c) => ({ ...c, compare_at_price: e.target.value }))} /></label>
+      <label>상품 이미지<ImageUrlListEditor images={images} onChange={setImages} /></label>
+      <button className="primary dark block" disabled={save.isPending}>{save.isPending ? "저장 중…" : "저장"}</button>
+    </form>
   );
 }
 
