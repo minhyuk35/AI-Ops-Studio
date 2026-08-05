@@ -213,6 +213,26 @@ export const cancelOrder = (orderId: string, reason: string) =>
 export const returnOrder = (orderId: string, reason: string) =>
   request<{ order: Order }>(`${commerceBaseUrl}/orders/${orderId}/returns`, json("POST", { reason }));
 
+export interface Review {
+  id: string;
+  product_id: string;
+  customer_id: string;
+  customer_name: string;
+  order_id: string;
+  rating: number;
+  content: string;
+  created_at: string;
+}
+
+export const getProductReviews = (productId: string) =>
+  request<Review[]>(`${commerceBaseUrl}/products/${productId}/reviews`);
+export const getMyReviews = (token: string) =>
+  request<Review[]>(`${commerceBaseUrl}/customers/me/reviews`, authGet(token));
+export const submitReview = (
+  token: string,
+  input: { order_id: string; product_id: string; rating: number; content: string },
+) => request<Review>(`${commerceBaseUrl}/reviews`, json("POST", input, token));
+
 export const getInquiries = (customerId: string) =>
   request<Inquiry[]>(`${coreBaseUrl}/api/v1/inquiries?customer_id=${encodeURIComponent(customerId)}`);
 export const getInquiry = (inquiryId: string) =>

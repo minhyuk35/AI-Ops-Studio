@@ -1404,6 +1404,108 @@ async def request_return(order_id: str, payload: OrderAction) -> dict[str, objec
         return {"claim": claim, "order": order_payload(connection, order_id)}
 
 
+def _recompute_product_rating(connection, product_id: str) -> None:
+    row = connection.execute(
+        "SELECT AVG(rating) avg_rating, COUNT(*) c FROM reviews WHERE product_id = ?",
+        (product_id,),
+    ).fetchone()
+    avg_rating = float(row["avg_rating"]) if row and row["avg_rating"] is not None else 0.0
+    count = int(row["c"]) if row else 0
+    connection.execute(
+        "UPDATE products SET rating = ?, review_count = ? WHERE id = ?",
+        (round(avg_rating, 2), count, product_id),
+    )
+
+
+class ReviewCreate(BaseModel):
+    order_id: str = Field(min_length=1, max_length=64)
+    product_id: str = Field(min_length=1, max_length=64)
+    rating: int = Field(ge=1, le=5)
+    content: str = Field(min_length=5, max_length=1000)
+
+
+@app.post("/reviews", status_code=201)
+async def create_review(
+    payload: ReviewCreate, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    """배송 완료된 주문에 실제로 포함된 상품에 대해서만, 고객 1명당 상품 1개당
+    리뷰 1개까지 작성할 수 있다. 등록 즉시 products.rating/review_count를
+    실제 리뷰 집계로 재계산 -- 이 상품에 처음 달리는 실제 리뷰라면, 그동안
+    보여주던 시드 데이터의 가짜 평점·리뷰수는 이 시점부터 완전히 대체된다.
+    """
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        order = connection.execute(
+            "SELECT * FROM orders WHERE id = ? AND customer_id = ?",
+            (payload.order_id, customer["id"]),
+        ).fetchone()
+        if order is None:
+            raise HTTPException(status_code=404, detail="본인 주문만 리뷰를 작성할 수 있습니다.")
+        if order["status"] != "DELIVERED":
+            raise HTTPException(
+                status_code=409, detail="배송 완료된 주문만 리뷰를 작성할 수 있습니다."
+            )
+        item = connection.execute(
+            "SELECT 1 FROM order_items WHERE order_id = ? AND product_id = ?",
+            (payload.order_id, payload.product_id),
+        ).fetchone()
+        if item is None:
+            raise HTTPException(status_code=400, detail="이 주문에 포함된 상품이 아닙니다.")
+        existing = connection.execute(
+            "SELECT 1 FROM reviews WHERE customer_id = ? AND product_id = ?",
+            (customer["id"], payload.product_id),
+        ).fetchone()
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="이미 이 상품에 리뷰를 작성했습니다.")
+        review_id = f"rev_{uuid4().hex[:12]}"
+        now = utc_now()
+        connection.execute(
+            """
+            INSERT INTO reviews(
+                id, product_id, customer_id, customer_name, order_id, rating, content, created_at
+            ) VALUES(?,?,?,?,?,?,?,?)
+            """,
+            (
+                review_id,
+                payload.product_id,
+                customer["id"],
+                customer["name"],
+                payload.order_id,
+                payload.rating,
+                payload.content,
+                now,
+            ),
+        )
+        _recompute_product_rating(connection, payload.product_id)
+        review_row = connection.execute(
+            "SELECT * FROM reviews WHERE id = ?", (review_id,)
+        ).fetchone()
+        return dict(review_row)
+
+
+@app.get("/products/{product_id}/reviews")
+async def list_product_reviews(product_id: str) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        rows = connection.execute(
+            "SELECT * FROM reviews WHERE product_id = ? ORDER BY created_at DESC LIMIT 100",
+            (product_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+@app.get("/customers/me/reviews")
+async def list_my_reviews(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        customer = require_customer(connection, authorization)
+        rows = connection.execute(
+            "SELECT * FROM reviews WHERE customer_id = ? ORDER BY created_at DESC",
+            (customer["id"],),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
 @app.get("/events")
 async def list_events(
     order_id: str | None = None,

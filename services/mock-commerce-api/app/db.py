@@ -200,6 +200,20 @@ CREATE TABLE IF NOT EXISTS claims (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS reviews (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL REFERENCES products(id),
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    customer_name TEXT NOT NULL,
+    order_id TEXT NOT NULL REFERENCES orders(id),
+    rating INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(customer_id, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(product_id);
+
 CREATE TABLE IF NOT EXISTS commerce_events (
     id TEXT PRIMARY KEY,
     external_event_id TEXT NOT NULL UNIQUE,

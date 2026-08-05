@@ -157,6 +157,21 @@ a { color: inherit; }
 .checkout-total p { display: flex; justify-content: space-between; font-size: 18px; }.checkout-total strong { font-size: 25px; }.checkout-total label { font-size: 13px; }.checkout-actions { display: flex; justify-content: space-between; }.checkout-actions button { padding: 14px 20px; border: 1px solid var(--ink); cursor: pointer; }
 .order-list { display: grid; max-width: 900px; }.order-list > button { display: flex; justify-content: space-between; align-items: center; padding: 22px 0; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; }.order-list h3 { margin: 7px 0; }.order-list small { color: var(--muted); }.order-list span { color: var(--ink); font-weight: 800; }
 .order-detail section { margin-top: 36px; }.order-columns section { margin-top: 0; }.order-columns article { display: flex; justify-content: space-between; padding: 18px 0; border-top: 1px solid var(--line); }.order-columns article div { display: grid; gap: 7px; }.order-columns article span { color: var(--muted); font-size: 13px; }
+.order-columns article.order-item-row { display: grid; gap: 10px; }
+.order-item-row-main { display: flex; justify-content: space-between; }
+.review-done { color: var(--muted); font-size: 12px; }
+.review-form { display: grid; gap: 10px; max-width: 480px; }
+.review-stars { display: flex; gap: 4px; }
+.review-stars button { border: 0; background: transparent; padding: 0; font-size: 22px; color: var(--line-strong); cursor: pointer; line-height: 1; }
+.review-stars button.active { color: #f2b300; }
+.review-form textarea { padding: 10px; border: 1px solid var(--line-strong); background: white; font: inherit; resize: vertical; }
+.product-reviews { max-width: 900px; }
+.review-list { display: grid; gap: 1px; background: var(--line-strong); border: 1px solid var(--line-strong); }
+.review-card { padding: 16px 18px; background: white; }
+.review-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.review-stars-static { color: #f2b300; letter-spacing: 1px; }
+.review-card-head small { color: var(--muted); font-size: 12px; }
+.review-card p { margin: 0; color: #333333; }
 .shipment,.address { max-width: 850px; }.timeline { display: grid; grid-template-columns: repeat(4,1fr); margin-top: 26px; }.timeline i { position: relative; height: 3px; background: var(--line); }.timeline i::before { position: absolute; left: 0; top: 50%; width: 13px; height: 13px; content: ""; border-radius: 50%; background: var(--line); transform: translateY(-50%); }.timeline i.done,.timeline i.done::before { background: var(--ink); }.timeline-labels { display: grid; grid-template-columns: repeat(4,1fr); margin-top: 10px; font-size: 12px; }.claim-actions { margin: 30px 0; }.claim-actions button { padding: 11px 16px; border: 1px solid var(--ink); background: transparent; cursor: pointer; }
 .inquiry-layout { display: grid; grid-template-columns: minmax(260px,.8fr) minmax(360px,1.2fr); gap: 30px; }.inquiry-list { display: grid; align-content: start; }.inquiry-list > button { display: grid; grid-template-columns: 82px 1fr; gap: 10px; padding: 18px 0; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; }.inquiry-list > button > span { color: var(--ink); font-size: 11px; font-weight: 900; }.inquiry-list > button div { display: grid; gap: 6px; }.inquiry-list small { color: var(--muted); }.conversation { padding: 24px; background: var(--surface); max-height: 72vh; overflow-y: auto; }.bubble { max-width: 88%; margin: 12px 0; padding: 14px; background: white; border: 1px solid var(--line); }.bubble.assistant { margin-left: auto; background: var(--surface-2); }.bubble b,.bubble small { font-size: 11px; }.bubble .markdown-body { line-height: 1.55; }.bubble small { color: #888; }
 .chat-launcher { position: fixed; right: 24px; bottom: 24px; z-index: 30; width: 58px; height: 58px; border: 0; border-radius: 50%; color: white; background: var(--ink); box-shadow: 0 12px 30px #0004; font-weight: 900; cursor: pointer; }

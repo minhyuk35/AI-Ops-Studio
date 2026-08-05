@@ -33,10 +33,12 @@ import {
   getMyProducts,
   getOrder,
   getOrders,
+  getMyReviews,
   getOrganizations,
   getOrgInquiries,
   getPlatformDailyTraffic,
   getProduct,
+  getProductReviews,
   getProducts,
   getRecommendations,
   getSellerDailyReport,
@@ -59,6 +61,7 @@ import {
   SellerVariantInput,
   signup,
   SignupInput,
+  submitReview,
   tagProductAttributes,
   updateCartItem,
   updateMyProduct,
@@ -405,6 +408,7 @@ export function App() {
       {view === "order" && order.data && (
         <OrderPage
           order={order.data}
+          token={auth?.access_token}
           onCancel={async () => {
             try {
               await cancelOrder(order.data.id, "고객 요청");
@@ -822,11 +826,39 @@ function ProductGrid({ products, onProduct }: { products: Product[]; onProduct: 
   return <div className="product-grid" ref={gridRef}>{products.map((item) => <button className="product-card" key={item.id} onClick={() => onProduct(item)}><div className="product-image"><img src={item.image} alt={item.name} loading="lazy" />{!item.in_stock && <span>품절</span>}</div><small>{item.brand}</small><h3>{item.name}</h3><div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div><p>★ {item.rating.toFixed(1)} <span>({item.review_count})</span></p></button>)}</div>;
 }
 
+function ProductReviews({ productId }: { productId: string }) {
+  const reviews = useQuery({
+    queryKey: ["product-reviews", productId],
+    queryFn: () => getProductReviews(productId),
+  });
+  if (!reviews.data?.length) return null;
+  return (
+    <section className="store-section product-reviews">
+      <SectionTitle eyebrow="REVIEWS" title={`리뷰 ${reviews.data.length}개`} />
+      <div className="review-list">
+        {reviews.data.map((review) => (
+          <article key={review.id} className="review-card">
+            <div className="review-card-head">
+              <span className="review-stars-static">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</span>
+              <b>{review.customer_name}</b>
+              <small>{review.created_at.slice(0, 10)}</small>
+            </div>
+            <p>{review.content}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ProductPage({ product, variantId, customerId, onVariant, onAdd, onBuy }: { product: ProductDetail; variantId: string; customerId?: string; onVariant: (id: string) => void; onAdd: () => void; onBuy: () => void }) {
   useEffect(() => {
     recordProductView(product.id, customerId).catch(() => {});
   }, [product.id, customerId]);
-  return <main className="product-page"><div className="product-gallery"><img src={product.image} alt={product.name} /></div><div className="product-info"><small>{product.brand} · {product.category_name}</small><h1>{product.name}</h1><p className="rating">★ {product.rating} · 리뷰 {product.review_count}개</p><div className="product-price">{product.compare_at_price && <del>{won.format(product.compare_at_price)}</del>}<strong>{won.format(product.price)}</strong></div><p className="description">{product.description}</p><fieldset><legend>옵션 선택</legend>{product.variants.map((variant) => <button type="button" disabled={!variant.stock} className={variantId === variant.id ? "selected" : ""} key={variant.id} onClick={() => onVariant(variant.id)}>{variant.color} / {variant.size}{!variant.stock && " · 품절"}</button>)}</fieldset><div className="purchase-actions"><button onClick={onAdd}>장바구니</button><button className="dark" onClick={onBuy}>바로 구매</button></div><dl className="policy-list"><div><dt>배송</dt><dd>{product.shipping.estimated_days} · {won.format(product.shipping.fee)} · {won.format(product.shipping.free_threshold)} 이상 무료</dd></div><div><dt>반품</dt><dd>수령 후 {product.return_policy.window_days}일 이내 · 단순 변심 {won.format(product.return_policy.return_fee)}</dd></div><div><dt>소재</dt><dd>{product.material}</dd></div><div><dt>관리</dt><dd>{product.care}</dd></div></dl></div></main>;
+  return <>
+    <main className="product-page"><div className="product-gallery"><img src={product.image} alt={product.name} /></div><div className="product-info"><small>{product.brand} · {product.category_name}</small><h1>{product.name}</h1><p className="rating">★ {product.rating} · 리뷰 {product.review_count}개</p><div className="product-price">{product.compare_at_price && <del>{won.format(product.compare_at_price)}</del>}<strong>{won.format(product.price)}</strong></div><p className="description">{product.description}</p><fieldset><legend>옵션 선택</legend>{product.variants.map((variant) => <button type="button" disabled={!variant.stock} className={variantId === variant.id ? "selected" : ""} key={variant.id} onClick={() => onVariant(variant.id)}>{variant.color} / {variant.size}{!variant.stock && " · 품절"}</button>)}</fieldset><div className="purchase-actions"><button onClick={onAdd}>장바구니</button><button className="dark" onClick={onBuy}>바로 구매</button></div><dl className="policy-list"><div><dt>배송</dt><dd>{product.shipping.estimated_days} · {won.format(product.shipping.fee)} · {won.format(product.shipping.free_threshold)} 이상 무료</dd></div><div><dt>반품</dt><dd>수령 후 {product.return_policy.window_days}일 이내 · 단순 변심 {won.format(product.return_policy.return_fee)}</dd></div><div><dt>소재</dt><dd>{product.material}</dd></div><div><dt>관리</dt><dd>{product.care}</dd></div></dl></div></main>
+    <ProductReviews productId={product.id} />
+  </>;
 }
 
 function CartPage({ cart, couponInput, onCouponInput, onApplyCoupon, onQuantity, onRemove, onContinue, onCheckout }: { cart?: Cart; couponInput: string; onCouponInput: (v: string) => void; onApplyCoupon: () => void; onQuantity: (id: string, q: number) => void; onRemove: (id: string) => void; onContinue: () => void; onCheckout: () => void }) {
@@ -844,7 +876,145 @@ function CheckoutPage({ cart, couponCode, token, defaultEmail, onBack, onComplet
 
 function OrdersPage({ orders, onOrder }: { orders: Order[]; onOrder: (id: string) => void }) { return <main className="store-section"><SectionTitle eyebrow="MY ACCOUNT" title="주문·배송" />{orders.length ? <div className="order-list">{orders.map((item) => <button key={item.id} onClick={() => onOrder(item.id)}><div><small>{new Date(item.ordered_at).toLocaleDateString("ko-KR")} · {item.id}</small><h3>{item.items[0]?.product_name}{item.items.length > 1 && ` 외 ${item.items.length - 1}건`}</h3><span>{statusLabel[item.status] ?? item.status}</span></div><strong>{won.format(item.total)}</strong></button>)}</div> : <div className="empty">주문 내역이 없습니다.</div>}</main>; }
 
-function OrderPage({ order, onCancel, onReturn }: { order: Order; onCancel: () => void; onReturn: () => void }) { return <main className="store-section order-detail"><SectionTitle eyebrow={order.id} title={statusLabel[order.status] ?? order.status} /><div className="order-columns"><section><h2>주문 상품</h2>{order.items.map((item) => <article key={item.id}><div><b>{item.product_name}</b><span>{item.option_text} · {item.quantity}개</span></div><strong>{won.format(item.line_total)}</strong></article>)}</section><aside className="summary"><h2>결제 정보</h2><p><span>상품금액</span><b>{won.format(order.subtotal)}</b></p><p><span>할인</span><b>−{won.format(order.discount)}</b></p><p><span>배송비</span><b>{won.format(order.shipping_fee)}</b></p><p className="total"><span>결제금액</span><strong>{won.format(order.total)}</strong></p></aside></div><section className="shipment"><h2>배송 정보</h2><div className="timeline"><i className="done" /><i className={order.status !== "PENDING_PAYMENT" ? "done" : ""} /><i className={["SHIPPING", "DELIVERED"].includes(order.status) ? "done" : ""} /><i className={order.status === "DELIVERED" ? "done" : ""} /></div><div className="timeline-labels"><span>주문접수</span><span>상품준비</span><span>배송중</span><span>배송완료</span></div><p>{order.shipment?.carrier ?? "택배사 배정 전"} · {order.shipment?.tracking_number ?? "송장번호 준비 중"} · 도착 예정 {order.shipment?.eta ?? "확인 중"}</p></section><section className="address"><h2>받는 분</h2><p>{order.recipient} · {order.phone}</p><p>({order.postal_code}) {order.address1} {order.address2}</p></section><div className="claim-actions">{["PENDING_PAYMENT", "PREPARING"].includes(order.status) && <button onClick={onCancel}>주문 취소</button>}{order.status === "DELIVERED" && <button onClick={onReturn}>반품 신청</button>}</div>{order.claims.length > 0 && <section><h2>취소·반품 내역</h2>{order.claims.map((claim) => <p key={claim.id}>{claim.type} · {claim.status} · 환불 예정 {won.format(claim.refund_amount)}<br /><small>이 내역은 3일 이내 삭제됩니다.</small></p>)}</section>}</main>; }
+function ReviewForm({
+  submitting,
+  onSubmit,
+}: {
+  submitting: boolean;
+  onSubmit: (input: { rating: number; content: string }) => void;
+}) {
+  const [rating, setRating] = useState(5);
+  const [content, setContent] = useState("");
+  return (
+    <form
+      className="review-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit({ rating, content });
+      }}
+    >
+      <div className="review-stars" role="radiogroup" aria-label="별점">
+        {[1, 2, 3, 4, 5].map((value) => (
+          <button
+            type="button"
+            key={value}
+            className={value <= rating ? "active" : ""}
+            aria-label={`${value}점`}
+            onClick={() => setRating(value)}
+          >★</button>
+        ))}
+      </div>
+      <textarea
+        required
+        minLength={5}
+        maxLength={1000}
+        rows={3}
+        placeholder="상품은 어떠셨나요?"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+      />
+      <button className="primary dark" disabled={submitting}>{submitting ? "등록 중…" : "리뷰 등록"}</button>
+    </form>
+  );
+}
+
+function OrderPage({
+  order,
+  token,
+  onCancel,
+  onReturn,
+}: {
+  order: Order;
+  token?: string;
+  onCancel: () => void;
+  onReturn: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [reviewingItemId, setReviewingItemId] = useState<string | null>(null);
+  const canReview = order.status === "DELIVERED" && Boolean(token);
+  const myReviews = useQuery({
+    queryKey: ["my-reviews", token],
+    queryFn: () => getMyReviews(token!),
+    enabled: canReview,
+  });
+  const reviewedProductIds = new Set((myReviews.data ?? []).map((review) => review.product_id));
+  const submitReviewMutation = useMutation({
+    mutationFn: (input: { product_id: string; rating: number; content: string }) =>
+      submitReview(token!, { order_id: order.id, ...input }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-reviews", token] });
+      setReviewingItemId(null);
+    },
+  });
+
+  return (
+    <main className="store-section order-detail">
+      <SectionTitle eyebrow={order.id} title={statusLabel[order.status] ?? order.status} />
+      <div className="order-columns">
+        <section>
+          <h2>주문 상품</h2>
+          {order.items.map((item) => (
+            <article key={item.id} className="order-item-row">
+              <div className="order-item-row-main">
+                <div><b>{item.product_name}</b><span>{item.option_text} · {item.quantity}개</span></div>
+                <strong>{won.format(item.line_total)}</strong>
+              </div>
+              {canReview && (
+                reviewedProductIds.has(item.product_id) ? (
+                  <small className="review-done">✓ 리뷰 작성 완료</small>
+                ) : reviewingItemId === item.id ? (
+                  <ReviewForm
+                    submitting={submitReviewMutation.isPending}
+                    onSubmit={(input) =>
+                      submitReviewMutation.mutate({ product_id: item.product_id, ...input })
+                    }
+                  />
+                ) : (
+                  <button className="link" onClick={() => setReviewingItemId(item.id)}>리뷰 작성</button>
+                )
+              )}
+            </article>
+          ))}
+        </section>
+        <aside className="summary">
+          <h2>결제 정보</h2>
+          <p><span>상품금액</span><b>{won.format(order.subtotal)}</b></p>
+          <p><span>할인</span><b>−{won.format(order.discount)}</b></p>
+          <p><span>배송비</span><b>{won.format(order.shipping_fee)}</b></p>
+          <p className="total"><span>결제금액</span><strong>{won.format(order.total)}</strong></p>
+        </aside>
+      </div>
+      <section className="shipment">
+        <h2>배송 정보</h2>
+        <div className="timeline">
+          <i className="done" />
+          <i className={order.status !== "PENDING_PAYMENT" ? "done" : ""} />
+          <i className={["SHIPPING", "DELIVERED"].includes(order.status) ? "done" : ""} />
+          <i className={order.status === "DELIVERED" ? "done" : ""} />
+        </div>
+        <div className="timeline-labels"><span>주문접수</span><span>상품준비</span><span>배송중</span><span>배송완료</span></div>
+        <p>{order.shipment?.carrier ?? "택배사 배정 전"} · {order.shipment?.tracking_number ?? "송장번호 준비 중"} · 도착 예정 {order.shipment?.eta ?? "확인 중"}</p>
+      </section>
+      <section className="address">
+        <h2>받는 분</h2>
+        <p>{order.recipient} · {order.phone}</p>
+        <p>({order.postal_code}) {order.address1} {order.address2}</p>
+      </section>
+      <div className="claim-actions">
+        {["PENDING_PAYMENT", "PREPARING"].includes(order.status) && <button onClick={onCancel}>주문 취소</button>}
+        {order.status === "DELIVERED" && <button onClick={onReturn}>반품 신청</button>}
+      </div>
+      {order.claims.length > 0 && (
+        <section>
+          <h2>취소·반품 내역</h2>
+          {order.claims.map((claim) => (
+            <p key={claim.id}>{claim.type} · {claim.status} · 환불 예정 {won.format(claim.refund_amount)}<br /><small>이 내역은 3일 이내 삭제됩니다.</small></p>
+          ))}
+        </section>
+      )}
+    </main>
+  );
+}
 
 function InquiryPage({ inquiries, selected, onSelect }: { inquiries: Inquiry[]; selected?: Inquiry; onSelect: (id: string) => void }) {
   const scrollRef = useRef<HTMLElement | null>(null);
