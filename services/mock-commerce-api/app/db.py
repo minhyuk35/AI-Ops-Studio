@@ -247,6 +247,16 @@ CREATE TABLE IF NOT EXISTS combo_signals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_combo_signals_pair ON combo_signals(product_a_id, product_b_id);
+
+CREATE TABLE IF NOT EXISTS product_affinity (
+    product_a_id TEXT NOT NULL,
+    product_b_id TEXT NOT NULL,
+    seed_score REAL NOT NULL,
+    signal_score REAL NOT NULL DEFAULT 0,
+    final_score REAL NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (product_a_id, product_b_id)
+);
 """
 
 

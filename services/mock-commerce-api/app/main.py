@@ -467,9 +467,17 @@ async def list_products(
     clauses: list[str] = []
     parameters: list[object] = []
     if q:
-        clauses.append("(p.name LIKE ? OR p.brand LIKE ? OR p.description LIKE ?)")
-        term = f"%{q.strip()}%"
-        parameters.extend([term, term, term])
+        # 토큰 단위 매칭: 검색어를 공백으로 쪼개서 각 토큰이 이름·브랜드·설명·
+        # 카테고리명 중 어딘가에는 있어야 함(토큰끼리는 AND, 필드끼리는 OR).
+        # "블랙 후드"처럼 단어 순서·위치가 달라도 걸리게 하기 위함 — 예전에는
+        # 전체 문자열을 한 덩어리로만 비교해서 이런 경우를 못 찾았음.
+        tokens = [token for token in q.strip().split() if token][:6]
+        for token in tokens:
+            clauses.append(
+                "(p.name LIKE ? OR p.brand LIKE ? OR p.description LIKE ? OR c.name LIKE ?)"
+            )
+            term = f"%{token}%"
+            parameters.extend([term, term, term, term])
     if category:
         # `category` can be a leaf slug/id (직접 매칭) or a parent slug/id --
         # in the latter case match any leaf whose parent_id resolves to it,
@@ -820,6 +828,7 @@ async def update_my_product(
                 product_id,
             ),
         )
+        _recompute_affinity_for_product(connection, product_id)
         product_row = connection.execute(
             "SELECT * FROM products WHERE id = ?", (product_id,)
         ).fetchone()
@@ -1557,6 +1566,7 @@ def _record_cart_combo_signals(connection, cart_id: str, new_product_id: str) ->
             signal_type="CO_CART",
             occurred_at=now,
         )
+        _recompute_affinity_for_pair(connection, new_product_id, other_product_id)
 
 
 def _record_order_combo_signals(
@@ -1584,6 +1594,7 @@ def _record_order_combo_signals(
                 org_id=org_id,
                 occurred_at=occurred_at,
             )
+            _recompute_affinity_for_pair(connection, product_a, product_b)
 
 
 # --- AI 추천 · 코디 조합 엔진 (docs/ai-recommendation-plan.html) ---------------
@@ -1634,12 +1645,16 @@ def _load_signal_map(connection) -> dict[tuple[str, str], dict[str, int]]:
     return signal_map
 
 
-def _pair_score(
+def _seed_and_signal_score(
     catalog: dict[str, dict[str, object]],
     signal_map: dict[tuple[str, str], dict[str, int]],
     product_a: str,
     product_b: str,
-) -> float:
+) -> tuple[float, float, float]:
+    """(seed_score, signal_adjustment, final_score) -- the actual math behind
+    one product_affinity row. Only called by the recompute path below; the
+    request-time read path (_pair_score) reads the cached result instead.
+    """
     a, b = catalog[product_a], catalog[product_b]
     seed = combo_score(
         color_family_a=a["color_family"],  # type: ignore[arg-type]
@@ -1654,7 +1669,161 @@ def _pair_score(
         _SIGNAL_WEIGHTS[signal_type] * min(count, _MAX_SIGNAL_INFLUENCE)
         for signal_type, count in signals.items()
     )
-    return max(0.0, min(100.0, seed + adjustment))
+    final = max(0.0, min(100.0, seed + adjustment))
+    return seed, adjustment, final
+
+
+def _upsert_pair_affinity(
+    connection,
+    catalog: dict[str, dict[str, object]],
+    signal_map: dict[tuple[str, str], dict[str, int]],
+    product_a: str,
+    product_b: str,
+    now: str,
+) -> None:
+    seed, adjustment, final = _seed_and_signal_score(catalog, signal_map, product_a, product_b)
+    key_a, key_b = pair_key(product_a, product_b)
+    connection.execute(
+        """
+        INSERT INTO product_affinity(
+            product_a_id, product_b_id, seed_score, signal_score, final_score, updated_at
+        ) VALUES(?,?,?,?,?,?)
+        ON CONFLICT(product_a_id, product_b_id) DO UPDATE SET
+            seed_score = excluded.seed_score,
+            signal_score = excluded.signal_score,
+            final_score = excluded.final_score,
+            updated_at = excluded.updated_at
+        """,
+        (key_a, key_b, seed, adjustment, final, now),
+    )
+
+
+def _recompute_affinity_for_product(connection, product_id: str) -> None:
+    """상품 하나가 새로 태깅되거나(color_family/style_tags) 카테고리가
+    바뀌었을 때, 그 상품이 낀 모든 쌍만 다시 계산 -- 전체 카탈로그를 매번
+    다시 계산하지 않도록 O(N)으로 제한(전체 재계산은 O(N^2)).
+    """
+    catalog = _load_catalog_attrs(connection)
+    if product_id not in catalog:
+        return
+    signal_map = _load_signal_map(connection)
+    now = utc_now()
+    for other_id in catalog:
+        if other_id != product_id:
+            _upsert_pair_affinity(connection, catalog, signal_map, product_id, other_id, now)
+
+
+def _recompute_affinity_for_pair(connection, product_a: str, product_b: str) -> None:
+    """행동 신호(combo_signals) 하나가 새로 기록됐을 때 그 쌍 하나만 갱신."""
+    catalog = _load_catalog_attrs(connection)
+    if product_a not in catalog or product_b not in catalog:
+        return
+    signal_map = _load_signal_map(connection)
+    _upsert_pair_affinity(connection, catalog, signal_map, product_a, product_b, utc_now())
+
+
+def _recompute_all_affinity(connection) -> None:
+    """전체 카탈로그 쌍을 처음부터 다시 계산 -- 부트스트랩(테이블이 비어있을
+    때) 전용. O(N^2)이라 카탈로그가 작을 때만 값싸다.
+    """
+    catalog = _load_catalog_attrs(connection)
+    signal_map = _load_signal_map(connection)
+    now = utc_now()
+    ids = sorted(catalog.keys())
+    for i, product_a in enumerate(ids):
+        for product_b in ids[i + 1 :]:
+            _upsert_pair_affinity(connection, catalog, signal_map, product_a, product_b, now)
+
+
+def _ensure_affinity_backfilled() -> None:
+    """First-ever recommendation request after this cache table shipped:
+    the table is empty, so populate it once. Runs its own transaction()
+    (not the caller's read-only connect()) so the backfill actually
+    persists -- connect()-only connections never commit.
+    """
+    with closing(connect()) as connection:
+        exists = connection.execute("SELECT 1 FROM product_affinity LIMIT 1").fetchone()
+    if exists is not None:
+        return
+    with transaction() as connection:
+        exists = connection.execute("SELECT 1 FROM product_affinity LIMIT 1").fetchone()
+        if exists is None:
+            _recompute_all_affinity(connection)
+
+
+def _load_affinity_map(connection) -> dict[tuple[str, str], float]:
+    rows = connection.execute(
+        "SELECT product_a_id, product_b_id, final_score FROM product_affinity"
+    ).fetchall()
+    return {
+        (str(row["product_a_id"]), str(row["product_b_id"])): float(row["final_score"])
+        for row in rows
+    }
+
+
+def _pair_score(
+    catalog: dict[str, dict[str, object]],
+    affinity_map: dict[tuple[str, str], float],
+    signal_map: dict[tuple[str, str], dict[str, int]],
+    product_a: str,
+    product_b: str,
+) -> float:
+    key = pair_key(product_a, product_b)
+    cached = affinity_map.get(key)
+    if cached is not None:
+        return cached
+    # 캐시에 없는 쌍(예: 태깅 직후 재계산이 아직 안 붙은 경우) -- 요청을
+    # 막지 않고 그 자리에서 계산해서 응답한다. 다음 태깅/신호 이벤트가 오면
+    # 정식으로 캐시에 들어간다.
+    _, _, final = _seed_and_signal_score(catalog, signal_map, product_a, product_b)
+    return final
+
+
+def _customer_size_preferences(connection, customer_id: str) -> dict[str, str]:
+    """최상위 카테고리별로 이 고객이 가장 많이 구매한 사이즈(주문 이력 기반).
+
+    order_items.option_text는 체크아웃에서 항상 "{color} / {size}" 형식으로
+    저장되므로, size는 그 뒤쪽 절반을 파싱해서 얻는다 -- 주문 이후 옵션이
+    삭제돼도 이 텍스트는 그 시점의 스냅샷이라 안전하다.
+    """
+    rows = connection.execute(
+        """
+        SELECT COALESCE(c.parent_id, c.id) top_level_id, oi.option_text, COUNT(*) c
+        FROM order_items oi
+        JOIN products p ON p.id = oi.product_id
+        JOIN categories c ON c.id = p.category_id
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.customer_id = ?
+        GROUP BY top_level_id, oi.option_text
+        """,
+        (customer_id,),
+    ).fetchall()
+    counts: dict[str, dict[str, int]] = {}
+    for row in rows:
+        top_level = str(row["top_level_id"])
+        option_text = str(row["option_text"])
+        if " / " in option_text:
+            size = option_text.rsplit(" / ", 1)[-1].strip()
+        else:
+            size = option_text.strip()
+        bucket = counts.setdefault(top_level, {})
+        bucket[size] = bucket.get(size, 0) + int(row["c"])
+    return {
+        top_level: max(sizes, key=lambda size: sizes[size])
+        for top_level, sizes in counts.items()
+        if sizes
+    }
+
+
+def _load_in_stock_sizes(connection) -> dict[str, set[str]]:
+    rows = connection.execute("SELECT product_id, size FROM variants WHERE stock > 0").fetchall()
+    sizes: dict[str, set[str]] = {}
+    for row in rows:
+        sizes.setdefault(str(row["product_id"]), set()).add(str(row["size"]))
+    return sizes
+
+
+_SIZE_MATCH_BONUS = 6.0
 
 
 def _resolve_recommendation_basis(
@@ -1724,11 +1893,14 @@ def _bestseller_product_ids(connection, limit: int) -> list[str]:
 
 def _rank_candidates(
     catalog: dict[str, dict[str, object]],
+    affinity_map: dict[tuple[str, str], float],
     signal_map: dict[tuple[str, str], dict[str, int]],
     anchor_ids: list[str],
     exclude_ids: set[str],
-) -> list[tuple[str, float]]:
-    scored: list[tuple[str, float]] = []
+    preferred_sizes: dict[str, str],
+    product_sizes: dict[str, set[str]],
+) -> list[tuple[str, float, bool]]:
+    scored: list[tuple[str, float, bool]] = []
     for product_id, item in catalog.items():
         if product_id in exclude_ids or not item["in_stock"]:
             continue
@@ -1736,14 +1908,18 @@ def _rank_candidates(
         for anchor_id in anchor_ids:
             if anchor_id not in catalog:
                 continue
-            best = max(best, _pair_score(catalog, signal_map, product_id, anchor_id))
-        scored.append((product_id, best))
-    scored.sort(key=lambda pair: pair[1], reverse=True)
+            best = max(best, _pair_score(catalog, affinity_map, signal_map, product_id, anchor_id))
+        preferred_size = preferred_sizes.get(str(item["top_level_id"]))
+        size_match = bool(preferred_size and preferred_size in product_sizes.get(product_id, set()))
+        if size_match:
+            best = min(100.0, best + _SIZE_MATCH_BONUS)
+        scored.append((product_id, best, size_match))
+    scored.sort(key=lambda entry: entry[1], reverse=True)
     return scored
 
 
 def _recommendation_product_summary(
-    item: dict[str, object], score: float | None
+    item: dict[str, object], score: float | None, size_match: bool = False
 ) -> dict[str, object]:
     return {
         "id": item["id"],
@@ -1757,6 +1933,7 @@ def _recommendation_product_summary(
         "category_slug": item["category_slug"],
         "in_stock": item["in_stock"],
         "match_score": round(score, 1) if score is not None else None,
+        "preferred_size_match": size_match,
     }
 
 
@@ -1774,11 +1951,20 @@ async def get_home_recommendations(
             catalog[anchor_ids[0]]["name"] if anchor_ids and anchor_ids[0] in catalog else None
         )
         if anchor_ids:
+            _ensure_affinity_backfilled()
+            affinity_map = _load_affinity_map(connection)
             signal_map = _load_signal_map(connection)
-            ranked = _rank_candidates(catalog, signal_map, anchor_ids, set(anchor_ids))
+            preferred_sizes = (
+                _customer_size_preferences(connection, str(customer["id"])) if customer else {}
+            )
+            product_sizes = _load_in_stock_sizes(connection)
+            ranked = _rank_candidates(
+                catalog, affinity_map, signal_map, anchor_ids, set(anchor_ids),
+                preferred_sizes, product_sizes,
+            )
             items = [
-                _recommendation_product_summary(catalog[pid], score)
-                for pid, score in ranked[:5]
+                _recommendation_product_summary(catalog[pid], score, size_match)
+                for pid, score, size_match in ranked[:5]
             ]
         else:
             items = []
@@ -1815,11 +2001,20 @@ async def get_recommendations(
             ).fetchall()
         }
         if anchor_ids:
+            _ensure_affinity_backfilled()
+            affinity_map = _load_affinity_map(connection)
             signal_map = _load_signal_map(connection)
-            ranked = _rank_candidates(catalog, signal_map, anchor_ids, set(anchor_ids))
+            preferred_sizes = (
+                _customer_size_preferences(connection, str(customer["id"])) if customer else {}
+            )
+            product_sizes = _load_in_stock_sizes(connection)
+            ranked = _rank_candidates(
+                catalog, affinity_map, signal_map, anchor_ids, set(anchor_ids),
+                preferred_sizes, product_sizes,
+            )
         else:
             ranked = [
-                (pid, 0.0)
+                (pid, 0.0, False)
                 for pid in _bestseller_product_ids(connection, limit=200)
                 if pid in catalog
             ]
@@ -1828,8 +2023,10 @@ async def get_recommendations(
             if top_level_id not in top_level_names:
                 continue
             picks = [
-                _recommendation_product_summary(catalog[pid], score if anchor_ids else None)
-                for pid, score in ranked
+                _recommendation_product_summary(
+                    catalog[pid], score if anchor_ids else None, size_match
+                )
+                for pid, score, size_match in ranked
                 if catalog[pid]["top_level_id"] == top_level_id
             ][:3]
             if picks:
@@ -2166,6 +2363,7 @@ async def internal_update_product_attributes(
             "UPDATE products SET color_family = ?, style_tags = ? WHERE id = ?",
             (payload.color_family, ",".join(payload.style_tags), product_id),
         )
+        _recompute_affinity_for_product(connection, product_id)
         return {
             "product_id": product_id,
             "color_family": payload.color_family,
