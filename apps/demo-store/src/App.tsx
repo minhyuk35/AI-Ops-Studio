@@ -16,6 +16,9 @@ import {
   cancelOrder,
   completeMyOrderRefund,
   confirmPayment,
+  Coupon,
+  CouponInput,
+  createCoupon,
   createDiscordLinkCode,
   createMyProduct,
   createMyProductVariant,
@@ -23,6 +26,8 @@ import {
   deleteCartItem,
   deleteMyProductVariant,
   DiscordStatus,
+  getActiveCoupons,
+  getAdminCoupons,
   getCart,
   getCategories,
   getDiscordStatus,
@@ -64,6 +69,7 @@ import {
   submitReview,
   tagProductAttributes,
   updateCartItem,
+  updateCouponActive,
   updateMyProduct,
   updateMyVariant,
   updateOrganizationStatus,
@@ -201,6 +207,47 @@ const inquiryStatusLabel: Record<string, string> = {
   RESOLVED: "해결",
 };
 
+const SEEN_COUPONS_KEY = "codilab-seen-coupons";
+
+function CouponAnnouncement() {
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(SEEN_COUPONS_KEY) ?? "[]");
+    } catch {
+      return [];
+    }
+  });
+  const coupons = useQuery({ queryKey: ["active-coupons"], queryFn: getActiveCoupons });
+  const unseen = (coupons.data ?? []).filter((coupon) => !dismissedIds.includes(coupon.id));
+
+  if (!unseen.length) return null;
+
+  const dismiss = () => {
+    const nextIds = [...dismissedIds, ...unseen.map((coupon) => coupon.id)];
+    setDismissedIds(nextIds);
+    localStorage.setItem(SEEN_COUPONS_KEY, JSON.stringify(nextIds));
+  };
+
+  return (
+    <div className="coupon-popup-overlay" role="dialog" aria-modal="true">
+      <div className="coupon-popup">
+        <button className="coupon-popup-close" onClick={dismiss} aria-label="닫기">×</button>
+        <p className="coupon-popup-eyebrow">🎁 신규 쿠폰 안내</p>
+        {unseen.map((coupon) => (
+          <div key={coupon.id} className="coupon-popup-item">
+            <b>{coupon.code}</b>
+            <span>
+              {coupon.discount_type === "PERCENT" ? `${coupon.discount_value}% 할인` : `${won.format(coupon.discount_value)} 할인`}
+              {coupon.min_purchase_amount > 0 && ` · ${won.format(coupon.min_purchase_amount)} 이상 구매 시`}
+            </span>
+          </div>
+        ))}
+        <button className="primary dark block" onClick={dismiss}>확인했어요</button>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<View>("home");
@@ -308,6 +355,7 @@ export function App() {
 
   return (
     <div className="store-shell">
+      <CouponAnnouncement />
       <header className="store-header">
         <button className="wordmark" onClick={() => setView("home")}>코디랩</button>
         <nav aria-label="주요 메뉴">
@@ -1978,7 +2026,7 @@ function AdminConsolePage({
   onError: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"orgs" | "traffic" | "share">("orgs");
+  const [tab, setTab] = useState<"orgs" | "traffic" | "share" | "coupons">("orgs");
   const organizations = useQuery({
     queryKey: ["admin-organizations"],
     queryFn: () => getOrganizations(auth.access_token),
@@ -1998,6 +2046,7 @@ function AdminConsolePage({
         <button className={tab === "orgs" ? "active" : ""} onClick={() => setTab("orgs")}>판매자 관리</button>
         <button className={tab === "traffic" ? "active" : ""} onClick={() => setTab("traffic")}>플랫폼 트래픽</button>
         <button className={tab === "share" ? "active" : ""} onClick={() => setTab("share")}>매출 비교</button>
+        <button className={tab === "coupons" ? "active" : ""} onClick={() => setTab("coupons")}>쿠폰 관리</button>
       </div>
 
       {tab === "orgs" && (
@@ -2027,7 +2076,107 @@ function AdminConsolePage({
 
       {tab === "traffic" && <PlatformTrafficPanel token={auth.access_token} />}
       {tab === "share" && <MarketSharePanel token={auth.access_token} />}
+      {tab === "coupons" && <CouponAdminPanel token={auth.access_token} onError={onError} />}
     </main>
+  );
+}
+
+function CouponAdminPanel({ token, onError }: { token: string; onError: (message: string) => void }) {
+  const queryClient = useQueryClient();
+  const coupons = useQuery({ queryKey: ["admin-coupons"], queryFn: () => getAdminCoupons(token) });
+  const emptyForm = {
+    code: "",
+    discount_type: "PERCENT" as "PERCENT" | "FIXED",
+    discount_value: "",
+    max_discount_amount: "",
+    min_purchase_amount: "0",
+    expires_at: "",
+  };
+  const [form, setForm] = useState(emptyForm);
+  const [showForm, setShowForm] = useState(false);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
+    queryClient.invalidateQueries({ queryKey: ["active-coupons"] });
+  };
+
+  const create = useMutation({
+    mutationFn: () =>
+      createCoupon(token, {
+        code: form.code,
+        discount_type: form.discount_type,
+        discount_value: Number(form.discount_value),
+        max_discount_amount: form.max_discount_amount ? Number(form.max_discount_amount) : undefined,
+        min_purchase_amount: Number(form.min_purchase_amount) || 0,
+        expires_at: form.expires_at ? new Date(`${form.expires_at}T23:59:59`).toISOString() : undefined,
+      } satisfies CouponInput),
+    onSuccess: () => {
+      invalidate();
+      setShowForm(false);
+      setForm(emptyForm);
+    },
+    onError: (error: Error) => onError(error.message),
+  });
+
+  const toggle = useMutation({
+    mutationFn: (coupon: Coupon) => updateCouponActive(token, coupon.id, !coupon.is_active),
+    onSuccess: invalidate,
+    onError: (error: Error) => onError(error.message),
+  });
+
+  return (
+    <div className="console-panel">
+      <div className="console-panel-heading">
+        <p>쿠폰을 만들면 소비자가 사이트 접속 시 자동으로 안내 팝업을 보게 됩니다.</p>
+        <button className="primary dark" onClick={() => setShowForm((value) => !value)}>{showForm ? "취소" : "쿠폰 만들기"}</button>
+      </div>
+      {showForm && (
+        <form className="form-grid seller-product-form" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
+          <label>쿠폰 코드<input required value={form.code} onChange={(e) => setForm((c) => ({ ...c, code: e.target.value.toUpperCase() }))} placeholder="SUMMER20" /></label>
+          <label>할인 방식
+            <select value={form.discount_type} onChange={(e) => setForm((c) => ({ ...c, discount_type: e.target.value as "PERCENT" | "FIXED" }))}>
+              <option value="PERCENT">퍼센트 할인(%)</option>
+              <option value="FIXED">정액 할인(원)</option>
+            </select>
+          </label>
+          <label>{form.discount_type === "PERCENT" ? "할인율(%)" : "할인 금액(원)"}<input required type="number" min={1} value={form.discount_value} onChange={(e) => setForm((c) => ({ ...c, discount_value: e.target.value }))} /></label>
+          {form.discount_type === "PERCENT" && (
+            <label>최대 할인 금액(원, 선택)<input type="number" min={1} value={form.max_discount_amount} onChange={(e) => setForm((c) => ({ ...c, max_discount_amount: e.target.value }))} /></label>
+          )}
+          <label>최소 구매 금액(원)<input required type="number" min={0} value={form.min_purchase_amount} onChange={(e) => setForm((c) => ({ ...c, min_purchase_amount: e.target.value }))} /></label>
+          <label>사용 기한(선택, 비우면 무기한)<input type="date" value={form.expires_at} onChange={(e) => setForm((c) => ({ ...c, expires_at: e.target.value }))} /></label>
+          <div className="form-actions wide">
+            <button type="button" className="ghost" onClick={() => setShowForm(false)}>취소</button>
+            <button className="primary dark" disabled={create.isPending}>{create.isPending ? "생성 중…" : "쿠폰 생성"}</button>
+          </div>
+        </form>
+      )}
+      <div className="admin-org-list">
+        {coupons.isLoading && <p className="empty">불러오는 중…</p>}
+        {coupons.data?.map((coupon) => (
+          <article className="admin-org-row" key={coupon.id}>
+            <div>
+              <span className={`state ${coupon.is_active ? "active" : "disconnected"}`}>{coupon.is_active ? "사용 중" : "중지됨"}</span>
+              <h3>{coupon.code}</h3>
+              <small>
+                {coupon.discount_type === "PERCENT" ? `${coupon.discount_value}% 할인` : `${won.format(coupon.discount_value)} 할인`}
+                {coupon.max_discount_amount ? ` (최대 ${won.format(coupon.max_discount_amount)})` : ""}
+                {" · "}{won.format(coupon.min_purchase_amount)} 이상 구매 시
+                {" · "}{coupon.expires_at ? `${coupon.expires_at.slice(0, 10)}까지` : "기한 없음"}
+              </small>
+            </div>
+            <button
+              className={coupon.is_active ? "danger-button" : "primary dark"}
+              disabled={toggle.isPending}
+              onClick={() => toggle.mutate(coupon)}
+            >
+              {coupon.is_active ? "중지" : "재개"}
+            </button>
+          </article>
+        ))}
+        {!coupons.isLoading && !coupons.data?.length && <p className="empty">생성된 쿠폰이 없습니다.</p>}
+      </div>
+    </div>
   );
 }
 

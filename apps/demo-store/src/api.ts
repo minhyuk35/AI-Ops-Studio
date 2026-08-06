@@ -441,6 +441,38 @@ export const updateOrganizationStatus = (
     json("PATCH", { status }, token),
   );
 
+export interface Coupon {
+  id: string;
+  code: string;
+  discount_type: "PERCENT" | "FIXED";
+  discount_value: number;
+  max_discount_amount: number | null;
+  min_purchase_amount: number;
+  expires_at: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CouponInput {
+  code: string;
+  discount_type: "PERCENT" | "FIXED";
+  discount_value: number;
+  max_discount_amount?: number;
+  min_purchase_amount: number;
+  expires_at?: string;
+}
+
+export const getActiveCoupons = () => request<Coupon[]>(`${commerceBaseUrl}/coupons/active`);
+export const getAdminCoupons = (token: string) =>
+  request<Coupon[]>(`${commerceBaseUrl}/admin/coupons`, authGet(token));
+export const createCoupon = (token: string, input: CouponInput) =>
+  request<Coupon>(`${commerceBaseUrl}/admin/coupons`, json("POST", input, token));
+export const updateCouponActive = (token: string, couponId: string, isActive: boolean) =>
+  request<Coupon>(
+    `${commerceBaseUrl}/admin/coupons/${couponId}`,
+    json("PATCH", { is_active: isActive }, token),
+  );
+
 export const getOrgInquiries = (token: string, orgId: string) =>
   request<Inquiry[]>(
     `${coreBaseUrl}/api/v1/inquiries?org_id=${encodeURIComponent(orgId)}`,

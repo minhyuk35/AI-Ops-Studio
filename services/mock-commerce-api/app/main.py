@@ -272,6 +272,31 @@ def ensure_cart(connection, cart_id: str) -> None:
     )
 
 
+def _apply_coupon(connection, code: str, subtotal: int) -> tuple[int, str, bool]:
+    """(discount_amount, message, ok) for one coupon code against one
+    cart's subtotal. Never raises -- an invalid/expired/ineligible coupon
+    is a normal cart state (discount=0, valid=False), not an error.
+    """
+    coupon = connection.execute(
+        "SELECT * FROM coupons WHERE code = ? AND is_active = 1", (code,)
+    ).fetchone()
+    if coupon is None:
+        return 0, "사용할 수 없는 쿠폰입니다.", False
+    if coupon["expires_at"] and str(coupon["expires_at"]) < utc_now():
+        return 0, "만료된 쿠폰입니다.", False
+    min_purchase = int(coupon["min_purchase_amount"])
+    if subtotal < min_purchase:
+        return 0, f"{min_purchase:,}원 이상 구매 시 사용할 수 있는 쿠폰입니다.", False
+    if coupon["discount_type"] == "PERCENT":
+        discount = subtotal * int(coupon["discount_value"]) // 100
+    else:
+        discount = int(coupon["discount_value"])
+    if coupon["max_discount_amount"] is not None:
+        discount = min(discount, int(coupon["max_discount_amount"]))
+    discount = min(discount, subtotal)
+    return discount, f"{code} 쿠폰이 적용되었습니다.", True
+
+
 def cart_payload(connection, cart_id: str, coupon_code: str | None = None) -> dict[str, object]:
     ensure_cart(connection, cart_id)
     rows = connection.execute(
@@ -298,16 +323,9 @@ def cart_payload(connection, cart_id: str, coupon_code: str | None = None) -> di
     discount = 0
     normalized_coupon = coupon_code.strip().upper() if coupon_code else None
     coupon_message = None
-    if normalized_coupon == "WELCOME10":
-        if subtotal >= 50_000:
-            discount = min(subtotal // 10, 10_000)
-            coupon_message = "첫 구매 10% 할인이 적용되었습니다."
-        else:
-            valid = False
-            coupon_message = "WELCOME10은 상품금액 50,000원 이상부터 사용할 수 있습니다."
-    elif normalized_coupon:
-        valid = False
-        coupon_message = "사용할 수 없는 쿠폰입니다."
+    if normalized_coupon:
+        discount, coupon_message, coupon_ok = _apply_coupon(connection, normalized_coupon, subtotal)
+        valid = valid and coupon_ok
     shipping_fee = (
         0 if subtotal == 0 or subtotal >= FREE_SHIPPING_THRESHOLD else STANDARD_SHIPPING_FEE
     )
@@ -981,6 +999,96 @@ async def update_organization_status(
             "SELECT * FROM organizations WHERE id = ?", (org_id,)
         ).fetchone()
         return organization_payload(connection, updated)
+
+
+class CouponCreate(BaseModel):
+    code: str = Field(min_length=3, max_length=30)
+    discount_type: Literal["PERCENT", "FIXED"]
+    discount_value: int = Field(gt=0)
+    max_discount_amount: int | None = Field(default=None, gt=0)
+    min_purchase_amount: int = Field(default=0, ge=0)
+    expires_at: str | None = Field(default=None, max_length=40)
+
+
+class CouponUpdate(BaseModel):
+    is_active: bool
+
+
+@app.get("/admin/coupons")
+async def list_coupons(authorization: str | None = Header(default=None)) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        require_admin(connection, authorization)
+        rows = connection.execute("SELECT * FROM coupons ORDER BY created_at DESC").fetchall()
+        return [dict(row) for row in rows]
+
+
+@app.post("/admin/coupons", status_code=201)
+async def create_coupon(
+    payload: CouponCreate, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        require_admin(connection, authorization)
+        code = payload.code.strip().upper()
+        existing = connection.execute("SELECT 1 FROM coupons WHERE code = ?", (code,)).fetchone()
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="이미 존재하는 쿠폰 코드입니다.")
+        if payload.discount_type == "PERCENT" and payload.discount_value > 100:
+            raise HTTPException(status_code=400, detail="퍼센트 할인은 100을 넘을 수 없습니다.")
+        coupon_id = f"cpn_{uuid4().hex[:12]}"
+        connection.execute(
+            """
+            INSERT INTO coupons(
+                id, code, discount_type, discount_value, max_discount_amount,
+                min_purchase_amount, expires_at, is_active, created_at
+            ) VALUES(?,?,?,?,?,?,?,1,?)
+            """,
+            (
+                coupon_id,
+                code,
+                payload.discount_type,
+                payload.discount_value,
+                payload.max_discount_amount,
+                payload.min_purchase_amount,
+                payload.expires_at,
+                utc_now(),
+            ),
+        )
+        row = connection.execute("SELECT * FROM coupons WHERE id = ?", (coupon_id,)).fetchone()
+        return dict(row)
+
+
+@app.patch("/admin/coupons/{coupon_id}")
+async def update_coupon(
+    coupon_id: str, payload: CouponUpdate, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        require_admin(connection, authorization)
+        coupon = connection.execute("SELECT id FROM coupons WHERE id = ?", (coupon_id,)).fetchone()
+        if coupon is None:
+            raise HTTPException(status_code=404, detail="쿠폰을 찾을 수 없습니다.")
+        connection.execute(
+            "UPDATE coupons SET is_active = ? WHERE id = ?",
+            (1 if payload.is_active else 0, coupon_id),
+        )
+        row = connection.execute("SELECT * FROM coupons WHERE id = ?", (coupon_id,)).fetchone()
+        return dict(row)
+
+
+@app.get("/coupons/active")
+async def list_active_coupons() -> list[dict[str, object]]:
+    """소비자 접속 시 팝업 배너용 — 지금 실제로 쓸 수 있는 쿠폰만(비활성·
+    만료 제외), 로그인 여부와 무관하게 공개."""
+    with closing(connect()) as connection:
+        now = utc_now()
+        rows = connection.execute(
+            """
+            SELECT * FROM coupons
+            WHERE is_active = 1 AND (expires_at IS NULL OR expires_at >= ?)
+            ORDER BY created_at DESC
+            """,
+            (now,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 @app.get("/carts/{cart_id}")

@@ -200,6 +200,18 @@ CREATE TABLE IF NOT EXISTS claims (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS coupons (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    discount_type TEXT NOT NULL,
+    discount_value INTEGER NOT NULL,
+    max_discount_amount INTEGER,
+    min_purchase_amount INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS reviews (
     id TEXT PRIMARY KEY,
     product_id TEXT NOT NULL REFERENCES products(id),
@@ -602,6 +614,7 @@ def initialize_database() -> None:
             _seed_orders(connection)  # type: ignore[arg-type]
             _sync_seed_orders(connection)  # type: ignore[arg-type]
             _seed_test_accounts(connection)  # type: ignore[arg-type]
+            _seed_default_coupon(connection)  # type: ignore[arg-type]
         # These two seed demo sellers with hundreds of individual
         # PRODUCT_VIEWED/order events (one INSERT per view, per catalog
         # entry). On a persistent host that cost is paid once at process
@@ -725,6 +738,25 @@ def _seed_test_accounts(connection: sqlite3.Connection) -> None:
             """,
             (variant_id, product["id"], sku, color, size, price, stock),
         )
+
+
+def _seed_default_coupon(connection: sqlite3.Connection) -> None:
+    """WELCOME10 used to be hardcoded in cart_payload()'s coupon check --
+    now that real admin-created coupons exist, seed it as an ordinary row
+    so the same code (and any existing marketing material referencing it)
+    keeps working. ON CONFLICT DO NOTHING so an admin who edits/deactivates
+    it later never gets overwritten by a restart.
+    """
+    connection.execute(
+        """
+        INSERT INTO coupons(
+            id, code, discount_type, discount_value, max_discount_amount,
+            min_purchase_amount, expires_at, is_active, created_at
+        ) VALUES(?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(code) DO NOTHING
+        """,
+        ("cpn_welcome10", "WELCOME10", "PERCENT", 10, 10_000, 50_000, None, 1, utc_now()),
+    )
 
 
 def _seed_seller_order(
