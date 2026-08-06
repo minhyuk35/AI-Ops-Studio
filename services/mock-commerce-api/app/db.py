@@ -466,11 +466,26 @@ def _ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[st
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl_type}")
 
 
+def _seed_demo_data_enabled() -> bool:
+    """Local SQLite dev always gets the demo catalog/accounts for convenience.
+
+    On Postgres (production, and any future staging DB) demo/sample data is
+    off by default -- a real deployment shouldn't have its catalog silently
+    repopulated with fake products on every cold start. Set
+    COMMERCE_SEED_DEMO_DATA=true to opt a Postgres environment back in (e.g.
+    a throwaway demo/staging branch).
+    """
+    if not is_postgres():
+        return True
+    return os.getenv("COMMERCE_SEED_DEMO_DATA", "").strip().lower() == "true"
+
+
 def initialize_database() -> None:
     # Every helper below is typed sqlite3.Connection for brevity even though
     # transaction() may hand it a PostgresConnection under DATABASE_URL --
     # both expose the same execute/executemany/executescript surface, so
     # this is a duck-typing mismatch mypy can't see through, not a bug.
+    demo_data = _seed_demo_data_enabled()
     with transaction() as connection:
         connection.executescript(SCHEMA)
         customer_columns = {
@@ -498,6 +513,25 @@ def initialize_database() -> None:
         }
         _ensure_columns(connection, "organizations", organization_columns)  # type: ignore[arg-type]
 
+        # Structural, not sample data -- product creation needs these to
+        # exist regardless of whether demo seeding is on, so this always
+        # runs (cheap: ~10-row idempotent upsert).
+        connection.executemany(
+            """
+            INSERT INTO categories(id, slug, name, sort_order, parent_id) VALUES(?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+                slug = excluded.slug,
+                name = excluded.name,
+                sort_order = excluded.sort_order,
+                parent_id = excluded.parent_id
+            """,
+            CATEGORIES,
+        )
+        # WELCOME10 is real platform functionality (an ordinary row an admin
+        # can deactivate from the coupon admin UI), not sample/demo data --
+        # always seeded regardless of _seed_demo_data_enabled().
+        _seed_default_coupon(connection)  # type: ignore[arg-type]
+
         # The catalog upsert loop below is one insert+delete+upsert per
         # product (~100 round trips for the 34-product seed catalog alone).
         # On SQLite that's free (local file), so it always runs there to
@@ -512,7 +546,7 @@ def initialize_database() -> None:
         catalog_seeded = is_postgres() and connection.execute(
             "SELECT 1 FROM products WHERE id = ?", ("prd_001",)
         ).fetchone()
-        if not catalog_seeded:
+        if demo_data and not catalog_seeded:
             connection.execute(
                 """
                 INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
@@ -532,17 +566,6 @@ def initialize_database() -> None:
                     0,
                     utc_now(),
                 ),
-            )
-            connection.executemany(
-                """
-                INSERT INTO categories(id, slug, name, sort_order, parent_id) VALUES(?,?,?,?,?)
-                ON CONFLICT(id) DO UPDATE SET
-                    slug = excluded.slug,
-                    name = excluded.name,
-                    sort_order = excluded.sort_order,
-                    parent_id = excluded.parent_id
-                """,
-                CATEGORIES,
             )
             for product in PRODUCTS:
                 connection.execute(
@@ -614,7 +637,6 @@ def initialize_database() -> None:
             _seed_orders(connection)  # type: ignore[arg-type]
             _sync_seed_orders(connection)  # type: ignore[arg-type]
             _seed_test_accounts(connection)  # type: ignore[arg-type]
-            _seed_default_coupon(connection)  # type: ignore[arg-type]
         # These two seed demo sellers with hundreds of individual
         # PRODUCT_VIEWED/order events (one INSERT per view, per catalog
         # entry). On a persistent host that cost is paid once at process
@@ -624,12 +646,13 @@ def initialize_database() -> None:
         # after the first run (504s on /api/commerce/*). Skip the whole
         # cascade once the demo orgs already exist -- cheap existence check
         # instead of hundreds of idempotent-but-still-a-round-trip inserts.
-        demo_seeded = connection.execute(
-            "SELECT 1 FROM organizations WHERE id = ?", ("org_test_seller2",)
-        ).fetchone()
-        if not demo_seeded:
-            _seed_seller_daily_demo(connection)  # type: ignore[arg-type]
-            _seed_market_share_demo_sellers(connection)  # type: ignore[arg-type]
+        if demo_data:
+            demo_seeded = connection.execute(
+                "SELECT 1 FROM organizations WHERE id = ?", ("org_test_seller2",)
+            ).fetchone()
+            if not demo_seeded:
+                _seed_seller_daily_demo(connection)  # type: ignore[arg-type]
+                _seed_market_share_demo_sellers(connection)  # type: ignore[arg-type]
 
 
 def _seed_test_accounts(connection: sqlite3.Connection) -> None:

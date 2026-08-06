@@ -71,11 +71,24 @@ DISCORD_BOT_SHARED_SECRET=<봇과 동일한 무작위 값>       # 봇 내부 AP
 DISCORD_BOT_TOKEN=<...>                                 # 디스코드 봇(/api/discord)
 DISCORD_APPLICATION_ID=<...>                            # 디스코드 봇
 DISCORD_PUBLIC_KEY=<...>                                # 디스코드 봇 서명 검증(Bot 토큰과 다른 값)
+BLOB_READ_WRITE_TOKEN=<...>                              # 상품 이미지 파일 업로드(Vercel Blob), 아래 섹션 참고
 # (선택) COMMERCE_CORS_ORIGINS=https://ai-ops-studio-demo-store.vercel.app
+# (선택) COMMERCE_SEED_DEMO_DATA=true                    # 기본값 false — Postgres(운영)는 샘플 카탈로그를
+                                                          # 자동으로 채우지 않는다. 데모/스테이징용으로 일부러
+                                                          # 샘플 데이터를 넣고 싶을 때만 true로 설정.
 ```
 
 디스코드 봇은 `api/discord/index.py`로 같이 배포된다 — 자세한 설정(Interactions
 Endpoint URL 등록, 슬래시 명령 등록)은 `services/discord-bot/README.md` 참고.
+
+## 샘플/데모 데이터
+
+Postgres(운영 DB)에서는 앱이 콜드스타트마다 실행하는 `initialize_database()`가 **샘플 카탈로그를
+자동으로 채우지 않는다** — `COMMERCE_SEED_DEMO_DATA` 환경변수를 명시적으로 `true`로 설정한 경우에만
+34개 기본 상품·테스트 계정 8종·데모 판매자 5곳이 시드된다(로컬 SQLite 개발 환경은 이 변수와 무관하게
+항상 시드됨, 개발 편의). 실제 서비스로 운영 중인 DB에 이 값을 켜지 않도록 주의할 것 — 켜면 다음
+콜드스타트에 샘플 상품·계정이 다시 채워진다. `categories`(구조적 데이터)와 `WELCOME10` 기본 쿠폰은
+샘플 여부와 무관하게 항상 시드된다(실제 서비스에도 필요한 데이터).
 
 > ⚠️ **`.env` 파일은 절대 커밋/업로드하지 않는다**(`.gitignore`에 있음). 위 값은
 > Vercel 대시보드에만 넣는다. Neon 키는 재발급 예정인 테스트용이므로 운영 전
