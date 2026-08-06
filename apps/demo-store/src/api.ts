@@ -354,6 +354,19 @@ export const getMyProducts = (token: string) =>
 export const createMyProduct = (token: string, input: SellerProductInput) =>
   request<SellerProduct>(`${commerceBaseUrl}/sellers/me/products`, json("POST", input, token));
 
+export const getUploadStatus = () =>
+  request<{ enabled: boolean }>(`${commerceBaseUrl}/uploads/status`);
+
+export const uploadProductImage = async (token: string, file: File): Promise<{ url: string }> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<{ url: string }>(`${commerceBaseUrl}/sellers/me/uploads`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+};
+
 export const updateMyVariant = (
   token: string,
   productId: string,

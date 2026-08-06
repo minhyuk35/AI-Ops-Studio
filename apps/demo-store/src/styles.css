@@ -229,6 +229,7 @@ a { color: inherit; }
 .seller-stock-field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .seller-stock-field input { width: 64px; padding: 7px; border: 1px solid var(--line-strong); text-align: center; }
 .ghost { padding: 7px 12px; border: 1px solid var(--line-strong); background: transparent; font-size: 12px; cursor: pointer; }
+.image-upload-button { display: flex; align-items: center; white-space: nowrap; }
 .repeat-field { display: grid; gap: 8px; }
 .repeat-row { display: flex; gap: 8px; }
 .repeat-row input { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--line-strong); background: white; }

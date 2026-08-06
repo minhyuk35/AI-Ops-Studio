@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
@@ -736,6 +736,70 @@ _DEFAULT_PRODUCT_IMAGE = (
     "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab"
     "?auto=format&fit=crop&w=1200&q=85"
 )
+
+_VERCEL_BLOB_API_BASE = "https://blob.vercel-storage.com"
+_UPLOAD_MAX_BYTES = 4 * 1024 * 1024  # Vercel 서버리스 함수 요청 본문 한도(4.5MB)보다 여유 있게
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+@app.get("/uploads/status")
+async def uploads_status() -> dict[str, bool]:
+    """프론트가 파일 업로드 버튼을 보여줄지 말지 판단하는 용도.
+
+    BLOB_READ_WRITE_TOKEN이 없으면 업로드 자체를 시도하지 않고 기존
+    URL 붙여넣기 방식만 노출한다 -- 토큰을 나중에 연결하면 코드 변경 없이
+    이 값만 true로 바뀌면서 업로드 버튼이 자동으로 나타난다.
+    """
+    return {"enabled": bool(os.getenv("BLOB_READ_WRITE_TOKEN"))}
+
+
+async def _upload_to_vercel_blob(filename: str, content: bytes, content_type: str) -> str:
+    """Vercel Blob REST API로 서버 사이드 업로드.
+
+    NOTE: 이 프로젝트엔 BLOB_READ_WRITE_TOKEN이 아직 없어서(2026-08-06 기준)
+    이 함수는 실제 Vercel Blob에 대고 라이브 테스트를 해보지 못했다 -- 토큰을
+    연결한 뒤 실제 업로드 한 번은 꼭 확인해볼 것. 공식 SDK(@vercel/blob)는
+    Node 전용이라, 이 서비스(Python/FastAPI)에서는 REST 스펙을 직접
+    호출한다.
+    """
+    token = os.getenv("BLOB_READ_WRITE_TOKEN", "")
+    if not token:
+        raise HTTPException(
+            status_code=503,
+            detail="이미지 업로드가 아직 설정되지 않았습니다. 이미지 URL을 직접 입력해주세요.",
+        )
+    safe_name = f"{uuid4().hex[:12]}-{filename}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.put(
+            f"{_VERCEL_BLOB_API_BASE}/{safe_name}",
+            content=content,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "x-content-type": content_type,
+                "x-add-random-suffix": "1",
+            },
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail="이미지 업로드에 실패했습니다.")
+    return str(response.json()["url"])
+
+
+@app.post("/sellers/me/uploads")
+async def upload_product_image(
+    file: UploadFile,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    with closing(connect()) as connection:
+        require_seller_org(connection, authorization)
+    if file.content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400, detail="이미지 파일만 업로드할 수 있습니다(JPEG/PNG/WEBP/GIF)."
+        )
+    content = await file.read()
+    if len(content) > _UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="이미지 용량은 4MB 이하만 가능합니다.")
+    url = await _upload_to_vercel_blob(file.filename or "image", content, file.content_type)
+    return {"url": url}
 
 
 @app.post("/sellers/me/products", status_code=201)

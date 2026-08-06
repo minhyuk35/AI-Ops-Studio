@@ -98,6 +98,33 @@ curl -s https://ai-ops-studio-demo-store.vercel.app/api/core/health
 1번은 200인데 2번이 500이면 → **`DATABASE_URL` 환경변수**를 확인(이때는 진짜 DB
 문제). Vercel의 **Functions 로그**에서 스택트레이스를 볼 수 있다.
 
+## 상품 이미지 파일 업로드 (Vercel Blob) 연결하기
+
+기본값은 이미지 URL 직접 붙여넣기다. `BLOB_READ_WRITE_TOKEN` 환경변수가 없으면
+`GET /api/commerce/uploads/status`가 `{"enabled": false}`를 반환하고, 판매자
+콘솔의 상품 등록/수정 폼에는 "파일 업로드" 버튼 자체가 나타나지 않는다(URL
+입력만 가능) — 즉 **토큰 없이도 정상 동작**하며, 아래 절차로 토큰만 추가하면
+코드 변경 없이 버튼이 즉시 나타난다.
+
+1. Vercel 대시보드 → 이 프로젝트 → **Storage** 탭 → **Create Database** →
+   **Blob** 선택 → 이름 지정 후 생성.
+2. 생성된 Blob 스토어를 프로젝트에 **Connect**하면 `BLOB_READ_WRITE_TOKEN`이
+   해당 프로젝트의 환경변수에 자동으로 추가된다(Production/Preview/Development
+   범위를 원하는 대로 선택).
+3. 재배포하면 `POST /api/commerce/sellers/me/uploads`(판매자 인증 필요, JPEG/
+   PNG/WEBP/GIF, 4MB 이하)가 파일을 Blob에 업로드하고 공개 URL을 반환한다.
+   업로드된 URL은 기존 이미지 URL 필드와 동일하게 쓰인다 — 별도 DB 컬럼/마이그
+   레이션 없음.
+4. 로컬 개발에서 켜고 싶다면 `.env`(커밋 금지)에 `BLOB_READ_WRITE_TOKEN=...`을
+   추가한다(같은 대시보드의 Blob 스토어 → `.env.local` 다운로드 버튼으로 값을
+   얻을 수 있다).
+
+> ⚠️ Vercel Blob REST API의 실제 응답 형태는 이 프로젝트에서 토큰이 없어 실제
+> 호출로 검증하지 못했다(`services/mock-commerce-api/app/main.py`의
+> `_upload_to_vercel_blob` 참고). 토큰 연결 후 상품 등록 화면에서 실제 파일
+> 업로드를 한 번 테스트해보는 것을 권장한다 — 헤더 이름이나 응답 스키마가
+> 다르면 502(`이미지 업로드에 실패했습니다`)로 나타난다.
+
 ## 총관리자·판매자 운영 콘솔 (ops-console)
 
 `apps/ops-console`은 demo-store와 별도의 SPA로, 루트 `vercel.json`의
