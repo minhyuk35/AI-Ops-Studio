@@ -46,6 +46,8 @@ import {
 
 const AdminConsolePage = lazy(() => import("./AdminConsole"));
 const SellerConsolePage = lazy(() => import("./SellerConsole"));
+// 웹캠·포즈 모델을 쓰는 무거운 컴포넌트라, 버튼을 누를 때만 로드한다.
+const VirtualFitting = lazy(() => import("./VirtualFitting"));
 
 type View =
   | "home"
@@ -871,12 +873,18 @@ function ProductReviews({ productId }: { productId: string }) {
 }
 
 function ProductPage({ product, variantId, customerId, onVariant, onAdd, onBuy }: { product: ProductDetail; variantId: string; customerId?: string; onVariant: (id: string) => void; onAdd: () => void; onBuy: () => void }) {
+  const [fitting, setFitting] = useState(false);
   useEffect(() => {
     recordProductView(product.id, customerId).catch(() => {});
   }, [product.id, customerId]);
   return <>
-    <main className="product-page"><div className="product-gallery"><img src={product.image} alt={product.name} /></div><div className="product-info"><small>{product.brand} · {product.category_name}</small><h1>{product.name}</h1><p className="rating">★ {product.rating} · 리뷰 {product.review_count}개</p><div className="product-price">{product.compare_at_price && <del>{won.format(product.compare_at_price)}</del>}<strong>{won.format(product.price)}</strong></div><p className="description">{product.description}</p><fieldset><legend>옵션 선택</legend>{product.variants.map((variant) => <button type="button" disabled={!variant.stock} className={variantId === variant.id ? "selected" : ""} key={variant.id} onClick={() => onVariant(variant.id)}>{variant.color} / {variant.size}{!variant.stock && " · 품절"}</button>)}</fieldset><div className="purchase-actions"><button onClick={onAdd}>장바구니</button><button className="dark" onClick={onBuy}>바로 구매</button></div><dl className="policy-list"><div><dt>배송</dt><dd>{product.shipping.estimated_days} · {won.format(product.shipping.fee)} · {won.format(product.shipping.free_threshold)} 이상 무료</dd></div><div><dt>반품</dt><dd>수령 후 {product.return_policy.window_days}일 이내 · 단순 변심 {won.format(product.return_policy.return_fee)}</dd></div><div><dt>소재</dt><dd>{product.material}</dd></div><div><dt>관리</dt><dd>{product.care}</dd></div></dl></div></main>
+    <main className="product-page"><div className="product-gallery"><img src={product.image} alt={product.name} /></div><div className="product-info"><small>{product.brand} · {product.category_name}</small><h1>{product.name}</h1><p className="rating">★ {product.rating} · 리뷰 {product.review_count}개</p><div className="product-price">{product.compare_at_price && <del>{won.format(product.compare_at_price)}</del>}<strong>{won.format(product.price)}</strong></div><p className="description">{product.description}</p><fieldset><legend>옵션 선택</legend>{product.variants.map((variant) => <button type="button" disabled={!variant.stock} className={variantId === variant.id ? "selected" : ""} key={variant.id} onClick={() => onVariant(variant.id)}>{variant.color} / {variant.size}{!variant.stock && " · 품절"}</button>)}</fieldset><div className="purchase-actions"><button onClick={onAdd}>장바구니</button><button className="dark" onClick={onBuy}>바로 구매</button></div><button type="button" className="fit-button" onClick={() => setFitting(true)}>📷 가상 피팅으로 입어보기</button><dl className="policy-list"><div><dt>배송</dt><dd>{product.shipping.estimated_days} · {won.format(product.shipping.fee)} · {won.format(product.shipping.free_threshold)} 이상 무료</dd></div><div><dt>반품</dt><dd>수령 후 {product.return_policy.window_days}일 이내 · 단순 변심 {won.format(product.return_policy.return_fee)}</dd></div><div><dt>소재</dt><dd>{product.material}</dd></div><div><dt>관리</dt><dd>{product.care}</dd></div></dl></div></main>
     <ProductReviews productId={product.id} />
+    {fitting && (
+      <Suspense fallback={<div className="vf-overlay"><div className="vf-modal"><div className="vf-state">가상 피팅 불러오는 중…</div></div></div>}>
+        <VirtualFitting product={product} onClose={() => setFitting(false)} />
+      </Suspense>
+    )}
   </>;
 }
 

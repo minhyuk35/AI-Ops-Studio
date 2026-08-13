@@ -324,12 +324,24 @@
 
 <h2 id="fitting"><span class="num">★</span>가상 피팅 (웹캠 실시간 착장) — 교수님 피드백 로드맵</h2>
 <div class="rule"></div>
-<div class="card p">
-  <h4 class="pink">교수님 피드백 ② · 아직 미구현 · 계획 수립 완료</h4>
-  <p style="margin-top:0">"카메라로 옷을 골라 입어본 것처럼 실시간으로 움직이는 가상 피팅." 현재 코드베이스에
-    카메라/웹캠 기능은 <b>어떤 형태로도 없습니다</b>(의존성도 없음). 기존 스택(FastAPI + React,
-    LLM 오케스트레이션)과 거의 겹치지 않는 <b>별도의 컴퓨터비전/AR 서브시스템</b>이라 별도 스프린트로
-    남겨두고, 아래처럼 <b>컴퓨터 웹캠 기준</b> 단계별 계획을 세웠습니다.</p>
+<div class="card g">
+  <h4 class="green">교수님 피드백 ② · Phase 0·1 구현 완료 (2026-08-10) · Phase 2~4 로드맵</h4>
+  <p style="margin-top:0">"카메라로 옷을 골라 입어본 것처럼 실시간으로 움직이는 가상 피팅." <b>컴퓨터 웹캠</b> 기준으로
+    <b>Phase 0(웹캠 + 실시간 포즈 추적)과 Phase 1(어깨 랜드마크에 상품 이미지 2D 오버레이)을 실제로
+    구현</b>했습니다. 상품 상세 페이지의 <b>"📷 가상 피팅으로 입어보기"</b> 버튼으로 열리며,
+    <code>@mediapipe/tasks-vision</code>의 PoseLandmarker로 33개 랜드마크를 프레임마다 추적해 옷을
+    어깨선 각도·너비에 맞춰 겹칩니다(크기·위치 슬라이더, 골격 토글, 사진 저장 포함). 영상은
+    브라우저 안에서만 처리되고 서버로 전송되지 않습니다. 무거운 모델이라 버튼을 누를 때만 로드되는
+    별도 청크(<code>apps/demo-store/src/VirtualFitting.tsx</code>, lazy)로 분리했습니다. 세그멘테이션·
+    앞뒤 레이어링·3D 메쉬(Phase 2~4)는 아래 계획대로 남겨뒀습니다.</p>
+</div>
+<div class="card w">
+  <h4 class="warn">브라우저 실측은 아직</h4>
+  <p style="margin-top:0">타입체크·프로덕션 빌드는 통과했지만(웹캠·포즈는 브라우저에서만 동작하는 영역이라)
+    실제 카메라·포즈 오버레이 화면은 브라우저에서 한 번 확인이 필요합니다. 데모 단계라 상품 사진을
+    그대로 겹치므로, 실제 서비스에서는 <b>배경이 투명한 착장용 이미지</b>를 쓰면 훨씬 자연스러워집니다
+    (Phase 1 후속). MediaPipe 모델·WASM은 CDN에서 로드하며, 완전 오프라인이 필요하면 <code>public/</code>에
+    받아 두고 URL만 바꾸면 됩니다.</p>
 </div>
 
 <h3>왜 별도 서브시스템인가</h3>
@@ -350,8 +362,8 @@
 
 <h3>단계별 구현 계획</h3>
 <div class="steps">
-  <div class="st"><div class="no">0</div><div><span class="b">PoC — 웹캠 + 포즈 오버레이</span><span class="d"> 웹캠 권한을 받아 <code>&lt;video&gt;</code>를 띄우고, MediaPipe Pose로 잡은 골격 랜드마크를 캔버스에 그려 "실시간 추적이 된다"만 확인. 상품 없음.</span></div></div>
-  <div class="st"><div class="no">1</div><div><span class="b">2D 오버레이 착장 (MVP)</span><span class="d"> 상의 상품의 투명 PNG를 <b>어깨 두 랜드마크</b> 기준으로 스케일·회전·위치 맞춰 얹기(정면 기준). 상품 상세의 "가상 피팅" 버튼 → 모달로 웹캠 착장.</span></div></div>
+  <div class="st done"><div class="no">✓</div><div><span class="b">PoC — 웹캠 + 포즈 오버레이 <span style="color:var(--accent2)">· 완료</span></span><span class="d"> 웹캠 권한을 받아 <code>&lt;video&gt;</code>를 띄우고, MediaPipe PoseLandmarker로 잡은 골격 랜드마크를 캔버스에 그림('포즈 골격' 토글). GPU 실패 시 CPU 폴백까지 구현.</span></div></div>
+  <div class="st done"><div class="no">✓</div><div><span class="b">2D 오버레이 착장 (MVP) <span style="color:var(--accent2)">· 완료</span></span><span class="d"> 상품 이미지를 <b>어깨 두 랜드마크</b> 기준으로 스케일·회전·위치 맞춰 얹음(셀피 반전, 크기·위치 슬라이더, 사진 저장). 상품 상세의 "📷 가상 피팅으로 입어보기" 버튼 → 모달. (투명 배경 착장 이미지는 후속)</span></div></div>
   <div class="st"><div class="no">2</div><div><span class="b">세그멘테이션 + 사이즈 연동</span><span class="d"> Selfie Segmentation으로 인물을 분리해 옷이 배경이 아니라 몸에만 겹치게. 기존 <b>사이즈 프로필</b>(구매 이력 기반)과 연동해 "추천 사이즈"를 함께 표시.</span></div></div>
   <div class="st"><div class="no">3</div><div><span class="b">앞/뒤 레이어링 · 다각도</span><span class="d"> 팔이 옷 앞으로 오면 가려지도록 깊이 레이어링, 측면 포즈 대응.</span></div></div>
   <div class="st"><div class="no">4</div><div><span class="b">3D 메쉬 워핑 (고도화)</span><span class="d"> Three.js로 의류를 3D 메쉬로 만들어 옷감이 움직임을 따라 자연스럽게 흔들리게(스켈레톤 바인딩·클로스 시뮬). 상품별 3D 에셋 파이프라인이 전제.</span></div></div>
