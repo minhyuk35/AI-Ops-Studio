@@ -810,16 +810,15 @@ function Catalog(props: { products: Product[]; categories: Category[]; selectedC
 
   return <main className="store-section catalog-page"><SectionTitle eyebrow="SHOP" title={props.search ? `“${props.search}” 검색 결과` : "전체 상품"} />
     <div className="catalog-tools">
-      <div>
-        <div className="category-tabs"><button className={!activeParentSlug ? "active" : ""} onClick={() => props.onCategory("")}>전체</button>{parents.map((item) => <button className={activeParentSlug === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}</div>
-        {children.length > 0 && (
-          <div className="subcategory-tabs">
-            <button className={props.selectedCategory === activeParentSlug ? "active" : ""} onClick={() => props.onCategory(activeParentSlug)}>전체</button>
-            {children.map((item) => <button className={props.selectedCategory === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}
-          </div>
-        )}
+      <div className="category-tabs"><button className={!activeParentSlug ? "active" : ""} onClick={() => props.onCategory("")}>전체</button>{parents.map((item) => <button className={activeParentSlug === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}</div>
+      <div className="filters"><label><input type="checkbox" checked={props.inStock} onChange={(event) => props.onInStock(event.target.checked)} /> 재고 있음</label><select value={props.sort} onChange={(event) => props.onSort(event.target.value)} aria-label="상품 정렬"><option value="recommended">추천순</option><option value="newest">신상품순</option><option value="price_asc">낮은 가격순</option><option value="price_desc">높은 가격순</option><option value="reviews">리뷰순</option></select></div>
+    </div>
+    {children.length > 0 && (
+      <div className="subcategory-tabs">
+        <button className={props.selectedCategory === activeParentSlug ? "active" : ""} onClick={() => props.onCategory(activeParentSlug)}>전체</button>
+        {children.map((item) => <button className={props.selectedCategory === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}
       </div>
-      <div className="filters"><label><input type="checkbox" checked={props.inStock} onChange={(event) => props.onInStock(event.target.checked)} /> 재고 있음</label><select value={props.sort} onChange={(event) => props.onSort(event.target.value)} aria-label="상품 정렬"><option value="recommended">추천순</option><option value="newest">신상품순</option><option value="price_asc">낮은 가격순</option><option value="price_desc">높은 가격순</option><option value="reviews">리뷰순</option></select></div></div>
+    )}
     {props.products.length ? <ProductGrid products={props.products} onProduct={props.onProduct} /> : <div className="empty"><h2>조건에 맞는 상품이 없습니다.</h2><button onClick={() => props.onCategory("")}>필터 초기화</button></div>}
   </main>;
 }

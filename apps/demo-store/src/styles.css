@@ -101,11 +101,11 @@ a { color: inherit; }
 .benefits { display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; margin: 0 6vw 90px; background: var(--line-strong); border: 1px solid var(--line-strong); }
 .benefits article { display: grid; gap: 7px; padding: 28px; background: var(--surface); }
 .benefits span { color: var(--muted); font-size: 13px; }
-.catalog-tools { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 28px; border-bottom: 1px solid var(--line-strong); }
+.catalog-tools { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 22px; border-bottom: 1px solid var(--line-strong); }
 .category-tabs { display: flex; gap: 5px; overflow-x: auto; }
 .category-tabs button { padding: 12px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; white-space: nowrap; cursor: pointer; }
 .category-tabs button.active { border-color: var(--ink); font-weight: 800; }
-.subcategory-tabs { display: flex; gap: 4px; overflow-x: auto; margin-top: 2px; }
+.subcategory-tabs { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 26px; }
 .subcategory-tabs button { padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; white-space: nowrap; cursor: pointer; font-size: 12.5px; color: var(--muted); }
 .subcategory-tabs button.active { border-color: var(--ink); color: var(--ink); font-weight: 700; }
 .ai-recs-section { padding-top: 46px; padding-bottom: 24px; }
@@ -185,7 +185,10 @@ a { color: inherit; }
 .chat-launcher { position: fixed; right: 24px; bottom: 24px; z-index: 30; width: 58px; height: 58px; border: 0; border-radius: 50%; color: white; background: var(--ink); box-shadow: 0 12px 30px #0004; font-weight: 900; cursor: pointer; }
 .chat { position: fixed; right: 24px; bottom: 24px; z-index: 40; width: min(390px,calc(100vw - 32px)); overflow: hidden; border: 1px solid var(--line-strong); background: #ffffff; box-shadow: 0 24px 70px #0003; }.chat header { display: flex; justify-content: space-between; padding: 15px; color: white; background: var(--ink); }.chat header div { display: grid; gap: 3px; }.chat header small { color: #c9c9c9; }.chat header button { border: 0; color: white; background: transparent; }.messages { min-height: 230px; max-height: 380px; overflow-y: auto; padding: 14px; }.message { width: 85%; margin-bottom: 10px; padding: 11px 13px; border-radius: 3px 13px 13px; background: var(--surface); font-size: 14px; line-height: 1.5; }.message.user { margin-left: auto; color: white; border-radius: 13px 3px 13px 13px; background: var(--ink); }.chat form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }.chat input { min-width: 0; flex: 1; padding: 11px; border: 1px solid var(--line-strong); }.chat form button { border: 0; padding: 0 15px; color: white; background: var(--ink); }
 .markdown-body > :first-child { margin-top: 0; }.markdown-body > :last-child { margin-bottom: 0; }.markdown-body p { margin: .55em 0; }.markdown-body ul,.markdown-body ol { margin: .55em 0; padding-left: 1.35em; }.markdown-body strong { font-weight: 800; }
-.auth-page { max-width: 400px; margin: 0 auto; }
+/* 로그인/회원가입: .store-section 의 6vw 좌우 패딩을 고정값으로 덮어써서
+   콘텐츠 컬럼 폭을 뷰포트와 무관하게 일정하게 만든다(구글 버튼과 폭이 어긋나던 원인).
+   box-sizing:border-box 기준 컬럼 360px + 좌우 20px 패딩 → 콘텐츠 320px, 중앙 정렬. */
+.auth-page { width: 100%; max-width: 360px; margin: 0 auto; padding: 64px 20px 96px; }
 .auth-form { display: grid; gap: 16px; margin-top: 8px; }
 .auth-form label { display: grid; gap: 7px; color: #333333; font-size: 13px; }
 .auth-form input { padding: 12px; border: 1px solid var(--line-strong); background: white; }
