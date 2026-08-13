@@ -124,6 +124,11 @@ a { color: inherit; }
 .ai-recommendations-page .ai-rec-section-group { margin-top: 44px; }
 .ai-recommendations-page .ai-rec-section-group:first-of-type { margin-top: 8px; }
 .ai-recommendations-page .ai-rec-section-group h3 { margin: 0 0 16px; font-size: 18px; }
+/* 전용 추천 페이지는 홈 가로스크롤(190px 고정칩) 대신 폭을 채우는 그리드로 — 오른쪽 빈공간 제거 */
+.ai-rec-page-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px 22px; }
+.ai-rec-page-grid .ai-rec-chip { width: auto; }
+@media (max-width: 720px) { .ai-rec-page-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 460px) { .ai-rec-page-grid { grid-template-columns: 1fr; } }
 .filters { display: flex; gap: 14px; align-items: center; font-size: 13px; }
 .filters select { padding: 8px; border: 1px solid var(--line); background: var(--surface); }
 .empty { min-height: 360px; display: grid; place-content: center; gap: 18px; text-align: center; }

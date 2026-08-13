@@ -18,7 +18,6 @@
 
 import os
 import sys
-import zlib
 from pathlib import Path
 
 # services/mock-commerce-api 를 import 경로에 올린다(스크립트 단독 실행용).
@@ -101,8 +100,33 @@ CATALOG = {
 }
 
 
-def _image(kw: str, lock: int, w: int = 600, h: int = 750) -> str:
-    return f"https://loremflickr.com/{w}/{h}/{kw}?lock={lock}"
+# 카테고리별 '알맞은' 사진 — Unsplash 확정 이미지 풀(가방은 3장, 나머지는 정확한
+# 타입 1장). loremflickr(키워드→Flickr, 부정확·느림)를 대체한다. 더 다양하게
+# 하려면 판매자 콘솔의 이미지 파일 업로드(Vercel Blob)로 실제 상품컷을 올리면 된다.
+_U = "https://images.unsplash.com/photo-{id}?auto=format&fit=crop&w=800&q=80"
+IMG = {
+    "top-sweatshirt": ["1556821840-3a63f95609a7"],
+    "top-shirt": ["1598033129183-c4f50c736f10"],
+    "top-tee": ["1521572163474-6864f9cf17ab"],
+    "top-knit": ["1576871337622-98d48d1cf531"],
+    "bottom-denim": ["1541099649105-f69ad21f3246"],
+    "bottom-slacks": ["1594633312681-425c7b97ccd1"],
+    "bottom-cargo": ["1594633312681-425c7b97ccd1"],
+    "bottom-shorts": ["1541099649105-f69ad21f3246"],
+    "outer-jacket": ["1591047139829-d91aecb6caea"],
+    "outer-coat": ["1539533018447-63fcce2678e3"],
+    "outer-hoodzip": ["1556821840-3a63f95609a7"],
+    "shoes": ["1542291026-7eec264c27ff"],
+    "accessories-bag": ["1553062407-98eeb64c6a62", "1590874103328-eac38a683ce7", "1591561954557-26941169b49e"],
+    "accessories-belt": ["1624222247344-550fb60583dc"],
+    "accessories-cap": ["1588850561407-ed78c282e89b"],
+    "accessories-jewelry": ["1515562141207-7a88fb7ce338"],
+}
+_FALLBACK_IMG = ["1521572163474-6864f9cf17ab"]
+
+
+def _img(photo_id: str) -> str:
+    return _U.format(id=photo_id)
 
 
 def _price(low: int, high: int, i: int) -> int:
@@ -166,20 +190,25 @@ def seed() -> None:
                 name = f"SIGN {mod} {conf['noun']} {i + 1:02d}"
                 pid = f"prd_sign_{key}_{i + 1:02d}"
                 slug = f"sign-{cat['slug']}-{i + 1:02d}"
-                lock = 100 + (zlib.crc32(cat["slug"].encode()) % 500) + i  # 카테고리·상품별로 다른 이미지(결정론적)
-                cover = _image(conf["kw"], lock)
-                gallery = ",".join(_image(conf["kw"], lock + 1000 * g) for g in range(1, 3))
+                pool = IMG.get(cat["slug"], _FALLBACK_IMG)
+                cover = _img(pool[i % len(pool)])
+                gallery = ",".join(_img(x) for x in pool)
                 price = _price(conf["price"][0], conf["price"][1], i)
                 compare = int(round(price * 1.15 / 1000) * 1000) if i % 3 == 0 else None
                 rating = round(4.2 + (i % 8) * 0.09, 1)
                 reviews = (i * 7 + len(cat["slug"])) % 55
                 connection.execute(
                     """
-                    INSERT OR IGNORE INTO products(
+                    INSERT INTO products(
                         id, slug, category_id, org_id, brand, name, description, material, care,
                         image, price, compare_at_price, rating, review_count, created_at,
                         color_family, style_tags, images, is_active
                     ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+                    ON CONFLICT(id) DO UPDATE SET
+                        image = excluded.image, images = excluded.images, name = excluded.name,
+                        description = excluded.description, price = excluded.price,
+                        compare_at_price = excluded.compare_at_price,
+                        color_family = excluded.color_family, style_tags = excluded.style_tags
                     """,
                     (
                         pid, slug, cat["id"], org_id, "SIGN", name,

@@ -381,6 +381,7 @@ export function App() {
       {view === "catalog" && (
         <Catalog
           products={products.data ?? []}
+          loading={products.isLoading}
           categories={categories.data ?? []}
           selectedCategory={category}
           sort={sort}
@@ -788,14 +789,16 @@ function AiRecommendationsPage({ onProduct, token }: { onProduct: (p: { slug: st
       {recs.data?.sections.map((section) => (
         <div className="ai-rec-section-group" key={section.category_id}>
           <h3>{section.category_name}</h3>
-          <AiRecRow items={section.items} onProduct={onProduct} />
+          <div className="ai-rec-page-grid">
+            {section.items.map((item) => <AiRecChip item={item} onProduct={onProduct} key={item.id} />)}
+          </div>
         </div>
       ))}
     </main>
   );
 }
 
-function Catalog(props: { products: Product[]; categories: Category[]; selectedCategory: string; sort: string; inStock: boolean; search: string; onCategory: (v: string) => void; onSort: (v: string) => void; onInStock: (v: boolean) => void; onProduct: (p: Product) => void }) {
+function Catalog(props: { products: Product[]; loading: boolean; categories: Category[]; selectedCategory: string; sort: string; inStock: boolean; search: string; onCategory: (v: string) => void; onSort: (v: string) => void; onInStock: (v: boolean) => void; onProduct: (p: Product) => void }) {
   // 2단 카테고리: 대분류(부모) 탭 + 선택한 대분류에 속한 소분류 탭.
   // selectedCategory는 대분류 slug(그 대분류 전체) 또는 소분류 slug(단일 소분류) 둘 다 될 수 있음.
   const parents = props.categories.filter((c) => !c.parent_id);
@@ -819,7 +822,7 @@ function Catalog(props: { products: Product[]; categories: Category[]; selectedC
         {children.map((item) => <button className={props.selectedCategory === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}
       </div>
     )}
-    {props.products.length ? <ProductGrid products={props.products} onProduct={props.onProduct} /> : <div className="empty"><h2>조건에 맞는 상품이 없습니다.</h2><button onClick={() => props.onCategory("")}>필터 초기화</button></div>}
+    {props.loading ? <div className="empty"><p>상품을 불러오는 중…</p></div> : props.products.length ? <ProductGrid products={props.products} onProduct={props.onProduct} /> : <div className="empty"><h2>조건에 맞는 상품이 없습니다.</h2><button onClick={() => props.onCategory("")}>필터 초기화</button></div>}
   </main>;
 }
 
