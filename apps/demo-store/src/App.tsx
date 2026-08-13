@@ -1107,9 +1107,13 @@ function GoogleSignInButton({
     if (!GOOGLE_CLIENT_ID) return;
     const container = containerRef.current;
     if (!container) return;
+    let debounce: number | undefined;
 
     const render = () => {
       if (!window.google || !container) return;
+      // Google 버튼은 픽셀 폭(유효범위 200~400)만 받는다. 입력창·로그인
+      // 버튼과 폭을 맞추려고 컨테이너 실제 너비를 재서 그대로 넘긴다.
+      const width = Math.round(Math.min(400, Math.max(200, container.clientWidth || 320)));
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: (response) => {
@@ -1126,25 +1130,39 @@ function GoogleSignInButton({
         theme: "outline",
         size: "large",
         text: "continue_with",
-        width: 320,
+        width,
       });
+    };
+
+    const scheduleRender = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(render, 150);
     };
 
     if (window.google) {
       render();
-      return;
+    } else {
+      const existing = document.getElementById(GOOGLE_SCRIPT_ID);
+      if (existing) {
+        existing.addEventListener("load", render);
+      } else {
+        const script = document.createElement("script");
+        script.id = GOOGLE_SCRIPT_ID;
+        script.src = "https://accounts.google.com/gsi/client";
+        script.async = true;
+        script.onload = render;
+        document.head.appendChild(script);
+      }
     }
-    const existing = document.getElementById(GOOGLE_SCRIPT_ID);
-    if (existing) {
-      existing.addEventListener("load", render);
-      return () => existing.removeEventListener("load", render);
-    }
-    const script = document.createElement("script");
-    script.id = GOOGLE_SCRIPT_ID;
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.onload = render;
-    document.head.appendChild(script);
+
+    // 컨테이너 폭이 바뀌면(창 크기 변경 등) 버튼을 그 폭으로 다시 그린다.
+    const observer = new ResizeObserver(scheduleRender);
+    observer.observe(container);
+    return () => {
+      window.clearTimeout(debounce);
+      observer.disconnect();
+      document.getElementById(GOOGLE_SCRIPT_ID)?.removeEventListener("load", render);
+    };
   }, [asSeller, shopName, shopCategory, onError, onSuccess]);
 
   if (!GOOGLE_CLIENT_ID) {
