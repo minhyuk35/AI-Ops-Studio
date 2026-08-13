@@ -322,6 +322,61 @@
 <p class="lead">지금 당장 코드가 없는 것들 — 우선순위별로 정리했습니다. 완료된 작업은
   <button class="tabbtn" style="display:inline;width:auto;padding:2px 8px" onclick="activateTab('done')">완료된 작업</button> 탭 참고.</p>
 
+<h2 id="fitting"><span class="num">★</span>가상 피팅 (웹캠 실시간 착장) — 교수님 피드백 로드맵</h2>
+<div class="rule"></div>
+<div class="card p">
+  <h4 class="pink">교수님 피드백 ② · 아직 미구현 · 계획 수립 완료</h4>
+  <p style="margin-top:0">"카메라로 옷을 골라 입어본 것처럼 실시간으로 움직이는 가상 피팅." 현재 코드베이스에
+    카메라/웹캠 기능은 <b>어떤 형태로도 없습니다</b>(의존성도 없음). 기존 스택(FastAPI + React,
+    LLM 오케스트레이션)과 거의 겹치지 않는 <b>별도의 컴퓨터비전/AR 서브시스템</b>이라 별도 스프린트로
+    남겨두고, 아래처럼 <b>컴퓨터 웹캠 기준</b> 단계별 계획을 세웠습니다.</p>
+</div>
+
+<h3>왜 별도 서브시스템인가</h3>
+<p>지금 프로젝트의 핵심은 LLM 페르소나 오케스트레이션과 백엔드 데이터 처리입니다. 가상 피팅은
+  <b>브라우저 안에서 도는 실시간 CV 모델 추론 + WebGL 렌더링 + 상품별 의류 에셋 파이프라인</b>이라,
+  서버 API를 하나 더 붙이는 문제가 아니라 프런트엔드에 완전히 새로운 실시간 처리 계층을 얹는 작업입니다.</p>
+
+<h3>기술 스택 (웹캠 기반 · 전부 브라우저 내 처리)</h3>
+<table>
+  <tr><th>계층</th><th>선택 기술</th><th>역할</th></tr>
+  <tr><td>카메라 입력</td><td><code>getUserMedia</code> (WebRTC) + <code>&lt;video&gt;</code></td><td>컴퓨터 웹캠 스트림 확보(권한 요청)</td></tr>
+  <tr><td>실시간 포즈 추정</td><td>MediaPipe Pose / BlazePose (TF.js)</td><td>어깨·골반·팔 등 33개 랜드마크를 프레임마다 추적</td></tr>
+  <tr><td>인물 분리(2단계~)</td><td>MediaPipe Selfie Segmentation</td><td>사람과 배경 분리 → 옷을 몸에만 겹침</td></tr>
+  <tr><td>의류 합성</td><td>1단계 Canvas 2D 워핑 → 2단계 WebGL/Three.js</td><td>상품 이미지를 랜드마크에 맞춰 스케일·회전·워핑</td></tr>
+  <tr><td>렌더 루프</td><td><code>&lt;canvas&gt;</code> + <code>requestAnimationFrame</code></td><td>웹캠 프레임 위에 착장 오버레이 실시간 렌더</td></tr>
+  <tr><td>상품 에셋</td><td>투명 배경 착장 PNG(1단계) → 3D 의류 메쉬(4단계)</td><td>상품별 피팅용 에셋 제작 파이프라인 필요</td></tr>
+</table>
+
+<h3>단계별 구현 계획</h3>
+<div class="steps">
+  <div class="st"><div class="no">0</div><div><span class="b">PoC — 웹캠 + 포즈 오버레이</span><span class="d"> 웹캠 권한을 받아 <code>&lt;video&gt;</code>를 띄우고, MediaPipe Pose로 잡은 골격 랜드마크를 캔버스에 그려 "실시간 추적이 된다"만 확인. 상품 없음.</span></div></div>
+  <div class="st"><div class="no">1</div><div><span class="b">2D 오버레이 착장 (MVP)</span><span class="d"> 상의 상품의 투명 PNG를 <b>어깨 두 랜드마크</b> 기준으로 스케일·회전·위치 맞춰 얹기(정면 기준). 상품 상세의 "가상 피팅" 버튼 → 모달로 웹캠 착장.</span></div></div>
+  <div class="st"><div class="no">2</div><div><span class="b">세그멘테이션 + 사이즈 연동</span><span class="d"> Selfie Segmentation으로 인물을 분리해 옷이 배경이 아니라 몸에만 겹치게. 기존 <b>사이즈 프로필</b>(구매 이력 기반)과 연동해 "추천 사이즈"를 함께 표시.</span></div></div>
+  <div class="st"><div class="no">3</div><div><span class="b">앞/뒤 레이어링 · 다각도</span><span class="d"> 팔이 옷 앞으로 오면 가려지도록 깊이 레이어링, 측면 포즈 대응.</span></div></div>
+  <div class="st"><div class="no">4</div><div><span class="b">3D 메쉬 워핑 (고도화)</span><span class="d"> Three.js로 의류를 3D 메쉬로 만들어 옷감이 움직임을 따라 자연스럽게 흔들리게(스켈레톤 바인딩·클로스 시뮬). 상품별 3D 에셋 파이프라인이 전제.</span></div></div>
+</div>
+
+<div class="cols">
+  <div class="card g">
+    <h4 class="green">통합 지점 (기존 기능 재활용)</h4>
+    <ul style="margin:0">
+      <li>상품 상세 페이지에 <b>"가상 피팅"</b> 버튼 → 웹캠 모달</li>
+      <li>구매 이력 기반 <b>사이즈 프로필</b>과 연동해 추천 사이즈 표시</li>
+      <li>피팅해 본 상품을 <b>AI 추천</b> 신호로 재사용(조회 이력처럼)</li>
+    </ul>
+  </div>
+  <div class="card w">
+    <h4 class="warn">리스크 · 고려사항</h4>
+    <ul style="margin:0">
+      <li><b>성능</b> — 포즈 모델 로딩(수 MB, WASM/GPU 백엔드)·프레임레이트. 저사양 기기는 정지 이미지 합성으로 폴백</li>
+      <li><b>개인정보</b> — 영상은 <b>서버로 안 보내고 브라우저 안에서만</b> 처리(전송·저장 없음)</li>
+      <li><b>에셋 비용</b> — 상품마다 피팅용 투명 PNG/3D 메쉬 제작이 필요(카탈로그 확장 시 병목)</li>
+      <li><b>범위</b> — 우선 <b>컴퓨터 웹캠</b> 기준. 모바일 카메라는 이후 단계</li>
+    </ul>
+  </div>
+</div>
+
 <h2 id="vercelblob"><span class="num">·</span>Vercel Blob 연결 가이드 (지금 바로 할 수 있는 설정)</h2>
 <div class="rule"></div>
 <p>상품 이미지 파일 업로드(<a href="javascript:void(0)" onclick="gotoAnchor('done','s9')">A-9</a>)는 코드가 이미

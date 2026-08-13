@@ -285,3 +285,57 @@ a { color: inherit; }
 footer { padding: 50px 6vw; color: #d4d4d4; background: var(--ink); }footer p,footer small { color: #a3a3a3; font-size: 12px; }footer div { display: flex; gap: 18px; margin: 20px 0; font-size: 12px; }
 @media (max-width: 900px) { .store-header { grid-template-columns: 1fr auto auto; gap: 12px; }.store-header nav { display: none; }.header-search { grid-column: 1/-1; grid-row: 2; }.product-grid { grid-template-columns: repeat(2,1fr); }.editorial-grid { grid-template-columns: 1fr; }.editorial-side { grid-template-columns: 1fr 1fr; }.hero-index { display: none; }.product-page { grid-template-columns: 1fr; }.product-gallery { min-height: auto; aspect-ratio: 4/5; }.cart-layout,.order-columns,.inquiry-layout { grid-template-columns: 1fr; }.summary { width: 100%; }.benefits { grid-template-columns: 1fr; }.catalog-tools { align-items: start; flex-direction: column; }.filters { margin-bottom: 10px; } }
 @media (max-width: 560px) { .store-header { padding: 13px 16px; }.wordmark { font-size: 12px; }.store-section { padding: 52px 18px 80px; }.hero { min-height: 78vh; padding: 70px 24px 50px; }.hero-ring { display: none; }.editorial-side { grid-template-columns: 1fr; }.statement { height: 50vh; min-height: 320px; }.product-grid { grid-template-columns: 1fr 1fr; gap: 24px 10px; }.product-card h3 { font-size: 14px; }.product-info { padding: 38px 20px 70px; }.purchase-actions { position: sticky; bottom: 0; z-index: 5; padding: 10px 0; background: var(--bg); }.cart-item { grid-template-columns: 90px 1fr; }.cart-item img { width: 90px; }.cart-item > div:last-child { grid-column: 2; display: flex; justify-content: space-between; }.form-grid { grid-template-columns: 1fr; }.form-grid .wide { grid-column: auto; }.payment-methods { flex-direction: column; }.chat { right: 16px; bottom: 16px; }.chat-launcher { right: 16px; bottom: 16px; } }
+
+/* ===== 모바일 반응형 보강 (햄버거 메뉴 + 콘솔/판매자 화면 스택) ===== */
+/* 햄버거 버튼과 모바일 드로어는 기본(데스크톱)에서 숨김 — 아래 미디어쿼리에서만 노출 */
+.nav-toggle { display: none; }
+.mobile-nav { display: none; }
+
+@media (max-width: 900px) {
+  /* 데스크톱 인라인 nav가 숨겨진 자리를 햄버거 메뉴가 대신한다 */
+  .nav-toggle {
+    display: inline-flex; flex-direction: column; justify-content: center; gap: 4px;
+    width: 40px; height: 40px; padding: 10px; order: -1;
+    border: 1px solid var(--line-strong); background: transparent; cursor: pointer;
+  }
+  .nav-toggle span { display: block; width: 100%; height: 2px; background: var(--ink); }
+  .header-actions { gap: 12px; }
+  /* 헤더가 position:sticky라 이 드로어의 기준(containing block)이 된다 */
+  .mobile-nav {
+    display: flex; flex-direction: column;
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+    padding: 6px 4vw 14px; background: rgba(255,255,255,.98);
+    border-bottom: 1px solid var(--line-strong); box-shadow: 0 14px 34px #00000022;
+    backdrop-filter: blur(14px);
+  }
+  .mobile-nav button {
+    padding: 15px 6px; border: 0; border-top: 1px solid var(--line);
+    background: transparent; text-align: left; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .mobile-nav button:first-child { border-top: 0; }
+  /* 긴 이름이 헤더를 밀지 않도록 */
+  .account-button { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+/* 판매자·관리자 콘솔과 주문/체크아웃의 촘촘한 레이아웃을 세로로 편다 */
+@media (max-width: 720px) {
+  .console-tabs, .category-tabs, .subcategory-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .console-panel-heading { flex-direction: column; align-items: stretch; }
+  .console-panel-heading button { width: 100%; }
+  .console-stats, .console-grid-two { grid-template-columns: 1fr; }
+  .page-header-row { flex-direction: column; align-items: stretch; }
+  .checkout-actions, .profile-actions, .form-actions { flex-wrap: wrap; gap: 10px; }
+  .checkout-actions button, .profile-actions button { flex: 1 1 auto; }
+  .variant-row, .seller-variant-row, .seller-variant-add { grid-template-columns: 1fr 1fr; }
+  .seller-variant-row input { width: 100%; }
+  .market-share-row, .admin-org-row, .seller-order-row { flex-direction: column; align-items: stretch; }
+  .market-share-row h3 { white-space: normal; }
+  .seller-order-actions, .seller-product-row-actions { flex-wrap: wrap; }
+  .timeline-labels { font-size: 10px; }
+}
+
+/* 아주 좁은 화면: 상품 그리드는 한 줄에 하나가 더 편하다 */
+@media (max-width: 400px) {
+  .product-grid { grid-template-columns: 1fr; }
+  .purchase-actions { grid-template-columns: 1fr; }
+}

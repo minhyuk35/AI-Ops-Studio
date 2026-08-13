@@ -301,10 +301,17 @@ export function App() {
     setView("order");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const [mobileNav, setMobileNav] = useState(false);
   const runSearch = (event: FormEvent) => {
     event.preventDefault();
     setSearch(searchInput.trim());
     setView("catalog");
+    setMobileNav(false);
+  };
+  // 모바일 햄버거 메뉴에서 항목을 고르면 해당 화면으로 이동하고 메뉴를 닫는다.
+  const goMobile = (target: View) => {
+    setView(target);
+    setMobileNav(false);
   };
 
   return (
@@ -323,6 +330,14 @@ export function App() {
           <button>검색</button>
         </form>
         <div className="header-actions">
+          <button
+            className="nav-toggle"
+            aria-label="메뉴"
+            aria-expanded={mobileNav}
+            onClick={() => setMobileNav((value) => !value)}
+          >
+            <span /><span /><span />
+          </button>
           {auth ? (
             <button className="account-button" onClick={() => setView("profile")}>{auth.customer.name}</button>
           ) : (
@@ -330,6 +345,19 @@ export function App() {
           )}
           <button className="cart-button" onClick={() => setView("cart")}>BAG <b>{cart.data?.item_count ?? 0}</b></button>
         </div>
+        {mobileNav && (
+          <nav className="mobile-nav" aria-label="모바일 메뉴">
+            <button onClick={() => goMobile("catalog")}>SHOP</button>
+            <button onClick={() => goMobile("recommendations")}>AI 추천</button>
+            <button onClick={() => goMobile("orders")}>주문·배송</button>
+            <button onClick={() => goMobile("inquiries")}>문의 내역</button>
+            {auth ? (
+              <button onClick={() => goMobile("profile")}>내 정보 · {auth.customer.name}</button>
+            ) : (
+              <button onClick={() => goMobile("login")}>로그인 · 회원가입</button>
+            )}
+          </nav>
+        )}
       </header>
 
       <Marquee text="NEW SEASON — MINIMAL SILHOUETTE — MONOCHROME — CODILAB — " />
