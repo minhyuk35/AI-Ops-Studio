@@ -294,6 +294,26 @@ footer { padding: 50px 6vw; color: #d4d4d4; background: var(--ink); }footer p,fo
 @media (max-width: 900px) { .store-header { grid-template-columns: 1fr auto auto; gap: 12px; }.store-header nav { display: none; }.header-search { grid-column: 1/-1; grid-row: 2; }.product-grid { grid-template-columns: repeat(2,1fr); }.editorial-grid { grid-template-columns: 1fr; }.editorial-side { grid-template-columns: 1fr 1fr; }.hero-index { display: none; }.product-page { grid-template-columns: 1fr; }.product-gallery { min-height: auto; aspect-ratio: 4/5; }.cart-layout,.order-columns,.inquiry-layout { grid-template-columns: 1fr; }.summary { width: 100%; }.benefits { grid-template-columns: 1fr; }.catalog-tools { align-items: start; flex-direction: column; }.filters { margin-bottom: 10px; } }
 @media (max-width: 560px) { .store-header { padding: 13px 16px; }.wordmark { font-size: 12px; }.store-section { padding: 52px 18px 80px; }.hero { min-height: 78vh; padding: 70px 24px 50px; }.hero-ring { display: none; }.editorial-side { grid-template-columns: 1fr; }.statement { height: 50vh; min-height: 320px; }.product-grid { grid-template-columns: 1fr 1fr; gap: 24px 10px; }.product-card h3 { font-size: 14px; }.product-info { padding: 38px 20px 70px; }.purchase-actions { position: sticky; bottom: 0; z-index: 5; padding: 10px 0; background: var(--bg); }.cart-item { grid-template-columns: 90px 1fr; }.cart-item img { width: 90px; }.cart-item > div:last-child { grid-column: 2; display: flex; justify-content: space-between; }.form-grid { grid-template-columns: 1fr; }.form-grid .wide { grid-column: auto; }.payment-methods { flex-direction: column; }.chat { right: 16px; bottom: 16px; }.chat-launcher { right: 16px; bottom: 16px; } }
 
+/* ===== 판매자 리포트 차트 (인라인 SVG) ===== */
+.report-charts { margin: 8px 0 4px; }
+.report-charts-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.report-charts-head h4 { margin: 0; font-size: 15px; }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; align-items: start; }
+.chart-card { padding: 16px 18px; background: white; border: 1px solid var(--line); }
+.chart-card h4 { margin: 0 0 12px; font-size: 13.5px; }
+.chart-empty { color: var(--muted); font-size: 13px; margin: 8px 0; }
+.hbar { display: block; overflow: visible; }
+.hbar-track { fill: #eef0f3; }
+.hbar-name { fill: #333; font-size: 12px; }
+.hbar-val { fill: var(--ink); font-size: 11px; font-weight: 800; }
+.chart-legend { margin: 12px 2px 0; color: var(--muted); font-size: 12px; }
+.chart-legend span { font-size: 14px; vertical-align: -1px; }
+.chart-table-wrap { overflow-x: auto; }
+.chart-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.chart-table th, .chart-table td { border-bottom: 1px solid var(--line); padding: 8px 10px; }
+.chart-table th { color: var(--muted); font-weight: 700; text-align: left; }
+.chart-table td:not(:first-child), .chart-table th:not(:first-child) { text-align: right; }
+
 /* ===== 가상 피팅 (웹캠) ===== */
 .fit-button { width: 100%; margin-top: 8px; padding: 14px; border: 1px solid var(--ink); background: transparent; font-weight: 700; cursor: pointer; }
 .fit-button:hover { color: white; background: var(--ink); }

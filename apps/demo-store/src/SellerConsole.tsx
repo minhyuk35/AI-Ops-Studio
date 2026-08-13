@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 
+import SellerReportCharts from "./SellerCharts";
 import type { Category } from "@ai-ops/shared-types";
 import {
   AuthResponse,
@@ -642,6 +643,7 @@ function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }
             <article><span>주문 수</span><strong>{snapshot.revenue.order_count}건</strong></article>
             <article><span>날짜</span><strong>{snapshot.date}</strong></article>
           </div>
+          <SellerReportCharts products={snapshot.products} />
           <div className="console-grid-two">
             <div className="console-card">
               <h4>오늘의 조회</h4>
