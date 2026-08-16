@@ -246,30 +246,58 @@ def _handle_update(interaction: dict, background_tasks: BackgroundTasks) -> dict
     return {"type": DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE}
 
 
-async def _handle_metric(interaction: dict, kind: str, formatter) -> dict:
+async def _run_metric_and_followup(
+    guild_id: str, kind: str, formatter, period: str | None, date: str | None,
+    interaction_token: str,
+) -> None:
+    """Runs after the deferred ack -- see _handle_metric for why this can't
+    respond synchronously: it calls mock-commerce-api (a separate Vercel
+    function, its own possible cold start) and for kind="daily" that call
+    itself triggers an OpenRouter completion -- easily past Discord's 3s
+    initial-response budget even when nothing is actually broken."""
+    rest = DiscordRestClient(BOT_TOKEN)
+    try:
+        data = await _commerce_client().metrics(guild_id, kind, period=period, date=date)
+    except CommerceApiError as exc:
+        hint = "\n먼저 `/실행` 을 실행하세요." if exc.status_code == 404 else ""
+        await rest.send_followup(APPLICATION_ID, interaction_token, f"❌ {exc}{hint}")
+        return
+    await rest.send_followup(APPLICATION_ID, interaction_token, formatter(data))
+
+
+def _handle_metric(
+    interaction: dict, kind: str, formatter, background_tasks: BackgroundTasks
+) -> dict:
     guild_id = str(interaction.get("guild_id") or "")
     if not guild_id:
         return _message("서버에서만 사용할 수 있습니다.")
     options = _options_map(interaction.get("data", {}))
     period = options.get("기간")
     date = options.get("날짜")
-    try:
-        data = await _commerce_client().metrics(guild_id, kind, period=period, date=date)
-    except CommerceApiError as exc:
-        hint = "\n먼저 `/실행` 을 실행하세요." if exc.status_code == 404 else ""
-        return _message(f"❌ {exc}{hint}")
-    return _message(formatter(data))
+    background_tasks.add_task(
+        _run_metric_and_followup, guild_id, kind, formatter, period, date, interaction["token"]
+    )
+    return {"type": DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE}
 
 
-async def _handle_status(interaction: dict) -> dict:
-    guild_id = str(interaction.get("guild_id") or "")
-    if not guild_id:
-        return _message("서버에서만 사용할 수 있습니다.")
+async def _run_status_and_followup(guild_id: str, interaction_token: str) -> None:
+    """Runs after the deferred ack -- see _handle_metric's docstring; the
+    same cross-function-call latency risk applies here."""
+    rest = DiscordRestClient(BOT_TOKEN)
     try:
         data = await _commerce_client().org(guild_id)
     except CommerceApiError as exc:
-        return _message(f"❌ {exc}")
-    return _message(format_status(data))
+        await rest.send_followup(APPLICATION_ID, interaction_token, f"❌ {exc}")
+        return
+    await rest.send_followup(APPLICATION_ID, interaction_token, format_status(data))
+
+
+def _handle_status(interaction: dict, background_tasks: BackgroundTasks) -> dict:
+    guild_id = str(interaction.get("guild_id") or "")
+    if not guild_id:
+        return _message("서버에서만 사용할 수 있습니다.")
+    background_tasks.add_task(_run_status_and_followup, guild_id, interaction["token"])
+    return {"type": DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE}
 
 
 def _reply_modal(inquiry_id: str) -> dict:
@@ -431,20 +459,22 @@ async def interactions(request: Request, background_tasks: BackgroundTasks) -> R
         return Response(content='{"type":1}', media_type="application/json")
 
     name = interaction.get("data", {}).get("name")
-    handlers = {
-        "수익": lambda: _handle_metric(interaction, "revenue", format_revenue),
-        "조회수": lambda: _handle_metric(interaction, "views", format_views),
-        "일일리포트": lambda: _handle_metric(interaction, "daily", format_daily),
-        "재고": lambda: _handle_metric(interaction, "stock", format_stock),
-        "연동상태": lambda: _handle_status(interaction),
+    metric_handlers = {
+        "수익": ("revenue", format_revenue),
+        "조회수": ("views", format_views),
+        "일일리포트": ("daily", format_daily),
+        "재고": ("stock", format_stock),
     }
 
     if name == "실행":
         payload = _handle_execute(interaction, background_tasks)
     elif name == "업데이트":
         payload = _handle_update(interaction, background_tasks)
-    elif name in handlers:
-        payload = await handlers[name]()
+    elif name in metric_handlers:
+        kind, formatter = metric_handlers[name]
+        payload = _handle_metric(interaction, kind, formatter, background_tasks)
+    elif name == "연동상태":
+        payload = _handle_status(interaction, background_tasks)
     else:
         payload = _message(f"❌ 알 수 없는 명령입니다: {name}")
 
