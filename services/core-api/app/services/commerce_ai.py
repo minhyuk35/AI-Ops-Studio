@@ -22,6 +22,31 @@ def _dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
+_PROMPT_PRODUCT_LIMIT = 40
+
+
+def _products_for_prompt(products: list[dict[str, Any]]) -> dict[str, Any]:
+    """Trim the per-product breakdown before it goes into the LLM prompt.
+
+    A seller's full catalog can run into the hundreds (SIGN alone has 160+)
+    while only a handful ever have real signal on a given day. Dumping every
+    row bloats the prompt with all-zero noise for no benefit -- keep only
+    products with actual activity or stock risk, capped, plus a count of
+    what got left out so the AI can still say "그 외 N개는 오늘 활동 없음".
+    """
+    interesting = [
+        p
+        for p in products
+        if p["views"] or p["units_sold"] or p["refund_units"] or p["stock"] <= 3
+    ]
+    shown = interesting[:_PROMPT_PRODUCT_LIMIT]
+    return {
+        "products_with_activity_or_low_stock": shown,
+        "total_product_count": len(products),
+        "omitted_no_activity_count": len(products) - len(shown),
+    }
+
+
 _COLOR_FAMILIES = ("뉴트럴", "데님/인디고", "어스톤", "파스텔", "비비드")
 _STYLE_MOODS = ("미니멀", "캐주얼", "스트릿·힙", "러블리·청순", "포멀", "스포티")
 
@@ -379,7 +404,7 @@ class SellerDailyReportService:
                         "org_name": org_name,
                         "date": date,
                         "revenue_json": _dump(snapshot["revenue"]),
-                        "products_json": _dump(snapshot["products"]),
+                        "products_json": _dump(_products_for_prompt(snapshot["products"])),
                         "highlights_json": _dump(snapshot["highlights"]),
                     },
                 )
@@ -391,23 +416,36 @@ class SellerDailyReportService:
                         f"## 매출 요약\n\n{_dump(snapshot['revenue'])}"
                     )
                 else:
-                    completion = self.client.chat.completions.create(
-                        model=compiled.model,
-                        messages=[{"role": "user", "content": compiled.text}],
-                        extra_body=compiled.routing_parameters or None,
-                        **compiled.completion_parameters,
-                        name="generate-daily-seller-report",
-                        metadata={
-                            "feature": "daily-seller-report",
-                            "prompt_name": compiled.name,
-                            "prompt_source": compiled.source,
-                            "org_id": org_id,
-                            "date": date,
-                        },
-                    )
-                    report = (
-                        completion.choices[0].message.content or "리포트를 생성하지 못했습니다."
-                    )
+                    try:
+                        completion = self.client.chat.completions.create(
+                            model=compiled.model,
+                            messages=[{"role": "user", "content": compiled.text}],
+                            extra_body=compiled.routing_parameters or None,
+                            **compiled.completion_parameters,
+                            name="generate-daily-seller-report",
+                            metadata={
+                                "feature": "daily-seller-report",
+                                "prompt_name": compiled.name,
+                                "prompt_source": compiled.source,
+                                "org_id": org_id,
+                                "date": date,
+                            },
+                        )
+                        report = (
+                            completion.choices[0].message.content
+                            or "리포트를 생성하지 못했습니다."
+                        )
+                    except Exception:
+                        # 코드가 계산한 숫자(매출·조회·재고)는 이미 정확하다 -- AI 서술
+                        # 생성이 실패했다고 판매자 콘솔 전체(차트 포함)를 비워버릴 이유가
+                        # 없다. 사실 기반 요약으로 대체하고 화면은 계속 뜨게 한다.
+                        report = (
+                            f"# {org_name} 일일 리포트 ({date})\n\n"
+                            "AI 리포트 생성에 실패했습니다(잠시 후 다시 시도해주세요). "
+                            "아래는 코드가 계산한 원본 수치입니다.\n\n"
+                            f"## 매출 요약\n\n{_dump(snapshot['revenue'])}\n\n"
+                            f"## 하이라이트\n\n{_dump(snapshot['highlights'])}"
+                        )
 
                 if root_span is not None:
                     root_span.update(output=report)

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>SIGN · AI 문의 처리 테스트</title>
+<style>
+  :root{
+    --bg:#0b0e17; --panel:#141b2c; --panel2:#1a2338; --border:#26304a; --border2:#313d5c;
+    --text:#e8ebf6; --muted:#9aa4bf; --dim:#6b7594;
+    --accent:#8b9bff; --accent2:#4ade80; --warn:#fbbf24; --danger:#f87171; --cyan:#38bdf8;
+    --sans:"Segoe UI",system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;padding:32px 20px 80px}
+  .wrap{max-width:840px;margin:0 auto}
+  h1{font-size:24px;margin:0 0 6px;font-weight:800}
+  .lead{color:var(--muted);font-size:14px;max-width:70ch;margin:0 0 4px}
+  .badge{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--accent2);
+    background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35);padding:4px 12px;border-radius:999px;margin:12px 0 26px}
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);
+    border-radius:14px;padding:18px 20px;margin:14px 0}
+  .card .meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;font-size:12px}
+  .tag{padding:3px 10px;border-radius:999px;border:1px solid rgba(139,155,255,.4);
+    background:rgba(139,155,255,.14);color:var(--accent);font-weight:700}
+  .tag.status-DELIVERED{border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.12);color:var(--accent2)}
+  .tag.status-CANCELLED{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:var(--danger)}
+  .order-line{color:var(--dim);font-size:12.5px;margin-bottom:12px}
+  .question{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;
+    font-size:14px;color:#fff;margin-bottom:12px}
+  .question::before{content:"고객: ";color:var(--dim);font-weight:700}
+  button{cursor:pointer;font-family:inherit}
+  .send-btn{background:var(--accent);color:#0b0e17;border:none;font-weight:800;font-size:13px;
+    padding:9px 18px;border-radius:9px}
+  .send-btn:disabled{opacity:.5;cursor:default}
+  .result{margin-top:14px;padding:14px 16px;border-radius:10px;border:1px solid var(--border2);
+    background:rgba(255,255,255,.02);display:none;font-size:13.5px;white-space:pre-wrap}
+  .result.show{display:block}
+  .result .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .result .pill{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:800}
+  .pill.risk-LOW{background:rgba(74,222,128,.14);color:var(--accent2)}
+  .pill.risk-MEDIUM{background:rgba(251,191,36,.14);color:var(--warn)}
+  .pill.risk-HIGH{background:rgba(248,113,113,.14);color:var(--danger)}
+  .pill.cat{background:rgba(56,189,248,.14);color:var(--cyan)}
+  .result .answer{color:#fff}
+  .error{color:var(--danger)}
+  .custom{border:1px dashed var(--border2)}
+  select,textarea{width:100%;background:var(--panel);color:var(--text);border:1px solid var(--border);
+    border-radius:9px;padding:10px;font-family:inherit;font-size:13.5px;margin-bottom:10px}
+  textarea{resize:vertical;min-height:70px}
+  .foot{color:var(--dim);font-size:12px;margin-top:40px;border-top:1px solid var(--border);padding-top:16px}
+  code{font-family:Consolas,monospace;font-size:.9em;color:var(--cyan)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SIGN · AI 문의 처리 테스트</h1>
+  <p class="lead">아래 버튼을 누르면 실제 SIGN 매장 주문을 근거로 진짜 AI 고객지원 파이프라인(<code>/api/v1/ai/reply</code>)에
+    문의가 전송됩니다 — 목업이 아니라 실제 프로덕션 API 호출입니다. 위험도(LOW/MEDIUM/HIGH)에 따라 SIGN에 연동된 디스코드
+    채널로 알림이 갑니다: LOW는 배송 전 취소면 즉시 자동 처리(대부분 알림 없음), MEDIUM은 승인+답변 버튼, HIGH는 답변 버튼만.
+    각 카드는 실제로 시드된 SIGN 주문(<code>ord_seed_act_...</code>)에 연결돼 있어 문의가 SIGN 콘솔의 "문의" 탭에도 그대로 쌓입니다.</p>
+  <span class="badge" id="statusBadge">● 대기 중</span>
+
+  <div id="cards"></div>
+
+  <div class="card custom">
+    <h3 style="margin:0 0 10px;font-size:15px">직접 입력해서 테스트</h3>
+    <label style="font-size:12px;color:var(--muted)">연결할 주문</label>
+    <select id="customOrder"></select>
+    <label style="font-size:12px;color:var(--muted)">문의 내용</label>
+    <textarea id="customQuestion" placeholder="예: 배송이 너무 늦어지는데 언제 오나요?"></textarea>
+    <button class="send-btn" id="customSend">전송</button>
+    <div class="result" id="customResult"></div>
+  </div>
+
+  <p class="foot">이 페이지는 검색엔진에 노출되지 않습니다(noindex) — 내부 QA 전용입니다.
+    호출 대상: <code id="apiBase"></code></p>
+</div>
+
+<script>
+  const CORE_BASE = location.origin + "/api/core";
+  document.getElementById("apiBase").textContent = CORE_BASE + "/api/v1/ai/reply";
+
+  // 실제로 scripts/seed_sign_activity.py 가 SIGN 매장에 만든 진짜 주문들.
+  // 재시딩하면 주문 id의 날짜 태그가 바뀌므로, 필요시 이 목록만 갱신하면 된다.
+  const ORDERS = [
+    {
+      id: "ord_seed_act_20260816_prd_sign_accessories_bag_01_a",
+      product_name: "SIGN 미니멀 백 01", quantity: 9, option: "블랙 / FREE",
+      status: "DELIVERED", total: 261000,
+      question: "주문한 미니멀 백 언제 배송되나요? 아직도 안 왔어요.",
+    },
+    {
+      id: "ord_seed_act_20260816_prd_sign_accessories_belt_01_a",
+      product_name: "SIGN 미니멀 벨트 01", quantity: 5, option: "브라운 / S",
+      status: "DELIVERED", total: 95000,
+      question: "받은 벨트가 사이즈가 안 맞아서 반품하고 싶어요. 어떻게 하면 되나요?",
+    },
+    {
+      id: "ord_seed_act_20260816_prd_sign_bottom_shorts_01_b",
+      product_name: "SIGN 오버핏 숏팬츠 01", quantity: 1, option: "블랙 / 28",
+      status: "CANCELLED", total: 29000,
+      question: "주문을 취소했는데 환불은 언제 들어오나요?",
+    },
+    {
+      id: "ord_seed_act_20260816_prd_sign_bottom_denim_01_a",
+      product_name: "SIGN 오버핏 데님팬츠 01", quantity: 2, option: "블루 / 28",
+      status: "DELIVERED", total: 90000,
+      question: "받은 데님 색상이 사진이랑 완전히 달라요. 불량 아닌가요? 너무 화나네요.",
+    },
+    {
+      id: "ord_seed_act_20260816_prd_sign_outer_coat_01_a",
+      product_name: "SIGN 오버핏 코트 01", quantity: 1, option: "카키 / S",
+      status: "DELIVERED", total: 129000,
+      question: "배송 주소를 잘못 입력했는데 지금이라도 바꿀 수 있나요?",
+    },
+    {
+      id: "ord_seed_act_20260816_prd_sign_bottom_slacks_01_a",
+      product_name: "SIGN 오버핏 슬랙스 01", quantity: 1, option: "블랙 / 28",
+      status: "DELIVERED", total: 49000,
+      question: "그냥 마음이 바뀌어서 주문 취소하고 싶어요.",
+    },
+  ];
+
+  const POLICY_CONTEXT =
+    "상품 준비 중에는 주문 취소가 가능합니다. 배송 완료 후 7일 이내 미사용 상품은 반품을 신청할 수 있으며 " +
+    "단순 변심 반품비는 3,000원입니다.";
+
+  function orderContext(o) {
+    return {
+      id: o.id,
+      status: o.status,
+      total: o.total,
+      items: [{ product_name: o.product_name, quantity: o.quantity, option_text: o.option }],
+    };
+  }
+
+  async function sendInquiry(order, question, resultEl, btn) {
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = "전송 중…";
+    resultEl.classList.remove("show");
+    try {
+      const res = await fetch(CORE_BASE + "/api/v1/ai/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          order_id: order.id,
+          order_context: orderContext(order),
+          policy_context: POLICY_CONTEXT,
+          session_id: "qa-inquiry-test-" + Date.now(),
+          user_id: "cus_demo_buyer",
+          organization_id: "codilab",
+          request_id: crypto.randomUUID().replaceAll("-", ""),
+          channel: "api",
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error((body && body.detail) || `HTTP ${res.status}`);
+      }
+      resultEl.innerHTML =
+        `<div class="row">` +
+        `<span class="pill cat">${body.category}</span>` +
+        `<span class="pill risk-${body.risk || "LOW"}">위험도 ${body.risk || "LOW"}</span>` +
+        `<span class="pill" style="background:rgba(255,255,255,.08);color:#fff">requires_human: ${body.requires_human}</span>` +
+        `</div>` +
+        `<div class="answer">${(body.answer || "").replace(/</g, "&lt;")}</div>` +
+        `<div style="color:var(--dim);font-size:11px;margin-top:8px">model: ${body.model} · inquiry_id: ${body.inquiry_id || "-"}</div>`;
+      resultEl.classList.add("show");
+    } catch (err) {
+      resultEl.innerHTML = `<span class="error">전송 실패: ${err.message}</span>`;
+      resultEl.classList.add("show");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  }
+
+  function renderCards() {
+    const wrap = document.getElementById("cards");
+    ORDERS.forEach((o, idx) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="meta">
+          <span class="tag">${o.product_name}</span>
+          <span class="tag status-${o.status}">${o.status}</span>
+        </div>
+        <div class="order-line">주문 ${o.id} · ${o.quantity}개 · ${o.option} · ${o.total.toLocaleString()}원</div>
+        <div class="question">${o.question}</div>
+        <button class="send-btn">이 문의 전송</button>
+        <div class="result"></div>
+      `;
+      const btn = card.querySelector(".send-btn");
+      const resultEl = card.querySelector(".result");
+      btn.addEventListener("click", () => sendInquiry(o, o.question, resultEl, btn));
+      wrap.appendChild(card);
+    });
+
+    const sel = document.getElementById("customOrder");
+    ORDERS.forEach((o) => {
+      const opt = document.createElement("option");
+      opt.value = o.id;
+      opt.textContent = `${o.product_name} (${o.status}, ${o.total.toLocaleString()}원)`;
+      sel.appendChild(opt);
+    });
+    document.getElementById("customSend").addEventListener("click", () => {
+      const order = ORDERS.find((o) => o.id === sel.value);
+      const question = document.getElementById("customQuestion").value.trim();
+      const resultEl = document.getElementById("customResult");
+      if (!question) {
+        resultEl.innerHTML = '<span class="error">문의 내용을 입력하세요.</span>';
+        resultEl.classList.add("show");
+        return;
+      }
+      sendInquiry(order, question, resultEl, document.getElementById("customSend"));
+    });
+
+    document.getElementById("statusBadge").textContent = "● 준비 완료 · " + ORDERS.length + "개 예시 문의";
+  }
+
+  renderCards();
+</script>
+</body>
+</html>
