@@ -19,9 +19,10 @@ from app.analytics import (
     platform_daily_traffic,
     product_breakdown,
     revenue_summary_with_comparison,
-    seller_daily_snapshot,
+    seller_daily_series,
+    seller_daily_snapshot_with_comparison,
     seller_market_share,
-    seller_revenue_summary,
+    seller_revenue_summary_with_comparison,
     today,
 )
 from app.auth import (
@@ -1731,7 +1732,34 @@ async def analytics_seller_daily(
         org = connection.execute("SELECT id FROM organizations WHERE id = ?", (org_id,)).fetchone()
         if org is None:
             raise HTTPException(status_code=404, detail="조직을 찾을 수 없습니다.")
-        return seller_daily_snapshot(connection, org_id, date)
+        return seller_daily_snapshot_with_comparison(connection, org_id, date)
+
+
+@app.get("/sellers/me/revenue-summary")
+async def get_seller_revenue_summary(
+    period: str = Query(default_factory=current_period, pattern=PERIOD_PATTERN.pattern),
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """이번 달 vs 지난달 매출 비교 -- 판매자 콘솔 '이번 달 요약' 카드용."""
+    with closing(connect()) as connection:
+        org = require_seller_org(connection, authorization)
+        return seller_revenue_summary_with_comparison(connection, str(org["id"]), period)
+
+
+@app.get("/sellers/me/daily-series")
+async def get_seller_daily_series(
+    days: int = Query(default=60, ge=1, le=120),
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    """최근 N일(기본 60일 = 이번 달 + 지난달 비교분) 일별 매출·주문수·조회수 추이."""
+    with closing(connect()) as connection:
+        org = require_seller_org(connection, authorization)
+        end_date = datetime.now(UTC).date()
+        start_date = end_date - timedelta(days=days - 1)
+        series_end = end_date + timedelta(days=1)
+        return seller_daily_series(
+            connection, str(org["id"]), start_date.isoformat(), series_end.isoformat()
+        )
 
 
 @app.get("/analytics/platform-daily-traffic")
@@ -2702,10 +2730,10 @@ async def internal_discord_metrics(
             raise HTTPException(status_code=404, detail="연동되지 않은 서버입니다.")
         org_id = str(org["id"])
         if kind == "revenue":
-            return seller_revenue_summary(connection, org_id, period)
+            return seller_revenue_summary_with_comparison(connection, org_id, period)
         if not is_valid_date(date):
             raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다.")
-        snapshot = seller_daily_snapshot(connection, org_id, date)
+        snapshot = seller_daily_snapshot_with_comparison(connection, org_id, date)
         if kind == "daily":
             return snapshot
         if kind == "views":

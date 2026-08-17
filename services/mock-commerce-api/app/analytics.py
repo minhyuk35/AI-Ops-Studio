@@ -55,6 +55,10 @@ def previous_period(period: str) -> str:
     return f"{year}-{month - 1:02d}"
 
 
+def previous_day(date: str) -> str:
+    return (datetime.fromisoformat(date) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
 def _percent_change(current: float, previous: float) -> float | None:
     if previous == 0:
         return None  # undefined growth rate with a zero baseline; don't fabricate one
@@ -304,6 +308,163 @@ def seller_daily_snapshot(
             "low_stock": [row for row in products if 0 < row["stock"] <= 3],
         },
     }
+
+
+def seller_daily_snapshot_with_comparison(
+    connection: sqlite3.Connection, org_id: str, date: str
+) -> dict[str, object]:
+    """오늘 스냅샷 + 전날 대비·이번 달 vs 지난달 매출 비교를 한 객체로 묶는다.
+
+    일일 리포트 페르소나·판매자 콘솔·Discord `/일일리포트`가 전부 이 함수
+    하나만 호출하면 "오늘", "어제 대비", "이번 달 대비 지난달"을 한 번에
+    받도록 의도적으로 여기서 다 묶었다(따로따로 호출하게 만들지 않음).
+
+    전날치까지 seller_daily_snapshot()(상품별 breakdown 전부 계산)을 다시
+    돌리면 두 배로 무거워진다 -- 비교에 필요한 건 합계 수치뿐이라, 전날은
+    가벼운 집계 쿼리 하나로 끝낸다.
+    """
+    current = seller_daily_snapshot(connection, org_id, date)
+    prev_date = previous_day(date)
+    prev_start, prev_end = _day_bounds(prev_date)
+    prev_row = connection.execute(
+        """
+        SELECT
+            COALESCE(SUM(CASE WHEN event_type = 'PAYMENT_CONFIRMED' THEN amount END), 0)
+                AS gross_revenue,
+            COALESCE(SUM(CASE WHEN event_type = 'REFUND_COMPLETED' THEN refund_amount END), 0)
+                AS refund_amount,
+            COUNT(DISTINCT CASE WHEN event_type = 'PAYMENT_CONFIRMED' THEN order_id END)
+                AS order_count
+        FROM commerce_events
+        WHERE org_id = ? AND occurred_at >= ? AND occurred_at < ?
+        """,
+        (org_id, prev_start, prev_end),
+    ).fetchone()
+    prev_gross = int(prev_row["gross_revenue"])
+    prev_refund = int(prev_row["refund_amount"])
+    prev_net = prev_gross - prev_refund
+    prev_order_count = int(prev_row["order_count"])
+    current_revenue = current["revenue"]
+    assert isinstance(current_revenue, dict)
+    current["previous_day"] = {
+        "date": prev_date,
+        "gross_revenue": prev_gross,
+        "refund_amount": prev_refund,
+        "net_revenue": prev_net,
+        "order_count": prev_order_count,
+    }
+    current["day_over_day_change"] = {
+        "gross_revenue_pct": _percent_change(current_revenue["gross_revenue"], prev_gross),
+        "net_revenue_pct": _percent_change(current_revenue["net_revenue"], prev_net),
+        "order_count_pct": _percent_change(current_revenue["order_count"], prev_order_count),
+    }
+    current["month_to_date"] = seller_revenue_summary_with_comparison(
+        connection, org_id, date[:7]
+    )
+    return current
+
+
+def seller_revenue_summary_with_comparison(
+    connection: sqlite3.Connection, org_id: str, period: str
+) -> dict[str, object]:
+    """seller_revenue_summary()의 이번 달 vs 지난달 버전 -- revenue_summary_with_comparison()과
+    같은 패턴(퍼센트 변화 계산 포함)을 판매자 단위로 적용한다.
+
+    ``period``가 아직 진행 중인 달(이번 달)이면 지난달(항상 다 채워진 한 달)과
+    누적 총액을 그대로 비교하는 게 오해를 부른다 -- 예를 들어 이번 달이 절반만
+    지났으면 지난달 전체보다 누적 매출이 낮게 나오는 게 당연한데, 일평균은
+    오히려 늘었을 수 있다. AI가 이 함정에 빠지지 않도록(날짜 계산을 AI에게
+    맡기지 않고) ``period_in_progress``·``days_elapsed`` 를 코드가 직접 계산해
+    같이 내려준다.
+    """
+    current = seller_revenue_summary(connection, org_id, period)
+    previous = seller_revenue_summary(connection, org_id, previous_period(period))
+    current["previous_period"] = previous
+    current["change"] = {
+        "gross_revenue_pct": _percent_change(
+            current["gross_revenue"], previous["gross_revenue"]
+        ),
+        "net_revenue_pct": _percent_change(current["net_revenue"], previous["net_revenue"]),
+        "order_count_pct": _percent_change(current["order_count"], previous["order_count"]),
+        "average_order_value_pct": _percent_change(
+            current["average_order_value"], previous["average_order_value"]
+        ),
+    }
+    is_current = period == current_period()
+    current["period_in_progress"] = is_current
+    current["days_elapsed"] = datetime.now(UTC).day if is_current else None
+    return current
+
+
+def seller_daily_series(
+    connection: sqlite3.Connection, org_id: str, start_date: str, end_date: str
+) -> list[dict[str, object]]:
+    """[start_date, end_date) 구간의 판매자 일별 매출·주문수·조회수 -- 추이 차트용.
+
+    seller_daily_snapshot()과 달리 상품별로 쪼개지 않고 날짜별 합계만 반환한다
+    (차트는 날짜축 하나면 충분하고, N일 x 전체 상품을 계산하면 카탈로그가 큰
+    판매자에서 비용이 커진다). 활동이 없는 날도 0으로 채워서 프론트가 날짜
+    구멍 없이 그릴 수 있게 한다.
+    """
+    start, _ = _day_bounds(start_date)
+    _, end = _day_bounds(end_date)
+    revenue_rows = connection.execute(
+        """
+        SELECT
+            substr(occurred_at, 1, 10) AS day,
+            COALESCE(SUM(CASE WHEN event_type = 'PAYMENT_CONFIRMED' THEN amount END), 0)
+                AS gross_revenue,
+            COALESCE(SUM(CASE WHEN event_type = 'REFUND_COMPLETED' THEN refund_amount END), 0)
+                AS refund_amount,
+            COUNT(DISTINCT CASE WHEN event_type = 'PAYMENT_CONFIRMED' THEN order_id END)
+                AS order_count
+        FROM commerce_events
+        WHERE org_id = ? AND occurred_at >= ? AND occurred_at < ?
+        GROUP BY day
+        """,
+        (org_id, start, end),
+    ).fetchall()
+    view_rows = connection.execute(
+        """
+        SELECT substr(occurred_at, 1, 10) AS day, COUNT(*) AS views
+        FROM commerce_events
+        WHERE org_id = ? AND event_type = 'PRODUCT_VIEWED' AND occurred_at >= ? AND occurred_at < ?
+        GROUP BY day
+        """,
+        (org_id, start, end),
+    ).fetchall()
+
+    def _empty_day(day: str) -> dict[str, object]:
+        return {
+            "date": day, "gross_revenue": 0, "refund_amount": 0,
+            "net_revenue": 0, "order_count": 0, "views": 0,
+        }
+
+    by_day: dict[str, dict[str, object]] = {}
+    for row in revenue_rows:
+        gross = int(row["gross_revenue"])
+        refund = int(row["refund_amount"])
+        by_day[row["day"]] = {
+            "date": row["day"],
+            "gross_revenue": gross,
+            "refund_amount": refund,
+            "net_revenue": gross - refund,
+            "order_count": int(row["order_count"]),
+            "views": 0,
+        }
+    for row in view_rows:
+        day = row["day"]
+        by_day.setdefault(day, _empty_day(day))
+        by_day[day]["views"] = int(row["views"])
+
+    result: list[dict[str, object]] = []
+    cursor = datetime.fromisoformat(start_date)
+    end_cursor = datetime.fromisoformat(end_date)
+    while cursor < end_cursor:
+        key = cursor.strftime("%Y-%m-%d")
+        result.append(by_day.get(key) or _empty_day(key))
+        cursor += timedelta(days=1)
+    return result
 
 
 def platform_daily_traffic(connection: sqlite3.Connection, date: str) -> dict[str, object]:

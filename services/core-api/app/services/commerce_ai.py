@@ -404,6 +404,13 @@ class SellerDailyReportService:
                         "org_name": org_name,
                         "date": date,
                         "revenue_json": _dump(snapshot["revenue"]),
+                        "day_comparison_json": _dump(
+                            {
+                                "previous_day": snapshot.get("previous_day"),
+                                "change": snapshot.get("day_over_day_change"),
+                            }
+                        ),
+                        "month_comparison_json": _dump(snapshot.get("month_to_date")),
                         "products_json": _dump(_products_for_prompt(snapshot["products"])),
                         "highlights_json": _dump(snapshot["highlights"]),
                     },

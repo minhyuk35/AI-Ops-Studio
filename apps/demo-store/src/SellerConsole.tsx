@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
-import SellerReportCharts from "./SellerCharts";
+import SellerReportCharts, { DailyRevenueTrendChart } from "./SellerCharts";
 import type { Category } from "@ai-ops/shared-types";
 import {
   AuthResponse,
@@ -18,6 +18,7 @@ import {
   getMyProducts,
   getOrgInquiries,
   getSellerDailyReport,
+  getSellerDailySeries,
   getUploadStatus,
   SellerDailyReport,
   SellerProduct,
@@ -642,6 +643,19 @@ function SellerDiscordPanel({ token }: { token: string }) {
   );
 }
 
+function CompareBadge({ pct, label }: { pct: number | null | undefined; label: string }) {
+  if (pct === null || pct === undefined) {
+    return <span className="compare-badge flat" title={`비교할 ${label} 데이터가 없습니다`}>—</span>;
+  }
+  const dir = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+  const arrow = pct > 0 ? "▲" : pct < 0 ? "▼" : "–";
+  return (
+    <span className={`compare-badge ${dir}`} title={`${label} 대비`}>
+      {arrow} {Math.abs(pct)}%
+    </span>
+  );
+}
+
 function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }) {
   const query = useQuery({
     queryKey: ["seller-daily-report", orgId],
@@ -650,8 +664,25 @@ function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }
   const discordMutation = useMutation({
     mutationFn: () => getSellerDailyReport(token, orgId, true),
   });
+  const seriesQuery = useQuery({
+    queryKey: ["seller-daily-series", orgId],
+    queryFn: () => getSellerDailySeries(token, 60),
+  });
   const report: SellerDailyReport | undefined = discordMutation.data ?? query.data;
   const snapshot = report?.snapshot;
+
+  const { thisMonth, lastMonth, thisMonthLabel, lastMonthLabel } = useMemo(() => {
+    const points = seriesQuery.data ?? [];
+    const months = Array.from(new Set(points.map((p) => p.date.slice(0, 7)))).sort();
+    const current = months[months.length - 1];
+    const previous = months[months.length - 2];
+    return {
+      thisMonth: current ? points.filter((p) => p.date.slice(0, 7) === current) : [],
+      lastMonth: previous ? points.filter((p) => p.date.slice(0, 7) === previous) : [],
+      thisMonthLabel: current ?? "",
+      lastMonthLabel: previous ?? "",
+    };
+  }, [seriesQuery.data]);
 
   return (
     <div className="console-panel">
@@ -666,12 +697,81 @@ function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }
       {snapshot && (
         <>
           <div className="console-stats">
-            <article><span>총결제액</span><strong>{won.format(snapshot.revenue.gross_revenue)}</strong></article>
+            <article>
+              <span>총결제액</span>
+              <strong>{won.format(snapshot.revenue.gross_revenue)}</strong>
+              <CompareBadge pct={snapshot.day_over_day_change?.gross_revenue_pct} label="전날" />
+            </article>
             <article><span>환불액</span><strong>{won.format(snapshot.revenue.refund_amount)}</strong></article>
-            <article><span>순매출</span><strong>{won.format(snapshot.revenue.net_revenue)}</strong></article>
-            <article><span>주문 수</span><strong>{snapshot.revenue.order_count}건</strong></article>
+            <article>
+              <span>순매출</span>
+              <strong>{won.format(snapshot.revenue.net_revenue)}</strong>
+              <CompareBadge pct={snapshot.day_over_day_change?.net_revenue_pct} label="전날" />
+            </article>
+            <article>
+              <span>주문 수</span>
+              <strong>{snapshot.revenue.order_count}건</strong>
+              <CompareBadge pct={snapshot.day_over_day_change?.order_count_pct} label="전날" />
+            </article>
             <article><span>날짜</span><strong>{snapshot.date}</strong></article>
           </div>
+          {snapshot.previous_day && (
+            <p className="empty" style={{ marginTop: -6 }}>
+              전날({snapshot.previous_day.date}) 총결제액 {won.format(snapshot.previous_day.gross_revenue)} 대비 비교
+            </p>
+          )}
+
+          {snapshot.month_to_date && (
+            <div className="console-card" style={{ marginTop: 14 }}>
+              <h4>이번 달 vs 지난달 ({snapshot.month_to_date.period})</h4>
+              {snapshot.month_to_date.period_in_progress && (
+                <p className="empty" style={{ marginTop: -4 }}>
+                  이번 달은 아직 {snapshot.month_to_date.days_elapsed}일차라 지난달 전체 누적과
+                  단순 비교하면 낮게 보일 수 있습니다 — 참고용으로 봐주세요.
+                </p>
+              )}
+              <div className="console-stats">
+                <article>
+                  <span>총결제액</span>
+                  <strong>{won.format(snapshot.month_to_date.gross_revenue)}</strong>
+                  <CompareBadge pct={snapshot.month_to_date.change?.gross_revenue_pct} label="지난달" />
+                </article>
+                <article>
+                  <span>순매출</span>
+                  <strong>{won.format(snapshot.month_to_date.net_revenue)}</strong>
+                  <CompareBadge pct={snapshot.month_to_date.change?.net_revenue_pct} label="지난달" />
+                </article>
+                <article>
+                  <span>주문 수</span>
+                  <strong>{snapshot.month_to_date.order_count}건</strong>
+                  <CompareBadge pct={snapshot.month_to_date.change?.order_count_pct} label="지난달" />
+                </article>
+                <article>
+                  <span>객단가</span>
+                  <strong>{won.format(snapshot.month_to_date.average_order_value)}</strong>
+                  <CompareBadge pct={snapshot.month_to_date.change?.average_order_value_pct} label="지난달" />
+                </article>
+              </div>
+              {snapshot.month_to_date.previous_period && (
+                <p className="empty" style={{ marginBottom: 0 }}>
+                  지난달({snapshot.month_to_date.previous_period.period}) 총결제액{" "}
+                  {won.format(snapshot.month_to_date.previous_period.gross_revenue)} 대비 비교
+                </p>
+              )}
+            </div>
+          )}
+
+          {(thisMonth.length > 0 || lastMonth.length > 0) && (
+            <div className="trend-grid-two">
+              {thisMonth.length > 0 && (
+                <DailyRevenueTrendChart title={`이번 달 일별 매출 추이 (${thisMonthLabel})`} points={thisMonth} color="#2f6fed" />
+              )}
+              {lastMonth.length > 0 && (
+                <DailyRevenueTrendChart title={`지난달 일별 매출 추이 (${lastMonthLabel})`} points={lastMonth} color="#94a3b8" />
+              )}
+            </div>
+          )}
+
           <SellerReportCharts products={snapshot.products} />
           <div className="console-grid-two">
             <div className="console-card">

@@ -509,6 +509,27 @@ export interface SellerDailyProduct {
   refund_amount: number;
 }
 
+export interface PeriodChange {
+  gross_revenue_pct: number | null;
+  net_revenue_pct: number | null;
+  order_count_pct: number | null;
+  average_order_value_pct?: number | null;
+}
+
+export interface SellerRevenueSummary {
+  period: string;
+  org_id: string;
+  gross_revenue: number;
+  refund_amount: number;
+  net_revenue: number;
+  order_count: number;
+  average_order_value: number;
+  previous_period?: Omit<SellerRevenueSummary, "previous_period" | "change">;
+  change?: PeriodChange;
+  period_in_progress?: boolean;
+  days_elapsed?: number | null;
+}
+
 export interface SellerDailySnapshot {
   date: string;
   org_id: string;
@@ -523,6 +544,18 @@ export interface SellerDailySnapshot {
     out_of_stock: SellerDailyProduct[];
     low_stock: SellerDailyProduct[];
   };
+  previous_day?: { date: string; gross_revenue: number; refund_amount: number; net_revenue: number; order_count: number };
+  day_over_day_change?: PeriodChange;
+  month_to_date?: SellerRevenueSummary;
+}
+
+export interface SellerDailySeriesPoint {
+  date: string;
+  gross_revenue: number;
+  refund_amount: number;
+  net_revenue: number;
+  order_count: number;
+  views: number;
 }
 
 export interface SellerDailyReport {
@@ -541,6 +574,18 @@ export const getSellerDailyReport = (token: string, orgId: string, sendDiscord: 
   request<SellerDailyReport>(
     `${coreBaseUrl}/api/v1/ai/seller-daily-report`,
     json("POST", { org_id: orgId, send_discord: sendDiscord }, token),
+  );
+
+export const getSellerRevenueSummary = (token: string, period?: string) =>
+  request<SellerRevenueSummary>(
+    `${commerceBaseUrl}/sellers/me/revenue-summary${period ? `?period=${period}` : ""}`,
+    authGet(token),
+  );
+
+export const getSellerDailySeries = (token: string, days = 60) =>
+  request<SellerDailySeriesPoint[]>(
+    `${commerceBaseUrl}/sellers/me/daily-series?days=${days}`,
+    authGet(token),
   );
 
 export interface ProductStyleTag {

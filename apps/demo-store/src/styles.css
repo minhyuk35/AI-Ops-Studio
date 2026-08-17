@@ -314,6 +314,18 @@ footer { padding: 50px 6vw; color: #d4d4d4; background: var(--ink); }footer p,fo
 .chart-table th { color: var(--muted); font-weight: 700; text-align: left; }
 .chart-table td:not(:first-child), .chart-table th:not(:first-child) { text-align: right; }
 
+.trend-chart-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.trend-chart-head h4 { margin: 0; }
+.trend-chart-total { font-size: 12px; color: var(--muted); font-weight: 700; }
+.trend-chart { display: block; overflow: visible; }
+.trend-chart-x { fill: var(--muted); font-size: 9px; }
+.trend-grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+@media (max-width: 760px) { .trend-grid-two { grid-template-columns: 1fr; } }
+.compare-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; width: fit-content; text-transform: none; letter-spacing: normal; }
+.compare-badge.up { color: #1a7f37; background: #ddf4e4; }
+.compare-badge.down { color: #b42318; background: #fde8e6; }
+.compare-badge.flat { color: var(--muted); background: #eef0f3; }
+
 /* ===== 가상 피팅 (웹캠) ===== */
 .fit-button { width: 100%; margin-top: 8px; padding: 14px; border: 1px solid var(--ink); background: transparent; font-weight: 700; cursor: pointer; }
 .fit-button:hover { color: white; background: var(--ink); }

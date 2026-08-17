@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import type { SellerDailyProduct } from "./api";
+import type { SellerDailyProduct, SellerDailySeriesPoint } from "./api";
 
 // 판매자 일일 리포트용 인라인 SVG 차트(라이브러리 의존성 없음).
 // 색은 dataviz 검증기로 CVD·대비 통과 확인한 값. 조회수/판매수량은 스케일이
@@ -49,6 +49,60 @@ function HBarChart({ title, rows, unit }: { title: string; rows: Row[]; unit: st
                 <rect x={2} y={y + 19} width={barMax} height={13} rx="4" className="hbar-track" />
                 <rect x={2} y={y + 19} width={bw} height={13} rx="4" fill={r.color} />
                 <text x={bw + 8} y={y + 29} className="hbar-val">{r.value.toLocaleString()}{unit}</text>
+              </g>
+            );
+          })}
+        </svg>
+      )}
+    </div>
+  );
+}
+
+const dayLabel = (iso: string) => Number(iso.slice(8, 10));
+
+// 하루 단위 매출 막대(세로) -- 한 달치를 나란히 보여줘서 추세를 한눈에.
+// HBarChart(가로, 상품 Top 8용)와 축이 달라 별도 컴포넌트로 분리했다.
+export function DailyRevenueTrendChart({
+  title,
+  points,
+  color,
+}: {
+  title: string;
+  points: SellerDailySeriesPoint[];
+  color: string;
+}) {
+  const max = Math.max(1, ...points.map((p) => p.gross_revenue));
+  const vbW = 640;
+  const vbH = 150;
+  const axisH = 16;
+  const gap = 2;
+  const barW = points.length ? vbW / points.length - gap : 0;
+  const total = points.reduce((sum, p) => sum + p.gross_revenue, 0);
+  const labelEvery = points.length > 20 ? 5 : points.length > 10 ? 2 : 1;
+
+  return (
+    <div className="chart-card">
+      <div className="trend-chart-head">
+        <h4>{title}</h4>
+        <span className="trend-chart-total">합계 {total.toLocaleString()}원</span>
+      </div>
+      {points.every((p) => p.gross_revenue === 0) ? (
+        <p className="chart-empty">이 기간 매출 데이터가 없습니다.</p>
+      ) : (
+        <svg viewBox={`0 0 ${vbW} ${vbH + axisH}`} width="100%" role="img" aria-label={title} className="trend-chart">
+          {points.map((p, i) => {
+            const x = i * (barW + gap);
+            const h = Math.max(p.gross_revenue > 0 ? 2 : 0, (p.gross_revenue / max) * (vbH - 4));
+            const showLabel = i % labelEvery === 0;
+            return (
+              <g key={p.date}>
+                <title>{`${p.date}: ${p.gross_revenue.toLocaleString()}원 · 주문 ${p.order_count}건 · 조회 ${p.views}회`}</title>
+                <rect x={x} y={vbH - h} width={Math.max(1, barW)} height={h} fill={color} rx="1.5" />
+                {showLabel && (
+                  <text x={x + barW / 2} y={vbH + 12} textAnchor="middle" className="trend-chart-x">
+                    {dayLabel(p.date)}
+                  </text>
+                )}
               </g>
             );
           })}
