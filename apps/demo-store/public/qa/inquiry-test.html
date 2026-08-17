@@ -60,18 +60,31 @@
     문의가 전송됩니다 — 목업이 아니라 실제 프로덕션 API 호출입니다. 위험도(LOW/MEDIUM/HIGH)에 따라 SIGN에 연동된 디스코드
     채널로 알림이 갑니다: LOW는 배송 전 취소면 즉시 자동 처리(대부분 알림 없음), MEDIUM은 승인+답변 버튼, HIGH는 답변 버튼만.
     각 카드는 실제로 시드된 SIGN 주문(<code>ord_seed_act_...</code>)에 연결돼 있어 문의가 SIGN 콘솔의 "문의" 탭에도 그대로 쌓입니다.</p>
-  <span class="badge" id="statusBadge">● 대기 중</span>
+  <span class="badge" id="statusBadge">● 확인 중…</span>
 
-  <div id="cards"></div>
+  <div id="gate" class="card" style="display:none;border-left:3px solid var(--warn)">
+    <h3 style="margin:0 0 8px;font-size:16px">⚠️ 디스코드 연동이 필요한 페이지입니다</h3>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:13.5px">
+      이 테스트는 위험도별로 실제 디스코드 알림이 제대로 가는지까지 확인하는 용도라, SIGN 매장에 디스코드가
+      연동돼 있어야 의미가 있습니다. 아직 연동돼 있지 않은 것 같아요.
+    </p>
+    <p style="margin:0;color:var(--muted);font-size:13.5px">
+      판매자 콘솔 → <b>디스코드 연동</b> 탭에서 먼저 연동을 완료한 뒤 이 페이지를 다시 열어주세요.
+    </p>
+  </div>
 
-  <div class="card custom">
-    <h3 style="margin:0 0 10px;font-size:15px">직접 입력해서 테스트</h3>
-    <label style="font-size:12px;color:var(--muted)">연결할 주문</label>
-    <select id="customOrder"></select>
-    <label style="font-size:12px;color:var(--muted)">문의 내용</label>
-    <textarea id="customQuestion" placeholder="예: 배송이 너무 늦어지는데 언제 오나요?"></textarea>
-    <button class="send-btn" id="customSend">전송</button>
-    <div class="result" id="customResult"></div>
+  <div id="testUI" style="display:none">
+    <div id="cards"></div>
+
+    <div class="card custom">
+      <h3 style="margin:0 0 10px;font-size:15px">직접 입력해서 테스트</h3>
+      <label style="font-size:12px;color:var(--muted)">연결할 주문</label>
+      <select id="customOrder"></select>
+      <label style="font-size:12px;color:var(--muted)">문의 내용</label>
+      <textarea id="customQuestion" placeholder="예: 배송이 너무 늦어지는데 언제 오나요?"></textarea>
+      <button class="send-btn" id="customSend">전송</button>
+      <div class="result" id="customResult"></div>
+    </div>
   </div>
 
   <p class="foot">이 페이지는 검색엔진에 노출되지 않습니다(noindex) — 내부 QA 전용입니다.
@@ -80,7 +93,33 @@
 
 <script>
   const CORE_BASE = location.origin + "/api/core";
+  const COMMERCE_BASE = location.origin + "/api/commerce";
+  const SIGN_ORG_ID = "org_c2afc1aa0fd0";
   document.getElementById("apiBase").textContent = CORE_BASE + "/api/v1/ai/reply";
+
+  async function checkDiscordLinkAndInit() {
+    const badge = document.getElementById("statusBadge");
+    try {
+      const res = await fetch(COMMERCE_BASE + "/orgs/" + SIGN_ORG_ID + "/discord-link-status");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      if (!data.linked) {
+        document.getElementById("gate").style.display = "block";
+        badge.textContent = "● 연동 필요";
+        badge.style.color = "var(--warn)";
+        badge.style.background = "rgba(251,191,36,.1)";
+        badge.style.borderColor = "rgba(251,191,36,.35)";
+        return;
+      }
+      document.getElementById("testUI").style.display = "block";
+      renderCards();
+    } catch (err) {
+      document.getElementById("gate").style.display = "block";
+      document.getElementById("gate").querySelector("p").textContent =
+        "연동 상태를 확인하지 못했습니다(" + err.message + "). 잠시 후 새로고침해주세요.";
+      badge.textContent = "● 확인 실패";
+    }
+  }
 
   // 실제로 scripts/seed_sign_activity.py 가 SIGN 매장에 만든 진짜 주문들.
   // 재시딩하면 주문 id의 날짜 태그가 바뀌므로, 필요시 이 목록만 갱신하면 된다.
@@ -219,10 +258,14 @@
       sendInquiry(order, question, resultEl, document.getElementById("customSend"));
     });
 
-    document.getElementById("statusBadge").textContent = "● 준비 완료 · " + ORDERS.length + "개 예시 문의";
+    const badge = document.getElementById("statusBadge");
+    badge.textContent = "● 연동 확인됨 · " + ORDERS.length + "개 예시 문의";
+    badge.style.color = "var(--accent2)";
+    badge.style.background = "rgba(74,222,128,.1)";
+    badge.style.borderColor = "rgba(74,222,128,.35)";
   }
 
-  renderCards();
+  checkDiscordLinkAndInit();
 </script>
 </body>
 </html>

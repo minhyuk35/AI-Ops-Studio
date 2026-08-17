@@ -2518,6 +2518,21 @@ async def seller_complete_refund(
         return order_payload(connection, order_id)
 
 
+@app.get("/orgs/{org_id}/discord-link-status")
+async def get_org_discord_link_status(org_id: str) -> dict[str, object]:
+    """공개(비인증) 엔드포인트 — QA 문의 테스트 페이지가 '연동돼 있어야 테스트
+    가능' 게이트를 보여주기 위해 로그인 없이 확인하는 용도. linked/org_name
+    외에는 아무것도 안 준다(guild_id·채널·웹훅 URL 등은 여전히 인증 필요한
+    /sellers/me/discord 에서만)."""
+    with closing(connect()) as connection:
+        org = connection.execute(
+            "SELECT name, discord_guild_id FROM organizations WHERE id = ?", (org_id,)
+        ).fetchone()
+        if org is None:
+            raise HTTPException(status_code=404, detail="조직을 찾을 수 없습니다.")
+        return {"org_id": org_id, "org_name": org["name"], "linked": bool(org["discord_guild_id"])}
+
+
 @app.get("/sellers/me/discord")
 async def get_discord_status(
     authorization: str | None = Header(default=None),
