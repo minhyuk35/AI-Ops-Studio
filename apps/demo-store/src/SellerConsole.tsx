@@ -24,6 +24,7 @@ import {
   SellerProductInput,
   SellerProductUpdateInput,
   SellerVariantInput,
+  sendDiscordTestNotification,
   tagProductAttributes,
   updateMyProduct,
   updateMyVariant,
@@ -508,9 +509,13 @@ function SellerDiscordPanel({ token }: { token: string }) {
     mutationFn: () => createDiscordLinkCode(token),
     onSuccess: (data: DiscordStatus) => queryClient.setQueryData(["discord-status"], data),
   });
+  const testNotification = useMutation({
+    mutationFn: () => sendDiscordTestNotification(token),
+  });
   const data = issueCode.data ?? status.data;
   const linked = Boolean(data?.linked);
   const code = issueCode.data?.link_code;
+  const [showSetup, setShowSetup] = useState(false);
 
   const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => undefined);
 
@@ -518,9 +523,9 @@ function SellerDiscordPanel({ token }: { token: string }) {
     <div className="console-panel">
       <div className="console-panel-heading">
         <p>
-          판매자는 <b>디스코드 연동이 필수</b>입니다. 봇을 서버에 초대하고 아래 코드로
-          연동하면, 요금제(<b>{data?.plan ?? "FREE"}</b>)에 맞는 채널과 웹훅이 자동으로
-          만들어지고 매출·조회수 리포트가 그 서버로 전달됩니다.
+          판매자는 <b>디스코드 연동이 필수</b>입니다(계정당 서버 1개만 연동 가능). 봇을 서버에
+          초대하고 아래 코드로 연동하면, 요금제(<b>{data?.plan ?? "FREE"}</b>)에 맞는 채널과
+          웹훅이 자동으로 만들어지고 매출·조회수 리포트가 그 서버로 전달됩니다.
         </p>
       </div>
 
@@ -537,49 +542,73 @@ function SellerDiscordPanel({ token }: { token: string }) {
           className="console-card"
           style={{ borderLeft: "3px solid #4ade80", marginBottom: 16 }}
         >
-          ✅ 연동 완료 · 서버 ID <code>{data?.guild_id}</code>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <span>✅ 연동 완료 · 서버 ID <code>{data?.guild_id}</code></span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                className="primary dark"
+                disabled={testNotification.isPending}
+                onClick={() => testNotification.mutate()}
+              >
+                {testNotification.isPending ? "전송 중…" : "테스트 알림 보내기"}
+              </button>
+              <button className="ghost" onClick={() => setShowSetup((v) => !v)}>
+                {showSetup ? "연동 설정 숨기기" : "연동 설정 다시 보기"}
+              </button>
+            </div>
+          </div>
+          {testNotification.isSuccess && (
+            <p style={{ marginTop: 8, color: "#4ade80" }}>
+              ✓ #{testNotification.data.channel_name} 채널로 전송했습니다 — Discord에서 확인해보세요.
+            </p>
+          )}
+          {testNotification.isError && (
+            <p style={{ marginTop: 8, color: "#f87171" }}>{(testNotification.error as Error).message}</p>
+          )}
         </div>
       )}
 
-      <div className="console-grid-two">
-        <div className="console-card">
-          <h4>1 · 봇 초대</h4>
-          {inviteUrl ? (
-            <p>
-              <a className="primary dark" href={inviteUrl} target="_blank" rel="noreferrer"
-                 style={{ display: "inline-block", padding: "8px 14px", borderRadius: 10 }}>
-                디스코드 봇 초대하기
-              </a>
-            </p>
-          ) : (
-            <p className="empty">
-              관리자가 <code>VITE_DISCORD_INVITE_URL</code> 환경변수를 설정하면 초대 버튼이
-              표시됩니다.
-            </p>
-          )}
-          <p>봇에 <b>채널 관리·웹훅 관리·메시지 보내기</b> 권한이 필요합니다.</p>
-        </div>
+      {(!linked || showSetup) && (
+        <div className="console-grid-two">
+          <div className="console-card">
+            <h4>1 · 봇 초대</h4>
+            {inviteUrl ? (
+              <p>
+                <a className="primary dark" href={inviteUrl} target="_blank" rel="noreferrer"
+                   style={{ display: "inline-block", padding: "8px 14px", borderRadius: 10 }}>
+                  디스코드 봇 초대하기
+                </a>
+              </p>
+            ) : (
+              <p className="empty">
+                관리자가 <code>VITE_DISCORD_INVITE_URL</code> 환경변수를 설정하면 초대 버튼이
+                표시됩니다.
+              </p>
+            )}
+            <p>봇에 <b>채널 관리·웹훅 관리·메시지 보내기</b> 권한이 필요합니다.</p>
+          </div>
 
-        <div className="console-card">
-          <h4>2 · 연동 코드 발급</h4>
-          <button
-            className="primary dark"
-            disabled={issueCode.isPending}
-            onClick={() => issueCode.mutate()}
-          >
-            {issueCode.isPending ? "발급 중…" : code ? "코드 다시 발급" : "연동 코드 발급"}
-          </button>
-          {code && (
-            <p style={{ marginTop: 10 }}>
-              발급된 코드:{" "}
-              <code style={{ fontSize: "1.1em", letterSpacing: "0.1em" }}>{code}</code>{" "}
-              <button className="ghost" onClick={() => copy(code)}>복사</button>
-              <br />
-              <small>서버에서 <code>/실행 코드:{code}</code> 를 입력하세요. (1회용)</small>
-            </p>
-          )}
+          <div className="console-card">
+            <h4>2 · 연동 코드 발급</h4>
+            <button
+              className="primary dark"
+              disabled={issueCode.isPending}
+              onClick={() => issueCode.mutate()}
+            >
+              {issueCode.isPending ? "발급 중…" : code ? "코드 다시 발급" : "연동 코드 발급"}
+            </button>
+            {code && (
+              <p style={{ marginTop: 10 }}>
+                발급된 코드:{" "}
+                <code style={{ fontSize: "1.1em", letterSpacing: "0.1em" }}>{code}</code>{" "}
+                <button className="ghost" onClick={() => copy(code)}>복사</button>
+                <br />
+                <small>서버에서 <code>/실행 코드:{code}</code> 를 입력하세요. (1회용)</small>
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="console-card" style={{ marginTop: 16 }}>
         <h4>3 · 서버에서 <code>/실행</code> 실행 → 아래 채널이 자동 생성됩니다</h4>

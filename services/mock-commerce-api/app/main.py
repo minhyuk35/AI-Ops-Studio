@@ -2499,6 +2499,47 @@ async def get_discord_status(
         return _discord_status_payload(connection, org)
 
 
+@app.post("/sellers/me/discord/test-notification")
+async def send_discord_test_notification(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Lets a linked seller confirm the connection actually works end-to-end
+    without waiting for a real order/AI report -- posts one throwaway
+    message to whichever of the org's channels has a webhook registered
+    (prefers 주문-알림 since it always exists once /실행 has run)."""
+    with closing(connect()) as connection:
+        org = require_seller_org(connection, authorization)
+        if not org.get("discord_guild_id"):
+            raise HTTPException(status_code=400, detail="아직 디스코드가 연동되지 않았습니다.")
+        row = connection.execute(
+            """
+            SELECT channel_name, webhook_url FROM discord_channels
+            WHERE org_id = ? AND webhook_url != ''
+            ORDER BY (channel_key = 'orders') DESC, channel_key
+            LIMIT 1
+            """,
+            (org["id"],),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=400,
+                detail="등록된 웹훅이 없습니다. 서버에서 /실행 을 먼저 실행해주세요.",
+            )
+        message = (
+            f"🔔 **테스트 알림입니다.** {org['name']} 판매자 콘솔에서 "
+            "연동 확인을 위해 직접 보냈어요 — 이 메시지가 보이면 정상 연동된 것입니다."
+        )
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(row["webhook_url"], json={"content": message})
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=502, detail=f"디스코드 전송에 실패했습니다: {exc}"
+            ) from exc
+        return {"status": "sent", "channel_name": row["channel_name"]}
+
+
 @app.post("/internal/discord/link")
 async def internal_discord_link(
     payload: DiscordLinkRequest,

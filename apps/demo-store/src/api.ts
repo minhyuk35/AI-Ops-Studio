@@ -429,6 +429,12 @@ export const createDiscordLinkCode = (token: string) =>
     json("POST", undefined, token),
   );
 
+export const sendDiscordTestNotification = (token: string) =>
+  request<{ status: string; channel_name: string }>(
+    `${commerceBaseUrl}/sellers/me/discord/test-notification`,
+    json("POST", undefined, token),
+  );
+
 export interface OrganizationSummary {
   id: string;
   owner_customer_id: string;
