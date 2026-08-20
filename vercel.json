@@ -21,7 +21,7 @@
     { "source": "/api/commerce/(.*)", "destination": "/api/commerce/index" },
     { "source": "/api/core/(.*)", "destination": "/api/core/index" },
     { "source": "/api/discord/(.*)", "destination": "/api/discord/index" },
-    { "source": "/((?!api/|qa/).*)", "destination": "/index.html" }
+    { "source": "/((?!api/|qa/|guide/).*)", "destination": "/index.html" }
   ],
   "crons": [
     { "path": "/api/core/internal/cron/daily-seller-reports", "schedule": "0 0 * * *" },

@@ -267,6 +267,12 @@ function SellerProductsPanel({
       )}
       <div className="seller-product-list">
         {products.isLoading && <p className="empty">불러오는 중…</p>}
+        {products.isError && (
+          <p className="empty">
+            상품을 불러오지 못했습니다({(products.error as Error).message}).{" "}
+            <button className="link" onClick={() => products.refetch()}>다시 시도</button>
+          </p>
+        )}
         {products.data?.map((product) => (
           <SellerProductRow
             key={product.id}
@@ -280,7 +286,7 @@ function SellerProductsPanel({
             onError={onError}
           />
         ))}
-        {!products.isLoading && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
+        {!products.isLoading && !products.isError && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
       </div>
     </>
   );
@@ -516,7 +522,6 @@ function SellerDiscordPanel({ token }: { token: string }) {
   const data = issueCode.data ?? status.data;
   const linked = Boolean(data?.linked);
   const code = issueCode.data?.link_code;
-  const [showSetup, setShowSetup] = useState(false);
 
   const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => undefined);
 
@@ -545,18 +550,13 @@ function SellerDiscordPanel({ token }: { token: string }) {
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
             <span>✅ 연동 완료 · 서버 ID <code>{data?.guild_id}</code></span>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button
-                className="primary dark"
-                disabled={testNotification.isPending}
-                onClick={() => testNotification.mutate()}
-              >
-                {testNotification.isPending ? "전송 중…" : "테스트 알림 보내기"}
-              </button>
-              <button className="ghost" onClick={() => setShowSetup((v) => !v)}>
-                {showSetup ? "연동 설정 숨기기" : "연동 설정 다시 보기"}
-              </button>
-            </div>
+            <button
+              className="primary dark"
+              disabled={testNotification.isPending}
+              onClick={() => testNotification.mutate()}
+            >
+              {testNotification.isPending ? "전송 중…" : "테스트 알림 보내기"}
+            </button>
           </div>
           {testNotification.isSuccess && (
             <p style={{ marginTop: 8, color: "#4ade80" }}>
@@ -569,47 +569,48 @@ function SellerDiscordPanel({ token }: { token: string }) {
         </div>
       )}
 
-      {(!linked || showSetup) && (
-        <div className="console-grid-two">
-          <div className="console-card">
-            <h4>1 · 봇 초대</h4>
-            {inviteUrl ? (
-              <p>
-                <a className="primary dark" href={inviteUrl} target="_blank" rel="noreferrer"
-                   style={{ display: "inline-block", padding: "8px 14px", borderRadius: 10 }}>
-                  디스코드 봇 초대하기
-                </a>
-              </p>
-            ) : (
-              <p className="empty">
-                관리자가 <code>VITE_DISCORD_INVITE_URL</code> 환경변수를 설정하면 초대 버튼이
-                표시됩니다.
-              </p>
-            )}
-            <p>봇에 <b>채널 관리·웹훅 관리·메시지 보내기</b> 권한이 필요합니다.</p>
-          </div>
-
-          <div className="console-card">
-            <h4>2 · 연동 코드 발급</h4>
-            <button
-              className="primary dark"
-              disabled={issueCode.isPending}
-              onClick={() => issueCode.mutate()}
-            >
-              {issueCode.isPending ? "발급 중…" : code ? "코드 다시 발급" : "연동 코드 발급"}
-            </button>
-            {code && (
-              <p style={{ marginTop: 10 }}>
-                발급된 코드:{" "}
-                <code style={{ fontSize: "1.1em", letterSpacing: "0.1em" }}>{code}</code>{" "}
-                <button className="ghost" onClick={() => copy(code)}>복사</button>
-                <br />
-                <small>서버에서 <code>/실행 코드:{code}</code> 를 입력하세요. (1회용)</small>
-              </p>
-            )}
-          </div>
+      <div className="console-grid-two">
+        <div className="console-card">
+          <h4>1 · 봇 초대</h4>
+          {inviteUrl ? (
+            <p>
+              <a className="primary dark" href={inviteUrl} target="_blank" rel="noreferrer"
+                 style={{ display: "inline-block", padding: "8px 14px", borderRadius: 10 }}>
+                디스코드 봇 초대하기
+              </a>
+            </p>
+          ) : (
+            <p className="empty">
+              관리자가 <code>VITE_DISCORD_INVITE_URL</code> 환경변수를 설정하면 초대 버튼이
+              표시됩니다.
+            </p>
+          )}
+          <p>봇에 <b>채널 관리·웹훅 관리·메시지 보내기</b> 권한이 필요합니다.</p>
         </div>
-      )}
+
+        <div className="console-card">
+          <h4>2 · 연동 코드 발급</h4>
+          <button
+            className="primary dark"
+            disabled={issueCode.isPending}
+            onClick={() => issueCode.mutate()}
+          >
+            {issueCode.isPending ? "발급 중…" : code ? "코드 다시 발급" : "연동 코드 발급"}
+          </button>
+          {issueCode.isError && (
+            <p style={{ marginTop: 10, color: "#f87171" }}>{(issueCode.error as Error).message}</p>
+          )}
+          {code && (
+            <p style={{ marginTop: 10 }}>
+              발급된 코드:{" "}
+              <code style={{ fontSize: "1.1em", letterSpacing: "0.1em" }}>{code}</code>{" "}
+              <button className="ghost" onClick={() => copy(code)}>복사</button>
+              <br />
+              <small>서버에서 <code>/실행 코드:{code}</code> 를 입력하세요. (1회용)</small>
+            </p>
+          )}
+        </div>
+      </div>
 
       <div className="console-card" style={{ marginTop: 16 }}>
         <h4>3 · 서버에서 <code>/실행</code> 실행 → 아래 채널이 자동 생성됩니다</h4>
@@ -693,7 +694,12 @@ function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }
         </button>
       </div>
       {query.isLoading && <p className="empty">오늘의 데이터를 불러오는 중…</p>}
-      {query.isError && <p className="empty">데이터를 불러오지 못했습니다.</p>}
+      {query.isError && (
+        <p className="empty">
+          데이터를 불러오지 못했습니다({(query.error as Error).message}).{" "}
+          <button className="link" onClick={() => query.refetch()}>다시 시도</button>
+        </p>
+      )}
       {snapshot && (
         <>
           <div className="console-stats">
@@ -820,7 +826,13 @@ function SellerOrdersPanel({ token, orgId }: { token: string; orgId: string }) {
   return (
     <div className="console-panel">
       {query.isLoading && <p className="empty">불러오는 중…</p>}
-      {!query.isLoading && !query.data?.length && <p className="empty">아직 이 상점 상품으로 들어온 주문이 없습니다.</p>}
+      {query.isError && (
+        <p className="empty">
+          주문을 불러오지 못했습니다({(query.error as Error).message}).{" "}
+          <button className="link" onClick={() => query.refetch()}>다시 시도</button>
+        </p>
+      )}
+      {!query.isLoading && !query.isError && !query.data?.length && <p className="empty">아직 이 상점 상품으로 들어온 주문이 없습니다.</p>}
       <div className="seller-product-list">
         {query.data?.map((order) => (
           <article className="seller-order-row" key={order.id}>
@@ -853,8 +865,18 @@ function SellerInquiriesPanel({ token, orgId }: { token: string; orgId: string }
   });
   return (
     <div className="console-panel">
+      <div className="console-panel-heading">
+        <p>AI가 문의를 어떻게 분류·처리하는지 궁금하다면{" "}
+          <a href="/guide/inquiry-guide.html" target="_blank" rel="noreferrer">AI 문의 처리 가이드</a>를 참고하세요.</p>
+      </div>
       {query.isLoading && <p className="empty">불러오는 중…</p>}
-      {!query.isLoading && !query.data?.length && <p className="empty">아직 이 상점 상품과 관련된 문의가 없습니다.</p>}
+      {query.isError && (
+        <p className="empty">
+          문의를 불러오지 못했습니다({(query.error as Error).message}).{" "}
+          <button className="link" onClick={() => query.refetch()}>다시 시도</button>
+        </p>
+      )}
+      {!query.isLoading && !query.isError && !query.data?.length && <p className="empty">아직 이 상점 상품과 관련된 문의가 없습니다.</p>}
       <div className="seller-product-list">
         {query.data?.map((inquiry) => (
           <article className="seller-product-row" key={inquiry.id}>

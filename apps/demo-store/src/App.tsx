@@ -223,6 +223,13 @@ export function App() {
 
   const identityId = auth?.customer.id ?? guestId;
   const persistAuth = (next: AuthResponse | null) => {
+    // 다른 계정으로 로그인/전환될 때 이전 세션의 쿼리 캐시(특히 판매자
+    // 콘솔의 토큰 안 들어간 쿼리 키들)가 그대로 남아있으면 새 토큰으로도
+    // 갱신 안 된 채 예전 에러/데이터가 보일 수 있다 -- 계정이 바뀔 때마다
+    // 통째로 비워서 다음 화면은 전부 새 토큰으로 처음부터 받아오게 한다.
+    if (auth?.customer.id !== next?.customer.id) {
+      queryClient.clear();
+    }
     setAuth(next);
     if (next) localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
     else localStorage.removeItem(AUTH_STORAGE_KEY);
