@@ -371,6 +371,59 @@ def order_payload(connection, order_id: str) -> dict[str, object]:
     return result
 
 
+def order_payloads(connection, order_ids: list[str]) -> list[dict[str, object]]:
+    """Batched counterpart to order_payload() -- 5 queries total instead of
+    5 queries per order. A seller/customer with hundreds of orders (e.g.
+    SIGN's seeded 60-day activity history) made the per-order version slow
+    enough to time out, since it was originally written when every account
+    only ever had a handful of orders."""
+    if not order_ids:
+        return []
+    placeholders = ",".join("?" for _ in order_ids)
+    orders = {
+        row["id"]: dict(row)
+        for row in connection.execute(
+            f"SELECT * FROM orders WHERE id IN ({placeholders})", order_ids
+        ).fetchall()
+    }
+    items_by_order: dict[str, list[dict]] = {}
+    for row in connection.execute(
+        f"SELECT * FROM order_items WHERE order_id IN ({placeholders})", order_ids
+    ).fetchall():
+        items_by_order.setdefault(row["order_id"], []).append(dict(row))
+    shipment_by_order = {
+        row["order_id"]: row_to_dict(row)
+        for row in connection.execute(
+            f"SELECT * FROM shipments WHERE order_id IN ({placeholders})", order_ids
+        ).fetchall()
+    }
+    payment_by_order = {
+        row["order_id"]: row_to_dict(row)
+        for row in connection.execute(
+            f"SELECT * FROM payments WHERE order_id IN ({placeholders})", order_ids
+        ).fetchall()
+    }
+    claims_by_order: dict[str, list[dict]] = {}
+    for row in connection.execute(
+        f"SELECT * FROM claims WHERE order_id IN ({placeholders}) ORDER BY created_at DESC",
+        order_ids,
+    ).fetchall():
+        claims_by_order.setdefault(row["order_id"], []).append(dict(row))
+
+    results = []
+    for order_id in order_ids:
+        order = orders.get(order_id)
+        if order is None:
+            continue
+        result = dict(order)
+        result["items"] = items_by_order.get(order_id, [])
+        result["shipment"] = shipment_by_order.get(order_id)
+        result["payment"] = payment_by_order.get(order_id)
+        result["claims"] = claims_by_order.get(order_id, [])
+        results.append(result)
+    return results
+
+
 def customer_profile(connection, customer_row) -> dict[str, object]:
     """Customer row + derived marketplace role (see docs/ai-ops-studio-master-prd.html#personas).
 
@@ -1405,7 +1458,7 @@ async def confirm_payment(payload: PaymentConfirm) -> dict[str, object]:
 async def list_orders() -> list[dict[str, object]]:
     with closing(connect()) as connection:
         ids = connection.execute("SELECT id FROM orders ORDER BY ordered_at DESC").fetchall()
-        return [order_payload(connection, row["id"]) for row in ids]
+        return order_payloads(connection, [row["id"] for row in ids])
 
 
 @app.get("/customers/me/orders")
@@ -1418,7 +1471,7 @@ async def list_my_orders(
             "SELECT id FROM orders WHERE customer_id = ? ORDER BY ordered_at DESC",
             (customer["id"],),
         ).fetchall()
-        return [order_payload(connection, row["id"]) for row in ids]
+        return order_payloads(connection, [row["id"] for row in ids])
 
 
 @app.get("/orders/{order_id}")
@@ -2456,7 +2509,7 @@ async def list_my_orders_as_seller(
             """,
             (org["id"],),
         ).fetchall()
-        return [order_payload(connection, row["order_id"]) for row in ids]
+        return order_payloads(connection, [row["order_id"] for row in ids])
 
 
 @app.post("/sellers/me/orders/{order_id}/complete-refund")

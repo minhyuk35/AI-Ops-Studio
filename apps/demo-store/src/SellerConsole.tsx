@@ -265,29 +265,31 @@ function SellerProductsPanel({
           </div>
         </form>
       )}
-      <div className="seller-product-list">
-        {products.isLoading && <p className="empty">불러오는 중…</p>}
-        {products.isError && (
-          <p className="empty">
-            상품을 불러오지 못했습니다({(products.error as Error).message}).{" "}
-            <button className="link" onClick={() => products.refetch()}>다시 시도</button>
-          </p>
-        )}
-        {products.data?.map((product) => (
-          <SellerProductRow
-            key={product.id}
-            product={product}
-            token={token}
-            customerId={customerId}
-            categories={categories}
-            leafCategories={leafCategories}
-            editing={editingId === product.id}
-            onToggleEdit={() => setEditingId((current) => (current === product.id ? null : product.id))}
-            onError={onError}
-          />
-        ))}
-        {!products.isLoading && !products.isError && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
-      </div>
+      {products.isLoading && <p className="empty">불러오는 중…</p>}
+      {products.isError && (
+        <p className="empty">
+          상품을 불러오지 못했습니다({(products.error as Error).message}).{" "}
+          <button className="link" onClick={() => products.refetch()}>다시 시도</button>
+        </p>
+      )}
+      {!products.isLoading && !products.isError && !products.data?.length && <p className="empty">등록한 상품이 없습니다. 상품 등록 버튼으로 첫 상품을 올려보세요.</p>}
+      {!!products.data?.length && (
+        <div className="seller-product-list">
+          {products.data.map((product) => (
+            <SellerProductRow
+              key={product.id}
+              product={product}
+              token={token}
+              customerId={customerId}
+              categories={categories}
+              leafCategories={leafCategories}
+              editing={editingId === product.id}
+              onToggleEdit={() => setEditingId((current) => (current === product.id ? null : product.id))}
+              onError={onError}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }

@@ -200,6 +200,9 @@ CREATE TABLE IF NOT EXISTS claims (
     updated_at TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_claims_order ON claims(order_id);
+
 CREATE TABLE IF NOT EXISTS coupons (
     id TEXT PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
