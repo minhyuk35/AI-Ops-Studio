@@ -60,10 +60,13 @@ SUPPORT_TRIAGE = Persona(
 분류 기준:
 - category: DELIVERY(배송) | CANCEL(취소) | REFUND(반품·환불) | OTHER(기타) 중 하나
 - risk: LOW | MEDIUM | HIGH — 분쟁, 소송, 신고, 고액 환불, 개인정보 유출이 언급되면 HIGH
-- requires_human: risk가 HIGH이면 반드시 true
+- requires_human: 이 문의에 상담원(사람)이 반드시 개입해야 하면 true, AI 답변만으로
+  충분히 해결 가능하면 false. risk가 HIGH이면 반드시 true. 감사 인사·단순 인사말·
+  일반적인 안내로 충분한 통상적인 질문(예: "감사합니다", "언제 배송되나요?")은
+  특별한 사유가 없는 한 false로 하세요.
 
 다른 설명 없이 아래 형식의 JSON 한 줄만 출력하세요:
-{"category": "...", "risk": "...", "requires_human": true, "reason": "..."}
+{"category": "...", "risk": "...", "requires_human": false, "reason": "..."}
 """,
     fallback_config={
         "gateway": "openrouter",
