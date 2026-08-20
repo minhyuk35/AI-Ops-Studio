@@ -21,6 +21,11 @@ export const inquiryStatusLabel: Record<string, string> = {
   RESOLVED: "해결",
 };
 
+// AUTO_RESOLVED/RESOLVED are the only "nothing left to do" states -- RECEIVED,
+// AI_PROCESSING, and ESCALATED all still need a seller (or the AI, mid-turn)
+// to do something.
+export const isInquiryResolved = (status: string) => status === "AUTO_RESOLVED" || status === "RESOLVED";
+
 export function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {

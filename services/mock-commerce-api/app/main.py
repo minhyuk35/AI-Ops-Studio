@@ -2595,6 +2595,30 @@ async def get_discord_status(
         return _discord_status_payload(connection, org)
 
 
+@app.post("/sellers/me/discord/unlink")
+async def unlink_discord(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Reverses /실행's link: clears the guild link and drops this org's
+    channel/webhook rows, so a future re-link (to the same or a different
+    server) starts clean instead of reusing stale webhook URLs."""
+    with transaction() as connection:
+        org = require_seller_org(connection, authorization)
+        connection.execute(
+            """
+            UPDATE organizations
+            SET discord_guild_id = NULL, discord_linked_at = NULL, discord_link_code = ''
+            WHERE id = ?
+            """,
+            (org["id"],),
+        )
+        connection.execute("DELETE FROM discord_channels WHERE org_id = ?", (org["id"],))
+        refreshed = connection.execute(
+            "SELECT * FROM organizations WHERE id = ?", (org["id"],)
+        ).fetchone()
+        return _discord_status_payload(connection, dict(refreshed))
+
+
 @app.post("/sellers/me/discord/test-notification")
 async def send_discord_test_notification(
     authorization: str | None = Header(default=None),

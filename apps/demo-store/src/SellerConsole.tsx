@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import SellerReportCharts, { DailyRevenueTrendChart } from "./SellerCharts";
@@ -14,6 +14,7 @@ import {
   deleteMyProductVariant,
   DiscordStatus,
   getDiscordStatus,
+  getInquiry,
   getMyOrders,
   getMyProducts,
   getOrgInquiries,
@@ -27,11 +28,12 @@ import {
   SellerVariantInput,
   sendDiscordTestNotification,
   tagProductAttributes,
+  unlinkDiscord,
   updateMyProduct,
   updateMyVariant,
   uploadProductImage,
 } from "./api";
-import { inquiryStatusLabel, PageHeader, statusLabel, won } from "./console-shared";
+import { inquiryStatusLabel, isInquiryResolved, PageHeader, statusLabel, won } from "./console-shared";
 
 export default function SellerConsolePage({
   auth,
@@ -47,6 +49,33 @@ export default function SellerConsolePage({
   const [tab, setTab] = useState<"dashboard" | "orders" | "inquiries" | "products" | "discord">("dashboard");
   const [showForm, setShowForm] = useState(false);
   const orgId = auth.customer.organization?.id;
+  const queryClient = useQueryClient();
+
+  // Warm the orders/inquiries caches as soon as the console opens, regardless
+  // of which tab is active -- so clicking those tabs renders from cache
+  // instantly instead of showing "불러오는 중…" every time.
+  useEffect(() => {
+    if (!orgId) return;
+    queryClient.prefetchQuery({
+      queryKey: ["seller-orders", orgId],
+      queryFn: () => getMyOrders(auth.access_token),
+    });
+    queryClient.prefetchQuery({
+      queryKey: ["seller-inquiries", orgId],
+      queryFn: () => getOrgInquiries(auth.access_token, orgId),
+    });
+  }, [orgId, auth.access_token, queryClient]);
+
+  // Same query key as SellerInquiriesPanel's own useQuery -- this just
+  // subscribes to the already-shared cache entry (no extra request) so the
+  // tab label can show how many inquiries still need attention even before
+  // the tab is opened.
+  const inquiriesForBadge = useQuery({
+    queryKey: ["seller-inquiries", orgId],
+    queryFn: () => getOrgInquiries(auth.access_token, orgId as string),
+    enabled: Boolean(orgId),
+  });
+  const unresolvedCount = inquiriesForBadge.data?.filter((i) => !isInquiryResolved(i.status)).length ?? 0;
 
   return (
     <main className="store-section profile-page console-page">
@@ -59,7 +88,9 @@ export default function SellerConsolePage({
       <div className="console-tabs">
         <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>오늘의 대시보드</button>
         <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}>주문 관리</button>
-        <button className={tab === "inquiries" ? "active" : ""} onClick={() => setTab("inquiries")}>문의</button>
+        <button className={tab === "inquiries" ? "active" : ""} onClick={() => setTab("inquiries")}>
+          문의{unresolvedCount > 0 && <span className="tab-badge">{unresolvedCount}</span>}
+        </button>
         <button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}>상품 관리</button>
         <button className={tab === "discord" ? "active" : ""} onClick={() => setTab("discord")}>디스코드 연동</button>
       </div>
@@ -521,7 +552,18 @@ function SellerDiscordPanel({ token }: { token: string }) {
   const testNotification = useMutation({
     mutationFn: () => sendDiscordTestNotification(token),
   });
-  const data = issueCode.data ?? status.data;
+  const unlink = useMutation({
+    mutationFn: () => unlinkDiscord(token),
+    onSuccess: (data: DiscordStatus) => {
+      queryClient.setQueryData(["discord-status"], data);
+      issueCode.reset(); // drop any previously-issued code so it doesn't reappear stale after re-linking
+    },
+  });
+  // Both mutations write their result into the ["discord-status"] cache
+  // entry (same key `status` reads), so status.data always reflects
+  // whichever happened most recently -- issueCode.data alone would go
+  // stale after a later unlink in the same session.
+  const data = status.data;
   const linked = Boolean(data?.linked);
   const code = issueCode.data?.link_code;
 
@@ -552,13 +594,22 @@ function SellerDiscordPanel({ token }: { token: string }) {
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
             <span>✅ 연동 완료 · 서버 ID <code>{data?.guild_id}</code></span>
-            <button
-              className="primary dark"
-              disabled={testNotification.isPending}
-              onClick={() => testNotification.mutate()}
-            >
-              {testNotification.isPending ? "전송 중…" : "테스트 알림 보내기"}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="primary dark"
+                disabled={testNotification.isPending}
+                onClick={() => testNotification.mutate()}
+              >
+                {testNotification.isPending ? "전송 중…" : "테스트 알림 보내기"}
+              </button>
+              <button
+                className="ghost"
+                disabled={unlink.isPending}
+                onClick={() => unlink.mutate()}
+              >
+                {unlink.isPending ? "해제 중…" : "연동 해제"}
+              </button>
+            </div>
           </div>
           {testNotification.isSuccess && (
             <p style={{ marginTop: 8, color: "#4ade80" }}>
@@ -567,6 +618,9 @@ function SellerDiscordPanel({ token }: { token: string }) {
           )}
           {testNotification.isError && (
             <p style={{ marginTop: 8, color: "#f87171" }}>{(testNotification.error as Error).message}</p>
+          )}
+          {unlink.isError && (
+            <p style={{ marginTop: 8, color: "#f87171" }}>{(unlink.error as Error).message}</p>
           )}
         </div>
       )}
@@ -724,7 +778,7 @@ function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }
             <article><span>날짜</span><strong>{snapshot.date}</strong></article>
           </div>
           {snapshot.previous_day && (
-            <p className="empty" style={{ marginTop: -6 }}>
+            <p className="compare-note">
               전날({snapshot.previous_day.date}) 총결제액 {won.format(snapshot.previous_day.gross_revenue)} 대비 비교
             </p>
           )}
@@ -733,7 +787,7 @@ function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }
             <div className="console-card" style={{ marginTop: 14 }}>
               <h4>이번 달 vs 지난달 ({snapshot.month_to_date.period})</h4>
               {snapshot.month_to_date.period_in_progress && (
-                <p className="empty" style={{ marginTop: -4 }}>
+                <p className="compare-note">
                   이번 달은 아직 {snapshot.month_to_date.days_elapsed}일차라 지난달 전체 누적과
                   단순 비교하면 낮게 보일 수 있습니다 — 참고용으로 봐주세요.
                 </p>
@@ -761,7 +815,7 @@ function SellerDailyDashboard({ token, orgId }: { token: string; orgId: string }
                 </article>
               </div>
               {snapshot.month_to_date.previous_period && (
-                <p className="empty" style={{ marginBottom: 0 }}>
+                <p className="compare-note">
                   지난달({snapshot.month_to_date.previous_period.period}) 총결제액{" "}
                   {won.format(snapshot.month_to_date.previous_period.gross_revenue)} 대비 비교
                 </p>
@@ -865,6 +919,7 @@ function SellerInquiriesPanel({ token, orgId }: { token: string; orgId: string }
     queryKey: ["seller-inquiries", orgId],
     queryFn: () => getOrgInquiries(token, orgId),
   });
+  const [detailId, setDetailId] = useState<string | null>(null);
   return (
     <div className="console-panel">
       <div className="console-panel-heading">
@@ -880,14 +935,61 @@ function SellerInquiriesPanel({ token, orgId }: { token: string; orgId: string }
       )}
       {!query.isLoading && !query.isError && !query.data?.length && <p className="empty">아직 이 상점 상품과 관련된 문의가 없습니다.</p>}
       <div className="seller-product-list">
-        {query.data?.map((inquiry) => (
-          <article className="seller-product-row" key={inquiry.id}>
-            <div>
-              <h3>{inquiry.subject}</h3>
-              <small>{inquiry.customer_name} · {inquiry.order_id ?? "일반 문의"} · {inquiryStatusLabel[inquiry.status] ?? inquiry.status}</small>
+        {query.data?.map((inquiry) => {
+          const resolved = isInquiryResolved(inquiry.status);
+          return (
+            <article className="seller-inquiry-row" key={inquiry.id}>
+              <h3>
+                {inquiry.subject}
+                <span className={`inquiry-status ${resolved ? "resolved" : "open"}`}>
+                  {resolved ? "해결됨" : "해결 안 됨"}
+                </span>
+              </h3>
+              <small>
+                {inquiry.customer_name} · {inquiry.order_id ?? "일반 문의"} · {inquiryStatusLabel[inquiry.status] ?? inquiry.status}
+                {" · "}
+                <button className="link" onClick={() => setDetailId(inquiry.id)}>자세히 보기</button>
+              </small>
+            </article>
+          );
+        })}
+      </div>
+      {detailId && <InquiryDetailModal inquiryId={detailId} onClose={() => setDetailId(null)} />}
+    </div>
+  );
+}
+
+function InquiryDetailModal({ inquiryId, onClose }: { inquiryId: string; onClose: () => void }) {
+  const query = useQuery({
+    queryKey: ["inquiry-detail", inquiryId],
+    queryFn: () => getInquiry(inquiryId),
+  });
+  const inquiry = query.data;
+  const resolved = inquiry ? isInquiryResolved(inquiry.status) : false;
+  return (
+    <div className="coupon-popup-overlay" onClick={onClose}>
+      <div className="inquiry-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="coupon-popup-close" onClick={onClose}>✕</button>
+        <div className="inquiry-modal-head">
+          <h3>{inquiry?.subject ?? "문의 상세"}</h3>
+          {inquiry && (
+            <small>
+              {inquiry.customer_name} · {inquiryStatusLabel[inquiry.status] ?? inquiry.status}
+              <span className={`inquiry-status ${resolved ? "resolved" : "open"}`}>
+                {resolved ? "해결됨" : "해결 안 됨"}
+              </span>
+            </small>
+          )}
+        </div>
+        <div className="inquiry-modal-thread">
+          {query.isLoading && <p className="compare-note">불러오는 중…</p>}
+          {query.isError && <p className="compare-note">불러오지 못했습니다({(query.error as Error).message}).</p>}
+          {inquiry?.messages?.map((message) => (
+            <div key={message.id} className={`message ${message.role === "user" ? "user" : ""}`}>
+              {message.content}
             </div>
-          </article>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

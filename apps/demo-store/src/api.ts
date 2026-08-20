@@ -435,6 +435,12 @@ export const sendDiscordTestNotification = (token: string) =>
     json("POST", undefined, token),
   );
 
+export const unlinkDiscord = (token: string) =>
+  request<DiscordStatus>(
+    `${commerceBaseUrl}/sellers/me/discord/unlink`,
+    json("POST", undefined, token),
+  );
+
 export interface OrganizationSummary {
   id: string;
   owner_customer_id: string;

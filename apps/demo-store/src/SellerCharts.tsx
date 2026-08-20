@@ -147,6 +147,13 @@ export default function SellerReportCharts({ products }: { products: SellerDaily
     [products],
   );
 
+  // 표에는 조회·판매·환불이 하나도 없고 재고까지 정상인, 즉 아무 일도 없었던
+  // 상품은 뺀다 -- 그런 상품이 대부분이라 표가 의미 없는 빈 줄로 가득 찼었다.
+  const activeProducts = useMemo(
+    () => products.filter((p) => p.views > 0 || p.units_sold > 0 || p.refund_units > 0 || p.stock === 0),
+    [products],
+  );
+
   if (!products.length) return null;
 
   return (
@@ -160,23 +167,27 @@ export default function SellerReportCharts({ products }: { products: SellerDaily
 
       {showTable ? (
         <div className="chart-card chart-table-wrap">
-          <table className="chart-table">
-            <thead>
-              <tr><th>상품</th><th>조회수</th><th>판매</th><th>환불</th><th>재고</th><th>매출</th></tr>
-            </thead>
-            <tbody>
-              {products.map((p) => (
-                <tr key={p.product_id}>
-                  <td>{p.product_name}</td>
-                  <td>{p.views}</td>
-                  <td>{p.units_sold}</td>
-                  <td>{p.refund_units}</td>
-                  <td>{p.stock}</td>
-                  <td>{p.revenue.toLocaleString()}원</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {activeProducts.length === 0 ? (
+            <p className="chart-empty">조회·판매·환불이 있거나 품절된 상품이 없습니다.</p>
+          ) : (
+            <table className="chart-table">
+              <thead>
+                <tr><th>상품</th><th>조회수</th><th>판매</th><th>환불</th><th>재고</th><th>매출</th></tr>
+              </thead>
+              <tbody>
+                {activeProducts.map((p) => (
+                  <tr key={p.product_id}>
+                    <td>{p.product_name}</td>
+                    <td>{p.views}</td>
+                    <td>{p.units_sold}</td>
+                    <td>{p.refund_units}</td>
+                    <td>{p.stock}</td>
+                    <td>{p.revenue.toLocaleString()}원</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       ) : (
         <>

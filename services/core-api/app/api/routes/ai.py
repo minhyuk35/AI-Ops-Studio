@@ -205,11 +205,19 @@ def _notify_discord(
     inquiry_id: str,
     auto_cancelled: bool,
 ) -> bool:
-    """Builds and sends the right embed for the outcome that just happened:
-    an informational summary (auto-cancelled), a two-button approve/reply
-    prompt (MEDIUM risk), or a single-button escalation (HIGH risk / any
-    other requires_human trigger). LOW risk that wasn't auto-cancelled sends
-    nothing -- routine FAQ-style answers shouldn't page a seller's Discord.
+    """Builds and sends the right embed for the outcome that just happened.
+    `risk` decides the *tier* (auto-cancelled summary, HIGH-risk single-
+    button escalation, MEDIUM-risk two-button approve/reply prompt, or
+    LOW-risk FYI); `requires_human` only decides, within LOW risk, whether
+    that FYI is sent at all.
+
+    Previously this checked `final.requires_human` before risk, so a
+    LOW-risk question the model still flagged requires_human for (e.g. a
+    delivery-ETA question it has no tracking data to answer, via
+    customer-support-answer.md rule 4's handoff phrasing) triggered the same
+    urgent "🚨 상담원 이관 필요" embed as a genuinely HIGH-risk case -- even
+    though the AI had already answered it and nothing was actually pending.
+    Risk now gates which tier fires; LOW never escalates.
     """
     question_preview = payload.question[:300]
     if auto_cancelled:
@@ -228,7 +236,7 @@ def _notify_discord(
         }
         return notifier.send_embed(embed)
 
-    if final.requires_human:
+    if final.risk == "HIGH":
         embed = {
             "title": "🚨 상담원 이관 필요",
             "description": f"문의: {question_preview}",
@@ -274,6 +282,32 @@ def _notify_discord(
                 "components": [
                     {"type": 2, "style": 3, "label": "승인", "custom_id": f"approve:{inquiry_id}"},
                     {"type": 2, "style": 2, "label": "답변", "custom_id": f"reply:{inquiry_id}"},
+                ],
+            }
+        ]
+        return notifier.send_embed(embed, components)
+
+    # LOW risk: AI already answered on its own. Only worth a (non-urgent)
+    # FYI when it also flagged requires_human -- e.g. a delivery-ETA
+    # question it had no tracking data for -- so the seller can see what
+    # was sent and step in only if they disagree. Otherwise, routine
+    # FAQ-style answers shouldn't page a seller's Discord at all.
+    if final.requires_human:
+        embed = {
+            "title": "🤖 AI 자동 답변",
+            "description": f"문의: {question_preview}\n\n**AI 답변**\n{final.answer[:600]}",
+            "color": 0x60A5FA,
+            "fields": [
+                {"name": "분류", "value": final.category, "inline": True},
+                {"name": "위험도", "value": final.risk, "inline": True},
+                {"name": "문의 ID", "value": inquiry_id, "inline": False},
+            ],
+        }
+        components = [
+            {
+                "type": 1,
+                "components": [
+                    {"type": 2, "style": 2, "label": "다르게 답변하기", "custom_id": f"reply:{inquiry_id}"},
                 ],
             }
         ]
