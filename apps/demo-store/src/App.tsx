@@ -266,6 +266,21 @@ export function App() {
     queryClient.invalidateQueries({ queryKey: ["inquiries"] });
   };
 
+  // A session that was logged in before a deploy that added fields to the
+  // customer object (membership_tier, points_balance, referral_code, ...)
+  // has a stale copy of `customer` sitting in localStorage forever -- this
+  // is what actually broke 마이페이지 (customer.membership_tier was
+  // undefined for anyone already logged in when that shipped). Refresh once
+  // per app load so localStorage self-heals instead of silently going stale
+  // across every future field this object ever gains.
+  useEffect(() => {
+    if (!auth) return;
+    getMe(auth.access_token)
+      .then((customer) => persistAuth({ ...auth, customer }))
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const categories = useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const products = useQuery({
     queryKey: ["products", search, category, sort, inStock],
@@ -1377,7 +1392,9 @@ function ProfilePage({
       <SectionTitle eyebrow="MY ACCOUNT" title="마이페이지" />
       <div className="profile-card">
         <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
-        <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
+        {customer.membership_tier && (
+          <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
+        )}
         <h2>{customer.name}</h2>
         <p>{customer.email} · {customer.phone}</p>
         <div className="profile-actions">
@@ -1473,11 +1490,20 @@ function PointsCard({ token }: { token: string }) {
 function ReferralCard({ customer }: { customer: AuthResponse["customer"] }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
+    if (!customer.referral_code) return;
     navigator.clipboard?.writeText(customer.referral_code).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }).catch(() => undefined);
   };
+  if (!customer.referral_code) {
+    return (
+      <div className="profile-section-card">
+        <h3>추천인 코드</h3>
+        <p className="empty">불러오는 중…</p>
+      </div>
+    );
+  }
   return (
     <div className="profile-section-card">
       <h3>추천인 코드</h3>

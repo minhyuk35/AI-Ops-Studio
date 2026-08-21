@@ -51,11 +51,14 @@ export interface AuthCustomer {
   is_admin: boolean;
   role: MarketplaceRole;
   organization: Organization | null;
-  referral_code: string;
-  referred_by: string | null;
-  membership_tier: string;
-  membership_tier_label: string;
-  points_balance: number;
+  // Optional: a session cached in localStorage from before these fields
+  // existed on the backend won't have them until App's bootstrap refresh
+  // (getMe()) lands -- every read of these must tolerate undefined.
+  referral_code?: string;
+  referred_by?: string | null;
+  membership_tier?: string;
+  membership_tier_label?: string;
+  points_balance?: number;
 }
 
 export interface PointTransaction {
