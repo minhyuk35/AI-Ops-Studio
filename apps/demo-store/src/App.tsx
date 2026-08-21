@@ -4,7 +4,7 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { inquiryStatusLabel, SectionTitle, statusLabel, won } from "./console-shared";
+import { inquiryStatusLabel, PageHeader, SectionTitle, statusLabel, won } from "./console-shared";
 import ReactMarkdown from "react-markdown";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -566,6 +566,21 @@ export function App() {
             onOpenAdminConsole={() => navigate("/admin")}
           />
         ) : <Navigate to="/login" replace />
+      } />
+      <Route path="/mypage/points" element={
+        auth ? <PointsPage token={auth.access_token} onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
+      } />
+      <Route path="/mypage/referral" element={
+        auth ? <ReferralPage customer={auth.customer} onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
+      } />
+      <Route path="/mypage/addresses" element={
+        auth ? <AddressBookPage token={auth.access_token} onError={setNotice} onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
+      } />
+      <Route path="/mypage/payment-methods" element={
+        auth ? <PaymentMethodsPage token={auth.access_token} onError={setNotice} onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
+      } />
+      <Route path="/mypage/coupons" element={
+        auth ? <CouponsPage onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
       } />
       <Route path="/seller/*" element={
         auth ? (
@@ -1387,32 +1402,37 @@ function ProfilePage({
     onError: (error: Error) => onError(error.message),
   });
   const { customer } = auth;
+  const points = useQuery({ queryKey: ["my-points", auth.access_token], queryFn: () => getMyPoints(auth.access_token) });
   return (
     <main className="store-section profile-page">
       <SectionTitle eyebrow="MY ACCOUNT" title="마이페이지" />
 
-      <div className="profile-hero">
-        <div className="profile-card">
-          <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
-          {customer.membership_tier && (
-            <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
+      <div className="profile-card">
+        <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
+        {customer.membership_tier && (
+          <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
+        )}
+        <h2>{customer.name}</h2>
+        <p>{customer.email} · {customer.phone}</p>
+        <div className="profile-stat-row">
+          <span>적립금 <b>{won.format(points.data?.balance ?? 0)}</b></span>
+          {points.data?.next_tier_label && (
+            <span className="compare-note">{won.format(points.data.spend_to_next_tier)} 더 구매하면 {points.data.next_tier_label} 등급</span>
           )}
-          <h2>{customer.name}</h2>
-          <p>{customer.email} · {customer.phone}</p>
-          <div className="profile-actions">
-            <button className="link" onClick={() => refreshMe.mutate()} disabled={refreshMe.isPending}>정보 새로고침</button>
-            <button className="link" onClick={onLogout}>로그아웃</button>
-          </div>
         </div>
-        <PointsCard token={auth.access_token} />
+        <div className="profile-actions">
+          <button className="link" onClick={() => refreshMe.mutate()} disabled={refreshMe.isPending}>정보 새로고침</button>
+          <button className="link" onClick={onLogout}>로그아웃</button>
+        </div>
       </div>
 
-      <div className="profile-grid">
-        <ReferralCard customer={customer} />
-        <AddressBookCard token={auth.access_token} onError={onError} />
-        <PaymentMethodsCard token={auth.access_token} onError={onError} />
-        <CouponWalletCard />
-      </div>
+      <nav className="profile-menu-list">
+        <Link to="/mypage/points">적립금 내역<span>{won.format(points.data?.balance ?? 0)}</span></Link>
+        <Link to="/mypage/coupons">내 쿠폰함<span>›</span></Link>
+        <Link to="/mypage/addresses">배송지 관리<span>›</span></Link>
+        <Link to="/mypage/payment-methods">결제 수단<span>›</span></Link>
+        <Link to="/mypage/referral">추천인 코드<span>{customer.referral_code ?? "›"}</span></Link>
+      </nav>
 
       {customer.role === "CONSUMER" && (
         <div className="seller-activate-card">
@@ -1459,12 +1479,12 @@ function ProfilePage({
   );
 }
 
-function PointsCard({ token }: { token: string }) {
+function PointsPage({ token, onBack }: { token: string; onBack: () => void }) {
   const points = useQuery({ queryKey: ["my-points", token], queryFn: () => getMyPoints(token) });
   const summary = points.data;
   return (
-    <div className="profile-section-card">
-      <h3>적립금</h3>
+    <main className="store-section profile-page">
+      <PageHeader eyebrow="MY ACCOUNT" title="적립금 내역" onBack={onBack} />
       {points.isLoading && <p className="compare-note">불러오는 중…</p>}
       {summary && (
         <>
@@ -1473,9 +1493,10 @@ function PointsCard({ token }: { token: string }) {
             {summary.tier_label} 등급 · 구매 시 {Math.round(summary.earn_rate * 100)}% 적립
             {summary.next_tier_label && ` · ${won.format(summary.spend_to_next_tier)} 더 구매하면 ${summary.next_tier_label} 등급`}
           </p>
+          {summary.transactions.length === 0 && <p className="empty">적립·사용 내역이 없습니다.</p>}
           {summary.transactions.length > 0 && (
             <div className="address-list">
-              {summary.transactions.slice(0, 5).map((tx: PointTransaction) => (
+              {summary.transactions.map((tx: PointTransaction) => (
                 <div className="address-row" key={tx.id}>
                   <div>
                     <h4>{tx.reason}</h4>
@@ -1488,11 +1509,11 @@ function PointsCard({ token }: { token: string }) {
           )}
         </>
       )}
-    </div>
+    </main>
   );
 }
 
-function ReferralCard({ customer }: { customer: AuthResponse["customer"] }) {
+function ReferralPage({ customer, onBack }: { customer: AuthResponse["customer"]; onBack: () => void }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     if (!customer.referral_code) return;
@@ -1501,28 +1522,25 @@ function ReferralCard({ customer }: { customer: AuthResponse["customer"] }) {
       setTimeout(() => setCopied(false), 1500);
     }).catch(() => undefined);
   };
-  if (!customer.referral_code) {
-    return (
-      <div className="profile-section-card">
-        <h3>추천인 코드</h3>
-        <p className="empty">불러오는 중…</p>
-      </div>
-    );
-  }
   return (
-    <div className="profile-section-card">
-      <h3>추천인 코드</h3>
-      <p>친구에게 내 추천인 코드를 공유해보세요.</p>
-      <div className="referral-code-row">
-        <code>{customer.referral_code}</code>
-        <button className="ghost" onClick={copy}>{copied ? "복사됨" : "복사"}</button>
-      </div>
-      {customer.referred_by && <p className="referral-note">가입 시 추천인 코드 <b>{customer.referred_by}</b>를 입력했습니다.</p>}
-    </div>
+    <main className="store-section profile-page">
+      <PageHeader eyebrow="MY ACCOUNT" title="추천인 코드" onBack={onBack} />
+      {!customer.referral_code && <p className="empty">불러오는 중…</p>}
+      {customer.referral_code && (
+        <>
+          <p>친구에게 내 추천인 코드를 공유해보세요.</p>
+          <div className="referral-code-row">
+            <code>{customer.referral_code}</code>
+            <button className="ghost" onClick={copy}>{copied ? "복사됨" : "복사"}</button>
+          </div>
+          {customer.referred_by && <p className="referral-note">가입 시 추천인 코드 <b>{customer.referred_by}</b>를 입력했습니다.</p>}
+        </>
+      )}
+    </main>
   );
 }
 
-function AddressBookCard({ token, onError }: { token: string; onError: (message: string) => void }) {
+function AddressBookPage({ token, onError, onBack }: { token: string; onError: (message: string) => void; onBack: () => void }) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ label: "", recipient: "", phone: "", postal_code: "", address1: "", address2: "" });
@@ -1537,11 +1555,13 @@ function AddressBookCard({ token, onError }: { token: string; onError: (message:
   const remove = useMutation({ mutationFn: (id: string) => deleteMyAddress(token, id), onSuccess: invalidate });
 
   return (
-    <div className="profile-section-card">
-      <div className="profile-section-head">
-        <h3>배송지 관리</h3>
-        <button className="ghost" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 배송지 추가"}</button>
-      </div>
+    <main className="store-section profile-page">
+      <PageHeader
+        eyebrow="MY ACCOUNT"
+        title="배송지 관리"
+        onBack={onBack}
+        action={<button className="primary dark" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 배송지 추가"}</button>}
+      />
       {showForm && (
         <form className="form-grid" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
           <label>이름(별칭)<input required value={form.label} onChange={(e) => setForm((c) => ({ ...c, label: e.target.value }))} placeholder="집, 회사 등" /></label>
@@ -1571,11 +1591,11 @@ function AddressBookCard({ token, onError }: { token: string; onError: (message:
           </div>
         ))}
       </div>
-    </div>
+    </main>
   );
 }
 
-function PaymentMethodsCard({ token, onError }: { token: string; onError: (message: string) => void }) {
+function PaymentMethodsPage({ token, onError, onBack }: { token: string; onError: (message: string) => void; onBack: () => void }) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ label: "", card_brand: "VISA", last4: "" });
@@ -1590,11 +1610,13 @@ function PaymentMethodsCard({ token, onError }: { token: string; onError: (messa
   const remove = useMutation({ mutationFn: (id: string) => deleteMyPaymentMethod(token, id), onSuccess: invalidate });
 
   return (
-    <div className="profile-section-card">
-      <div className="profile-section-head">
-        <h3>결제 수단</h3>
-        <button className="ghost" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 결제 수단 추가"}</button>
-      </div>
+    <main className="store-section profile-page">
+      <PageHeader
+        eyebrow="MY ACCOUNT"
+        title="결제 수단"
+        onBack={onBack}
+        action={<button className="primary dark" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 결제 수단 추가"}</button>}
+      />
       <p className="compare-note">데모 프로젝트이므로 실제 카드 정보는 저장하지 않습니다 — 마지막 4자리만 표시용으로 입력해주세요.</p>
       {showForm && (
         <form className="form-grid" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
@@ -1629,15 +1651,15 @@ function PaymentMethodsCard({ token, onError }: { token: string; onError: (messa
           </div>
         ))}
       </div>
-    </div>
+    </main>
   );
 }
 
-function CouponWalletCard() {
+function CouponsPage({ onBack }: { onBack: () => void }) {
   const coupons = useQuery({ queryKey: ["active-coupons"], queryFn: getActiveCoupons });
   return (
-    <div className="profile-section-card">
-      <h3>내 쿠폰함</h3>
+    <main className="store-section profile-page">
+      <PageHeader eyebrow="MY ACCOUNT" title="내 쿠폰함" onBack={onBack} />
       {!coupons.isLoading && !coupons.data?.length && <p className="empty">현재 사용 가능한 쿠폰이 없습니다.</p>}
       <div className="address-list">
         {coupons.data?.map((coupon) => (
@@ -1653,7 +1675,7 @@ function CouponWalletCard() {
           </div>
         ))}
       </div>
-    </div>
+    </main>
   );
 }
 
