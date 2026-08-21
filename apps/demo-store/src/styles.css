@@ -235,6 +235,14 @@ a { color: inherit; }
 .role-badge { display: inline-block; padding: 5px 10px; color: white; background: #8a8a8a; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .role-badge.role-seller { background: var(--ink); }
 .role-badge.role-admin { background: #b91c1c; }
+.tier-badge { display: inline-block; margin-left: 6px; padding: 5px 10px; border: 1px solid var(--line-strong); color: var(--ink); font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.tier-badge.tier-bronze { border-color: #b08d57; color: #b08d57; }
+.tier-badge.tier-silver { border-color: #9ca3af; color: #6b7280; }
+.tier-badge.tier-gold { border-color: #d4af37; color: #b8860b; }
+.tier-badge.tier-vip { border-color: var(--ink); background: var(--ink); color: white; }
+.points-balance { margin: 8px 0 4px; font-size: 26px; font-weight: 800; }
+.points-gain { color: #16a34a; }
+.points-loss { color: #dc2626; }
 .page-header { max-width: 760px; margin-bottom: 30px; }
 .back-link { display: inline-block; margin-bottom: 14px; color: var(--muted); font-size: 13px; }
 .page-header-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }

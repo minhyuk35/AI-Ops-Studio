@@ -53,6 +53,64 @@ DEFAULT_COMMISSION_RATE = 0.08
 FREE_SHIPPING_THRESHOLD = 100_000
 STANDARD_SHIPPING_FEE = 3_000
 
+# 회원 등급: 최근 3년 누적 결제액 기준으로 등급을 매기고 오프라인 구매도
+# 포함하는 무신사, 최근 4개월 구매액 기준 6단계(WHITE~VVIP)에 등급별 1~5%
+# 적립률을 주는 에이블리를 참고해 설계 -- 이 데모는 전체 누적 결제액 기준
+# 5단계로 단순화했다(무신사처럼 롤링 기간 재계산 없이, 에이블리처럼 등급마다
+# 적립률이 오른다).
+MEMBERSHIP_TIERS = [
+    {"key": "WHITE", "label": "화이트", "min_spend": 0, "earn_rate": 0.01},
+    {"key": "BRONZE", "label": "브론즈", "min_spend": 100_000, "earn_rate": 0.02},
+    {"key": "SILVER", "label": "실버", "min_spend": 300_000, "earn_rate": 0.03},
+    {"key": "GOLD", "label": "골드", "min_spend": 700_000, "earn_rate": 0.04},
+    {"key": "VIP", "label": "VIP", "min_spend": 1_500_000, "earn_rate": 0.05},
+]
+
+
+def _customer_cumulative_spend(connection, customer_id: str) -> int:
+    row = connection.execute(
+        "SELECT COALESCE(SUM(total), 0) AS spend FROM orders WHERE customer_id = ? AND payment_status = 'PAID'",
+        (customer_id,),
+    ).fetchone()
+    return int(row["spend"])
+
+
+def _tier_for_spend(spend: int) -> dict[str, object]:
+    current = MEMBERSHIP_TIERS[0]
+    for tier in MEMBERSHIP_TIERS:
+        if spend >= tier["min_spend"]:
+            current = tier
+    return current
+
+
+def _points_balance(connection, customer_id: str) -> int:
+    row = connection.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS balance FROM point_transactions WHERE customer_id = ?",
+        (customer_id,),
+    ).fetchone()
+    return int(row["balance"])
+
+
+def _award_order_points(connection, customer_id: str, order_id: str, order_total: int) -> None:
+    """Called right after an order's payment_status flips to PAID, so the
+    cumulative-spend query below already includes this order -- the tier
+    used to price *this* order's reward is the tier the order itself
+    qualifies the customer for, same as how 무신사/에이블리 apply the
+    just-reached tier's rate immediately rather than on the next purchase."""
+    spend = _customer_cumulative_spend(connection, customer_id)
+    tier = _tier_for_spend(spend)
+    amount = round(order_total * float(tier["earn_rate"]))
+    if amount <= 0:
+        return
+    connection.execute(
+        "INSERT INTO point_transactions(id, customer_id, amount, reason, order_id, created_at) VALUES(?,?,?,?,?,?)",
+        (
+            f"pt_{uuid4().hex[:12]}", customer_id, amount,
+            f"주문 적립 ({tier['label']} {int(float(tier['earn_rate']) * 100)}%)",
+            order_id, utc_now(),
+        ),
+    )
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -468,6 +526,11 @@ def customer_profile(connection, customer_row) -> dict[str, object]:
     customer["is_admin"] = bool(customer.get("is_admin"))
     customer["role"] = role
     customer["organization"] = organization
+    spend = _customer_cumulative_spend(connection, customer["id"])
+    tier = _tier_for_spend(spend)
+    customer["membership_tier"] = tier["key"]
+    customer["membership_tier_label"] = tier["label"]
+    customer["points_balance"] = _points_balance(connection, customer["id"])
     return customer
 
 
@@ -787,6 +850,35 @@ async def current_customer(authorization: str | None = Header(default=None)) -> 
     with closing(connect()) as connection:
         customer = require_customer(connection, authorization)
         return customer_profile(connection, customer)
+
+
+@app.get("/customers/me/points")
+async def my_points(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    with closing(connect()) as connection:
+        customer = require_customer(connection, authorization)
+        spend = _customer_cumulative_spend(connection, customer["id"])
+        tier = _tier_for_spend(spend)
+        next_tier = next(
+            (t for t in MEMBERSHIP_TIERS if float(t["min_spend"]) > spend), None
+        )
+        transactions = [
+            dict(row)
+            for row in connection.execute(
+                "SELECT * FROM point_transactions WHERE customer_id = ? ORDER BY created_at DESC LIMIT 30",
+                (customer["id"],),
+            ).fetchall()
+        ]
+        return {
+            "balance": _points_balance(connection, customer["id"]),
+            "cumulative_spend": spend,
+            "tier": tier["key"],
+            "tier_label": tier["label"],
+            "earn_rate": tier["earn_rate"],
+            "next_tier": next_tier["key"] if next_tier else None,
+            "next_tier_label": next_tier["label"] if next_tier else None,
+            "spend_to_next_tier": (int(next_tier["min_spend"]) - spend) if next_tier else 0,
+            "transactions": transactions,
+        }
 
 
 @app.get("/customers/me/addresses")
@@ -1624,6 +1716,8 @@ async def confirm_payment(payload: PaymentConfirm) -> dict[str, object]:
             """,
             (now, payload.order_id),
         )
+        if order["customer_id"]:
+            _award_order_points(connection, order["customer_id"], payload.order_id, payload.amount)
         order_org_id = infer_order_org_id(connection, payload.order_id)
         record_event(
             connection,

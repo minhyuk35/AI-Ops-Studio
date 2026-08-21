@@ -96,6 +96,17 @@ CREATE TABLE IF NOT EXISTS payment_methods (
 
 CREATE INDEX IF NOT EXISTS idx_payment_methods_customer ON payment_methods(customer_id);
 
+CREATE TABLE IF NOT EXISTS point_transactions (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    amount INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    order_id TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_point_transactions_customer ON point_transactions(customer_id);
+
 CREATE TABLE IF NOT EXISTS organizations (
     id TEXT PRIMARY KEY,
     owner_customer_id TEXT NOT NULL UNIQUE REFERENCES customers(id),

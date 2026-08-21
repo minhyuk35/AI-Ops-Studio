@@ -53,6 +53,29 @@ export interface AuthCustomer {
   organization: Organization | null;
   referral_code: string;
   referred_by: string | null;
+  membership_tier: string;
+  membership_tier_label: string;
+  points_balance: number;
+}
+
+export interface PointTransaction {
+  id: string;
+  amount: number;
+  reason: string;
+  order_id: string | null;
+  created_at: string;
+}
+
+export interface PointsSummary {
+  balance: number;
+  cumulative_spend: number;
+  tier: string;
+  tier_label: string;
+  earn_rate: number;
+  next_tier: string | null;
+  next_tier_label: string | null;
+  spend_to_next_tier: number;
+  transactions: PointTransaction[];
 }
 
 export interface AuthResponse {
@@ -134,6 +157,9 @@ export const activateSeller = (
   token: string,
   input: { shop_name: string; shop_category: string },
 ) => request<AuthCustomer>(`${commerceBaseUrl}/sellers/activate`, json("POST", input, token));
+
+export const getMyPoints = (token: string) =>
+  request<PointsSummary>(`${commerceBaseUrl}/customers/me/points`, authGet(token));
 
 export const getMyAddresses = (token: string) =>
   request<Address[]>(`${commerceBaseUrl}/customers/me/addresses`, authGet(token));

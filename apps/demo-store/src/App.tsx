@@ -32,6 +32,7 @@ import {
   getMe,
   getMyAddresses,
   getMyPaymentMethods,
+  getMyPoints,
   getOrder,
   getOrders,
   getMyReviews,
@@ -45,6 +46,7 @@ import {
   login,
   PaymentMethod,
   PaymentMethodInput,
+  PointTransaction,
   Recommendations,
   RecommendedProduct,
   recordProductView,
@@ -1375,6 +1377,7 @@ function ProfilePage({
       <SectionTitle eyebrow="MY ACCOUNT" title="마이페이지" />
       <div className="profile-card">
         <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
+        <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
         <h2>{customer.name}</h2>
         <p>{customer.email} · {customer.phone}</p>
         <div className="profile-actions">
@@ -1383,6 +1386,7 @@ function ProfilePage({
         </div>
       </div>
 
+      <PointsCard token={auth.access_token} />
       <ReferralCard customer={customer} />
       <AddressBookCard token={auth.access_token} onError={onError} />
       <PaymentMethodsCard token={auth.access_token} onError={onError} />
@@ -1430,6 +1434,39 @@ function ProfilePage({
         </div>
       )}
     </main>
+  );
+}
+
+function PointsCard({ token }: { token: string }) {
+  const points = useQuery({ queryKey: ["my-points", token], queryFn: () => getMyPoints(token) });
+  const summary = points.data;
+  return (
+    <div className="profile-section-card">
+      <h3>적립금</h3>
+      {points.isLoading && <p className="compare-note">불러오는 중…</p>}
+      {summary && (
+        <>
+          <p className="points-balance">{won.format(summary.balance)}</p>
+          <p className="compare-note">
+            {summary.tier_label} 등급 · 구매 시 {Math.round(summary.earn_rate * 100)}% 적립
+            {summary.next_tier_label && ` · ${won.format(summary.spend_to_next_tier)} 더 구매하면 ${summary.next_tier_label} 등급`}
+          </p>
+          {summary.transactions.length > 0 && (
+            <div className="address-list">
+              {summary.transactions.slice(0, 5).map((tx: PointTransaction) => (
+                <div className="address-row" key={tx.id}>
+                  <div>
+                    <h4>{tx.reason}</h4>
+                    <small>{new Date(tx.created_at).toLocaleDateString("ko-KR")}</small>
+                  </div>
+                  <b className={tx.amount >= 0 ? "points-gain" : "points-loss"}>{tx.amount >= 0 ? "+" : ""}{won.format(tx.amount)}</b>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
