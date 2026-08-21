@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { Link, NavLink, Navigate, Outlet, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { inquiryStatusLabel, PageHeader, SectionTitle, statusLabel, won } from "./console-shared";
 import ReactMarkdown from "react-markdown";
 
@@ -557,31 +557,27 @@ export function App() {
       } />
       <Route path="/mypage" element={
         auth ? (
-          <ProfilePage
-            auth={auth}
-            onUpdated={persistAuth}
-            onLogout={logout}
-            onError={setNotice}
-            onOpenSellerConsole={() => navigate("/seller")}
-            onOpenAdminConsole={() => navigate("/admin")}
-          />
+          <MyPageLayout auth={auth} onUpdated={persistAuth} onLogout={logout} />
         ) : <Navigate to="/login" replace />
-      } />
-      <Route path="/mypage/points" element={
-        auth ? <PointsPage token={auth.access_token} onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
-      } />
-      <Route path="/mypage/referral" element={
-        auth ? <ReferralPage customer={auth.customer} onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
-      } />
-      <Route path="/mypage/addresses" element={
-        auth ? <AddressBookPage token={auth.access_token} onError={setNotice} onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
-      } />
-      <Route path="/mypage/payment-methods" element={
-        auth ? <PaymentMethodsPage token={auth.access_token} onError={setNotice} onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
-      } />
-      <Route path="/mypage/coupons" element={
-        auth ? <CouponsPage onBack={() => navigate("/mypage")} /> : <Navigate to="/login" replace />
-      } />
+      }>
+        {auth && (
+          <>
+            <Route index element={
+              <MyPageOverview
+                auth={auth}
+                onUpdated={persistAuth}
+                onOpenSellerConsole={() => navigate("/seller")}
+                onOpenAdminConsole={() => navigate("/admin")}
+              />
+            } />
+            <Route path="points" element={<PointsSection token={auth.access_token} />} />
+            <Route path="referral" element={<ReferralSection customer={auth.customer} />} />
+            <Route path="addresses" element={<AddressBookSection token={auth.access_token} onError={setNotice} />} />
+            <Route path="payment-methods" element={<PaymentMethodsSection token={auth.access_token} onError={setNotice} />} />
+            <Route path="coupons" element={<CouponsSection />} />
+          </>
+        )}
+      </Route>
       <Route path="/seller/*" element={
         auth ? (
           <Suspense fallback={<main className="store-section profile-page console-page"><p className="empty">불러오는 중…</p></main>}>
@@ -1374,66 +1370,78 @@ function SignupPage({
   );
 }
 
-function ProfilePage({
+function MyPageLayout({
   auth,
   onUpdated,
   onLogout,
-  onError,
+}: {
+  auth: AuthResponse;
+  onUpdated: (auth: AuthResponse) => void;
+  onLogout: () => void;
+}) {
+  const { customer } = auth;
+  const refreshMe = useMutation({
+    mutationFn: () => getMe(auth.access_token),
+    onSuccess: (nextCustomer) => onUpdated({ ...auth, customer: nextCustomer }),
+  });
+  const points = useQuery({ queryKey: ["my-points", auth.access_token], queryFn: () => getMyPoints(auth.access_token) });
+  return (
+    <main className="store-section profile-page">
+      <SectionTitle eyebrow="MY ACCOUNT" title="마이페이지" />
+      <div className="profile-layout">
+        <aside className="profile-sidebar">
+          <div className="profile-card">
+            <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
+            {customer.membership_tier && (
+              <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
+            )}
+            <h2>{customer.name}</h2>
+            <p>{customer.email} · {customer.phone}</p>
+            <div className="profile-stat-row">
+              <span>적립금 <b>{won.format(points.data?.balance ?? 0)}</b></span>
+            </div>
+            <div className="profile-actions">
+              <button className="link" onClick={() => refreshMe.mutate()} disabled={refreshMe.isPending}>정보 새로고침</button>
+              <button className="link" onClick={onLogout}>로그아웃</button>
+            </div>
+          </div>
+          <nav className="profile-sidebar-nav">
+            <NavLink to="/mypage" end>대시보드</NavLink>
+            <NavLink to="/mypage/points">적립금 내역<span>{won.format(points.data?.balance ?? 0)}</span></NavLink>
+            <NavLink to="/mypage/coupons">내 쿠폰함</NavLink>
+            <NavLink to="/mypage/addresses">배송지 관리</NavLink>
+            <NavLink to="/mypage/payment-methods">결제 수단</NavLink>
+            <NavLink to="/mypage/referral">추천인 코드</NavLink>
+          </nav>
+        </aside>
+        <div className="profile-content">
+          <Outlet />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function MyPageOverview({
+  auth,
+  onUpdated,
   onOpenSellerConsole,
   onOpenAdminConsole,
 }: {
   auth: AuthResponse;
   onUpdated: (auth: AuthResponse) => void;
-  onLogout: () => void;
-  onError: (message: string) => void;
   onOpenSellerConsole: () => void;
   onOpenAdminConsole: () => void;
 }) {
   const [shopName, setShopName] = useState("");
   const [shopCategory, setShopCategory] = useState("패션");
-  const refreshMe = useMutation({
-    mutationFn: () => getMe(auth.access_token),
-    onSuccess: (customer) => onUpdated({ ...auth, customer }),
-    onError: (error: Error) => onError(error.message),
-  });
   const activate = useMutation({
     mutationFn: () => activateSeller(auth.access_token, { shop_name: shopName, shop_category: shopCategory }),
     onSuccess: (customer) => onUpdated({ ...auth, customer }),
-    onError: (error: Error) => onError(error.message),
   });
   const { customer } = auth;
-  const points = useQuery({ queryKey: ["my-points", auth.access_token], queryFn: () => getMyPoints(auth.access_token) });
   return (
-    <main className="store-section profile-page">
-      <SectionTitle eyebrow="MY ACCOUNT" title="마이페이지" />
-
-      <div className="profile-card">
-        <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
-        {customer.membership_tier && (
-          <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
-        )}
-        <h2>{customer.name}</h2>
-        <p>{customer.email} · {customer.phone}</p>
-        <div className="profile-stat-row">
-          <span>적립금 <b>{won.format(points.data?.balance ?? 0)}</b></span>
-          {points.data?.next_tier_label && (
-            <span className="compare-note">{won.format(points.data.spend_to_next_tier)} 더 구매하면 {points.data.next_tier_label} 등급</span>
-          )}
-        </div>
-        <div className="profile-actions">
-          <button className="link" onClick={() => refreshMe.mutate()} disabled={refreshMe.isPending}>정보 새로고침</button>
-          <button className="link" onClick={onLogout}>로그아웃</button>
-        </div>
-      </div>
-
-      <nav className="profile-menu-list">
-        <Link to="/mypage/points">적립금 내역<span>{won.format(points.data?.balance ?? 0)}</span></Link>
-        <Link to="/mypage/coupons">내 쿠폰함<span>›</span></Link>
-        <Link to="/mypage/addresses">배송지 관리<span>›</span></Link>
-        <Link to="/mypage/payment-methods">결제 수단<span>›</span></Link>
-        <Link to="/mypage/referral">추천인 코드<span>{customer.referral_code ?? "›"}</span></Link>
-      </nav>
-
+    <>
       {customer.role === "CONSUMER" && (
         <div className="seller-activate-card">
           <h3>비즈니스로 가입하기</h3>
@@ -1475,16 +1483,16 @@ function ProfilePage({
           <button className="primary dark" onClick={onOpenAdminConsole}>관리자 콘솔로 이동</button>
         </div>
       )}
-    </main>
+    </>
   );
 }
 
-function PointsPage({ token, onBack }: { token: string; onBack: () => void }) {
+function PointsSection({ token }: { token: string }) {
   const points = useQuery({ queryKey: ["my-points", token], queryFn: () => getMyPoints(token) });
   const summary = points.data;
   return (
-    <main className="store-section profile-page">
-      <PageHeader eyebrow="MY ACCOUNT" title="적립금 내역" onBack={onBack} />
+    <>
+      <h2>적립금 내역</h2>
       {points.isLoading && <p className="compare-note">불러오는 중…</p>}
       {summary && (
         <>
@@ -1509,24 +1517,24 @@ function PointsPage({ token, onBack }: { token: string; onBack: () => void }) {
           )}
         </>
       )}
-    </main>
+    </>
   );
 }
 
-function ReferralPage({ customer, onBack }: { customer: AuthResponse["customer"]; onBack: () => void }) {
+function ReferralSection({ customer }: { customer?: AuthResponse["customer"] }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    if (!customer.referral_code) return;
+    if (!customer?.referral_code) return;
     navigator.clipboard?.writeText(customer.referral_code).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }).catch(() => undefined);
   };
   return (
-    <main className="store-section profile-page">
-      <PageHeader eyebrow="MY ACCOUNT" title="추천인 코드" onBack={onBack} />
-      {!customer.referral_code && <p className="empty">불러오는 중…</p>}
-      {customer.referral_code && (
+    <>
+      <h2>추천인 코드</h2>
+      {!customer?.referral_code && <p className="empty">불러오는 중…</p>}
+      {customer?.referral_code && (
         <>
           <p>친구에게 내 추천인 코드를 공유해보세요.</p>
           <div className="referral-code-row">
@@ -1536,11 +1544,11 @@ function ReferralPage({ customer, onBack }: { customer: AuthResponse["customer"]
           {customer.referred_by && <p className="referral-note">가입 시 추천인 코드 <b>{customer.referred_by}</b>를 입력했습니다.</p>}
         </>
       )}
-    </main>
+    </>
   );
 }
 
-function AddressBookPage({ token, onError, onBack }: { token: string; onError: (message: string) => void; onBack: () => void }) {
+function AddressBookSection({ token, onError }: { token: string; onError: (message: string) => void }) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ label: "", recipient: "", phone: "", postal_code: "", address1: "", address2: "" });
@@ -1555,13 +1563,11 @@ function AddressBookPage({ token, onError, onBack }: { token: string; onError: (
   const remove = useMutation({ mutationFn: (id: string) => deleteMyAddress(token, id), onSuccess: invalidate });
 
   return (
-    <main className="store-section profile-page">
-      <PageHeader
-        eyebrow="MY ACCOUNT"
-        title="배송지 관리"
-        onBack={onBack}
-        action={<button className="primary dark" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 배송지 추가"}</button>}
-      />
+    <>
+      <div className="profile-section-head">
+        <h2>배송지 관리</h2>
+        <button className="primary dark" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 배송지 추가"}</button>
+      </div>
       {showForm && (
         <form className="form-grid" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
           <label>이름(별칭)<input required value={form.label} onChange={(e) => setForm((c) => ({ ...c, label: e.target.value }))} placeholder="집, 회사 등" /></label>
@@ -1591,11 +1597,11 @@ function AddressBookPage({ token, onError, onBack }: { token: string; onError: (
           </div>
         ))}
       </div>
-    </main>
+    </>
   );
 }
 
-function PaymentMethodsPage({ token, onError, onBack }: { token: string; onError: (message: string) => void; onBack: () => void }) {
+function PaymentMethodsSection({ token, onError }: { token: string; onError: (message: string) => void }) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ label: "", card_brand: "VISA", last4: "" });
@@ -1610,13 +1616,11 @@ function PaymentMethodsPage({ token, onError, onBack }: { token: string; onError
   const remove = useMutation({ mutationFn: (id: string) => deleteMyPaymentMethod(token, id), onSuccess: invalidate });
 
   return (
-    <main className="store-section profile-page">
-      <PageHeader
-        eyebrow="MY ACCOUNT"
-        title="결제 수단"
-        onBack={onBack}
-        action={<button className="primary dark" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 결제 수단 추가"}</button>}
-      />
+    <>
+      <div className="profile-section-head">
+        <h2>결제 수단</h2>
+        <button className="primary dark" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 결제 수단 추가"}</button>
+      </div>
       <p className="compare-note">데모 프로젝트이므로 실제 카드 정보는 저장하지 않습니다 — 마지막 4자리만 표시용으로 입력해주세요.</p>
       {showForm && (
         <form className="form-grid" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
@@ -1651,15 +1655,15 @@ function PaymentMethodsPage({ token, onError, onBack }: { token: string; onError
           </div>
         ))}
       </div>
-    </main>
+    </>
   );
 }
 
-function CouponsPage({ onBack }: { onBack: () => void }) {
+function CouponsSection() {
   const coupons = useQuery({ queryKey: ["active-coupons"], queryFn: getActiveCoupons });
   return (
-    <main className="store-section profile-page">
-      <PageHeader eyebrow="MY ACCOUNT" title="내 쿠폰함" onBack={onBack} />
+    <>
+      <h2>내 쿠폰함</h2>
       {!coupons.isLoading && !coupons.data?.length && <p className="empty">현재 사용 가능한 쿠폰이 없습니다.</p>}
       <div className="address-list">
         {coupons.data?.map((coupon) => (
@@ -1675,7 +1679,7 @@ function CouponsPage({ onBack }: { onBack: () => void }) {
           </div>
         ))}
       </div>
-    </main>
+    </>
   );
 }
 
