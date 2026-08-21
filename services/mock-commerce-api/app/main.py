@@ -69,7 +69,8 @@ MEMBERSHIP_TIERS = [
 
 def _customer_cumulative_spend(connection, customer_id: str) -> int:
     row = connection.execute(
-        "SELECT COALESCE(SUM(total), 0) AS spend FROM orders WHERE customer_id = ? AND payment_status = 'PAID'",
+        "SELECT COALESCE(SUM(total), 0) AS spend FROM orders "
+        "WHERE customer_id = ? AND payment_status = 'PAID'",
         (customer_id,),
     ).fetchone()
     return int(row["spend"])
@@ -103,7 +104,8 @@ def _award_order_points(connection, customer_id: str, order_id: str, order_total
     if amount <= 0:
         return
     connection.execute(
-        "INSERT INTO point_transactions(id, customer_id, amount, reason, order_id, created_at) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO point_transactions(id, customer_id, amount, reason, order_id, created_at) "
+        "VALUES(?,?,?,?,?,?)",
         (
             f"pt_{uuid4().hex[:12]}", customer_id, amount,
             f"주문 적립 ({tier['label']} {int(float(tier['earn_rate']) * 100)}%)",
@@ -735,7 +737,10 @@ async def signup(payload: SignupRequest) -> dict[str, object]:
                 referred_by = candidate
         connection.execute(
             """
-            INSERT INTO customers(id, email, name, phone, password_hash, is_admin, referral_code, referred_by, created_at)
+            INSERT INTO customers(
+                id, email, name, phone, password_hash, is_admin,
+                referral_code, referred_by, created_at
+            )
             VALUES(?,?,?,?,?,0,?,?,?)
             """,
             (
@@ -864,7 +869,8 @@ async def my_points(authorization: str | None = Header(default=None)) -> dict[st
         transactions = [
             dict(row)
             for row in connection.execute(
-                "SELECT * FROM point_transactions WHERE customer_id = ? ORDER BY created_at DESC LIMIT 30",
+                "SELECT * FROM point_transactions WHERE customer_id = ? "
+                "ORDER BY created_at DESC LIMIT 30",
                 (customer["id"],),
             ).fetchall()
         ]
@@ -882,11 +888,14 @@ async def my_points(authorization: str | None = Header(default=None)) -> dict[st
 
 
 @app.get("/customers/me/addresses")
-async def list_my_addresses(authorization: str | None = Header(default=None)) -> list[dict[str, object]]:
+async def list_my_addresses(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
     with closing(connect()) as connection:
         customer = require_customer(connection, authorization)
         rows = connection.execute(
-            "SELECT * FROM addresses WHERE customer_id = ? ORDER BY is_default DESC, created_at DESC",
+            "SELECT * FROM addresses WHERE customer_id = ? "
+            "ORDER BY is_default DESC, created_at DESC",
             (customer["id"],),
         ).fetchall()
         return [dict(row) for row in rows]
@@ -907,15 +916,20 @@ async def create_my_address(
         connection.execute(
             """
             INSERT INTO addresses(
-                id, customer_id, label, recipient, phone, postal_code, address1, address2, is_default, created_at
+                id, customer_id, label, recipient, phone,
+                postal_code, address1, address2, is_default, created_at
             ) VALUES(?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 address_id, customer["id"], payload.label, payload.recipient, payload.phone,
-                payload.postal_code, payload.address1, payload.address2, int(payload.is_default), now,
+                payload.postal_code, payload.address1, payload.address2,
+                int(payload.is_default), now,
             ),
         )
-        return dict(connection.execute("SELECT * FROM addresses WHERE id = ?", (address_id,)).fetchone())
+        row = connection.execute(
+            "SELECT * FROM addresses WHERE id = ?", (address_id,)
+        ).fetchone()
+        return dict(row)
 
 
 @app.post("/customers/me/addresses/{address_id}/default")
@@ -925,7 +939,8 @@ async def set_default_address(
     with transaction() as connection:
         customer = require_customer(connection, authorization)
         address = connection.execute(
-            "SELECT * FROM addresses WHERE id = ? AND customer_id = ?", (address_id, customer["id"])
+            "SELECT * FROM addresses WHERE id = ? AND customer_id = ?",
+            (address_id, customer["id"]),
         ).fetchone()
         if address is None:
             raise HTTPException(status_code=404, detail="배송지를 찾을 수 없습니다.")
@@ -933,7 +948,10 @@ async def set_default_address(
             "UPDATE addresses SET is_default = 0 WHERE customer_id = ?", (customer["id"],)
         )
         connection.execute("UPDATE addresses SET is_default = 1 WHERE id = ?", (address_id,))
-        return dict(connection.execute("SELECT * FROM addresses WHERE id = ?", (address_id,)).fetchone())
+        row = connection.execute(
+            "SELECT * FROM addresses WHERE id = ?", (address_id,)
+        ).fetchone()
+        return dict(row)
 
 
 @app.delete("/customers/me/addresses/{address_id}", status_code=204)
@@ -943,7 +961,8 @@ async def delete_my_address(
     with transaction() as connection:
         customer = require_customer(connection, authorization)
         connection.execute(
-            "DELETE FROM addresses WHERE id = ? AND customer_id = ?", (address_id, customer["id"])
+            "DELETE FROM addresses WHERE id = ? AND customer_id = ?",
+            (address_id, customer["id"]),
         )
 
 
@@ -954,7 +973,8 @@ async def list_my_payment_methods(
     with closing(connect()) as connection:
         customer = require_customer(connection, authorization)
         rows = connection.execute(
-            "SELECT * FROM payment_methods WHERE customer_id = ? ORDER BY is_default DESC, created_at DESC",
+            "SELECT * FROM payment_methods WHERE customer_id = ? "
+            "ORDER BY is_default DESC, created_at DESC",
             (customer["id"],),
         ).fetchall()
         return [dict(row) for row in rows]
@@ -970,16 +990,25 @@ async def create_my_payment_method(
         now = utc_now()
         if payload.is_default:
             connection.execute(
-                "UPDATE payment_methods SET is_default = 0 WHERE customer_id = ?", (customer["id"],)
+                "UPDATE payment_methods SET is_default = 0 WHERE customer_id = ?",
+                (customer["id"],),
             )
         connection.execute(
             """
-            INSERT INTO payment_methods(id, customer_id, label, card_brand, last4, is_default, created_at)
+            INSERT INTO payment_methods(
+                id, customer_id, label, card_brand, last4, is_default, created_at
+            )
             VALUES(?,?,?,?,?,?,?)
             """,
-            (method_id, customer["id"], payload.label, payload.card_brand, payload.last4, int(payload.is_default), now),
+            (
+                method_id, customer["id"], payload.label, payload.card_brand,
+                payload.last4, int(payload.is_default), now,
+            ),
         )
-        return dict(connection.execute("SELECT * FROM payment_methods WHERE id = ?", (method_id,)).fetchone())
+        row = connection.execute(
+            "SELECT * FROM payment_methods WHERE id = ?", (method_id,)
+        ).fetchone()
+        return dict(row)
 
 
 @app.post("/customers/me/payment-methods/{method_id}/default")
@@ -989,7 +1018,8 @@ async def set_default_payment_method(
     with transaction() as connection:
         customer = require_customer(connection, authorization)
         method = connection.execute(
-            "SELECT * FROM payment_methods WHERE id = ? AND customer_id = ?", (method_id, customer["id"])
+            "SELECT * FROM payment_methods WHERE id = ? AND customer_id = ?",
+            (method_id, customer["id"]),
         ).fetchone()
         if method is None:
             raise HTTPException(status_code=404, detail="결제 수단을 찾을 수 없습니다.")
@@ -997,7 +1027,10 @@ async def set_default_payment_method(
             "UPDATE payment_methods SET is_default = 0 WHERE customer_id = ?", (customer["id"],)
         )
         connection.execute("UPDATE payment_methods SET is_default = 1 WHERE id = ?", (method_id,))
-        return dict(connection.execute("SELECT * FROM payment_methods WHERE id = ?", (method_id,)).fetchone())
+        row = connection.execute(
+            "SELECT * FROM payment_methods WHERE id = ?", (method_id,)
+        ).fetchone()
+        return dict(row)
 
 
 @app.delete("/customers/me/payment-methods/{method_id}", status_code=204)
@@ -1007,7 +1040,8 @@ async def delete_my_payment_method(
     with transaction() as connection:
         customer = require_customer(connection, authorization)
         connection.execute(
-            "DELETE FROM payment_methods WHERE id = ? AND customer_id = ?", (method_id, customer["id"])
+            "DELETE FROM payment_methods WHERE id = ? AND customer_id = ?",
+            (method_id, customer["id"]),
         )
 
 

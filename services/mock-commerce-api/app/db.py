@@ -508,7 +508,8 @@ def _ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[st
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl_type}")
 
 
-_REFERRAL_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I -- avoids typos when read aloud/typed in
+# no 0/O/1/I -- avoids typos when read aloud/typed in
+_REFERRAL_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 def generate_referral_code() -> str:
@@ -526,7 +527,8 @@ def _backfill_referral_codes(connection: sqlite3.Connection) -> None:
     existing_codes = {
         row["referral_code"]
         for row in connection.execute(
-            "SELECT referral_code FROM customers WHERE referral_code IS NOT NULL AND referral_code != ''"
+            "SELECT referral_code FROM customers "
+            "WHERE referral_code IS NOT NULL AND referral_code != ''"
         ).fetchall()
     }
     for row in rows:

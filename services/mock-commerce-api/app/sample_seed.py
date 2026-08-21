@@ -138,7 +138,10 @@ def _seed_day(connection, org_id: str, variants: list[dict], date: str) -> None:
             VALUES(?,?,?,?,?,?,?)
             ON CONFLICT(id) DO NOTHING
             """,
-            (f"pay_{order_id}", order_id, f"seed_{order_id}", "CARD", line_total, "PAID", occurred_at),
+            (
+                f"pay_{order_id}", order_id, f"seed_{order_id}", "CARD",
+                line_total, "PAID", occurred_at,
+            ),
         )
         record_event(
             connection,
@@ -157,11 +160,17 @@ def _seed_day(connection, org_id: str, variants: list[dict], date: str) -> None:
             refund_at = _random_time_on(rng, date)
             connection.execute(
                 """
-                INSERT INTO claims(id, order_id, type, reason, status, refund_amount, return_fee, created_at, updated_at)
+                INSERT INTO claims(
+                    id, order_id, type, reason, status,
+                    refund_amount, return_fee, created_at, updated_at
+                )
                 VALUES(?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO NOTHING
                 """,
-                (f"clm_{order_id}", order_id, "RETURN", "샘플 환불(사이즈 불일치)", "REFUNDED", line_total, 0, refund_at, refund_at),
+                (
+                    f"clm_{order_id}", order_id, "RETURN", "샘플 환불(사이즈 불일치)",
+                    "REFUNDED", line_total, 0, refund_at, refund_at,
+                ),
             )
             record_event(
                 connection,

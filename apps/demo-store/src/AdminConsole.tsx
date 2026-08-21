@@ -55,25 +55,35 @@ export default function AdminConsolePage({
       {tab === "orgs" && (
         <>
           {organizations.isLoading && <p className="empty">불러오는 중…</p>}
-          <div className="admin-org-list">
-            {organizations.data?.map((org) => (
-              <article className="admin-org-row" key={org.id}>
-                <div>
-                  <span className={`state ${org.status === "ACTIVE" ? "active" : "disconnected"}`}>{org.status}</span>
-                  <h3>{org.name}</h3>
-                  <small>{org.category} · 상품 {org.product_count}개 · 대표 {org.owner?.name} ({org.owner?.email})</small>
-                </div>
-                <button
-                  className={org.status === "ACTIVE" ? "danger-button" : "primary dark"}
-                  disabled={toggleStatus.isPending}
-                  onClick={() => toggleStatus.mutate(org)}
-                >
-                  {org.status === "ACTIVE" ? "정지" : "활성화"}
-                </button>
-              </article>
-            ))}
-            {!organizations.isLoading && !organizations.data?.length && <p className="empty">입점한 판매자가 없습니다.</p>}
-          </div>
+          {organizations.isError && (
+            <p className="empty">
+              판매자 목록을 불러오지 못했습니다({(organizations.error as Error).message}).{" "}
+              <button className="link" onClick={() => organizations.refetch()}>다시 시도</button>
+            </p>
+          )}
+          {!organizations.isLoading && !organizations.isError && !organizations.data?.length && (
+            <p className="empty">입점한 판매자가 없습니다.</p>
+          )}
+          {!!organizations.data?.length && (
+            <div className="admin-org-list">
+              {organizations.data.map((org) => (
+                <article className="admin-org-row" key={org.id}>
+                  <div>
+                    <span className={`state ${org.status === "ACTIVE" ? "active" : "disconnected"}`}>{org.status}</span>
+                    <h3>{org.name}</h3>
+                    <small>{org.category} · 상품 {org.product_count}개 · 대표 {org.owner?.name} ({org.owner?.email})</small>
+                  </div>
+                  <button
+                    className={org.status === "ACTIVE" ? "danger-button" : "primary dark"}
+                    disabled={toggleStatus.isPending}
+                    onClick={() => toggleStatus.mutate(org)}
+                  >
+                    {org.status === "ACTIVE" ? "정지" : "활성화"}
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -154,31 +164,41 @@ function CouponAdminPanel({ token, onError }: { token: string; onError: (message
           </div>
         </form>
       )}
-      <div className="admin-org-list">
-        {coupons.isLoading && <p className="empty">불러오는 중…</p>}
-        {coupons.data?.map((coupon) => (
-          <article className="admin-org-row" key={coupon.id}>
-            <div>
-              <span className={`state ${coupon.is_active ? "active" : "disconnected"}`}>{coupon.is_active ? "사용 중" : "중지됨"}</span>
-              <h3>{coupon.code}</h3>
-              <small>
-                {coupon.discount_type === "PERCENT" ? `${coupon.discount_value}% 할인` : `${won.format(coupon.discount_value)} 할인`}
-                {coupon.max_discount_amount ? ` (최대 ${won.format(coupon.max_discount_amount)})` : ""}
-                {" · "}{won.format(coupon.min_purchase_amount)} 이상 구매 시
-                {" · "}{coupon.expires_at ? `${coupon.expires_at.slice(0, 10)}까지` : "기한 없음"}
-              </small>
-            </div>
-            <button
-              className={coupon.is_active ? "danger-button" : "primary dark"}
-              disabled={toggle.isPending}
-              onClick={() => toggle.mutate(coupon)}
-            >
-              {coupon.is_active ? "중지" : "재개"}
-            </button>
-          </article>
-        ))}
-        {!coupons.isLoading && !coupons.data?.length && <p className="empty">생성된 쿠폰이 없습니다.</p>}
-      </div>
+      {coupons.isLoading && <p className="empty">불러오는 중…</p>}
+      {coupons.isError && (
+        <p className="empty">
+          쿠폰 목록을 불러오지 못했습니다({(coupons.error as Error).message}).{" "}
+          <button className="link" onClick={() => coupons.refetch()}>다시 시도</button>
+        </p>
+      )}
+      {!coupons.isLoading && !coupons.isError && !coupons.data?.length && (
+        <p className="empty">생성된 쿠폰이 없습니다.</p>
+      )}
+      {!!coupons.data?.length && (
+        <div className="admin-org-list">
+          {coupons.data.map((coupon) => (
+            <article className="admin-org-row" key={coupon.id}>
+              <div>
+                <span className={`state ${coupon.is_active ? "active" : "disconnected"}`}>{coupon.is_active ? "사용 중" : "중지됨"}</span>
+                <h3>{coupon.code}</h3>
+                <small>
+                  {coupon.discount_type === "PERCENT" ? `${coupon.discount_value}% 할인` : `${won.format(coupon.discount_value)} 할인`}
+                  {coupon.max_discount_amount ? ` (최대 ${won.format(coupon.max_discount_amount)})` : ""}
+                  {" · "}{won.format(coupon.min_purchase_amount)} 이상 구매 시
+                  {" · "}{coupon.expires_at ? `${coupon.expires_at.slice(0, 10)}까지` : "기한 없음"}
+                </small>
+              </div>
+              <button
+                className={coupon.is_active ? "danger-button" : "primary dark"}
+                disabled={toggle.isPending}
+                onClick={() => toggle.mutate(coupon)}
+              >
+                {coupon.is_active ? "중지" : "재개"}
+              </button>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -203,6 +223,12 @@ function PlatformTrafficPanel({ token }: { token: string }) {
         </button>
       </div>
       {query.isLoading && <p className="empty">불러오는 중…</p>}
+      {query.isError && (
+        <p className="empty">
+          데이터를 불러오지 못했습니다({(query.error as Error).message}).{" "}
+          <button className="link" onClick={() => query.refetch()}>다시 시도</button>
+        </p>
+      )}
       {snapshot && (
         <>
           <div className="console-stats">
@@ -251,6 +277,12 @@ function MarketSharePanel({ token }: { token: string }) {
         </button>
       </div>
       {query.isLoading && <p className="empty">불러오는 중…</p>}
+      {query.isError && (
+        <p className="empty">
+          데이터를 불러오지 못했습니다({(query.error as Error).message}).{" "}
+          <button className="link" onClick={() => query.refetch()}>다시 시도</button>
+        </p>
+      )}
       {snapshot && (
         <>
           <div className="console-stats">

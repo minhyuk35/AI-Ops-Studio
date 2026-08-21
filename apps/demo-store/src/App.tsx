@@ -4,7 +4,7 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Outlet, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { inquiryStatusLabel, PageHeader, SectionTitle, statusLabel, won } from "./console-shared";
+import { inquiryStatusLabel, SectionTitle, statusLabel, won } from "./console-shared";
 import ReactMarkdown from "react-markdown";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -42,12 +42,10 @@ import {
   getRecommendations,
   getHomeRecommendations,
   googleAuth,
-  HomeRecommendations,
   login,
   PaymentMethod,
   PaymentMethodInput,
   PointTransaction,
-  Recommendations,
   RecommendedProduct,
   recordProductView,
   returnOrder,
@@ -1146,7 +1144,7 @@ function InquiryPage({ inquiries, selected, onSelect }: { inquiries: Inquiry[]; 
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [selected?.id, selected?.messages?.length]);
-  return <main className="store-section"><SectionTitle eyebrow="SUPPORT" title="문의 내역" /><div className="inquiry-layout"><div className="inquiry-list">{inquiries.map((item) => <button key={item.id} onClick={() => onSelect(item.id)}><span>{item.category}</span><div><b>{item.subject}</b><small>{item.status} · 메시지 {item.message_count ?? 0}개</small></div></button>)}{!inquiries.length && <div className="empty">아직 문의 내역이 없습니다. 오른쪽 아래 AI 고객지원을 이용해보세요.</div>}</div>{selected && <section className="conversation" ref={scrollRef}><h2>{selected.subject}</h2>{selected.messages?.map((message) => <div className={`bubble ${message.role}`} key={message.id}><b>{message.role === "user" ? "나" : message.role === "assistant" ? "AI 고객지원" : "판매자"}</b><div className="markdown-body"><ReactMarkdown>{message.content}</ReactMarkdown></div><small>{new Date(message.created_at).toLocaleString("ko-KR")}</small></div>)}</section>}</div></main>;
+  return <main className="store-section"><SectionTitle eyebrow="SUPPORT" title="문의 내역" /><div className="inquiry-layout"><div className="inquiry-list">{inquiries.map((item) => <button key={item.id} onClick={() => onSelect(item.id)}><span>{item.category}</span><div><b>{item.subject}</b><small>{inquiryStatusLabel[item.status] ?? item.status} · 메시지 {item.message_count ?? 0}개</small></div></button>)}{!inquiries.length && <div className="empty">아직 문의 내역이 없습니다. 오른쪽 아래 AI 고객지원을 이용해보세요.</div>}</div>{selected && <section className="conversation" ref={scrollRef}><h2>{selected.subject}</h2>{selected.messages?.map((message) => <div className={`bubble ${message.role}`} key={message.id}><b>{message.role === "user" ? "나" : message.role === "assistant" ? "AI 고객지원" : "판매자"}</b><div className="markdown-body"><ReactMarkdown>{message.content}</ReactMarkdown></div><small>{new Date(message.created_at).toLocaleString("ko-KR")}</small></div>)}</section>}</div></main>;
 }
 
 function SupportChat({ order, product, customerId, onSaved }: { order: Order | null; product: ProductDetail | null; customerId: string; onSaved: () => void }) {

@@ -179,7 +179,7 @@ a { color: inherit; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }.form-grid label { display: grid; gap: 7px; color: #333333; font-size: 13px; }.form-grid .wide { grid-column: 1/-1; }.form-grid input { padding: 12px; border: 1px solid var(--line-strong); background: white; }
 .payment-methods { display: flex; gap: 14px; }.payment-methods label { min-width: 180px; padding: 18px; border: 1px solid var(--line-strong); background: var(--surface); }.demo-note { color: var(--muted); font-size: 12px; }
 .checkout-total p { display: flex; justify-content: space-between; font-size: 18px; }.checkout-total strong { font-size: 25px; }.checkout-total label { font-size: 13px; }.checkout-actions { display: flex; justify-content: space-between; }.checkout-actions button { padding: 14px 20px; border: 1px solid var(--ink); cursor: pointer; }
-.order-list { display: grid; max-width: 900px; }.order-list > button { display: flex; justify-content: space-between; align-items: center; padding: 22px 0; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; }.order-list h3 { margin: 7px 0; }.order-list small { color: var(--muted); }.order-list span { color: var(--ink); font-weight: 800; }
+.order-list { display: grid; max-width: 1400px; }.order-list > button { display: flex; justify-content: space-between; align-items: center; padding: 22px 0; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; }.order-list h3 { margin: 7px 0; }.order-list small { color: var(--muted); }.order-list span { color: var(--ink); font-weight: 800; }
 .order-detail section { margin-top: 36px; }.order-columns section { margin-top: 0; }.order-columns article { display: flex; justify-content: space-between; padding: 18px 0; border-top: 1px solid var(--line); }.order-columns article div { display: grid; gap: 7px; }.order-columns article span { color: var(--muted); font-size: 13px; }
 .order-columns article.order-item-row { display: grid; gap: 10px; }
 .order-item-row-main { display: flex; justify-content: space-between; }
@@ -303,7 +303,7 @@ a { color: inherit; }
 .seller-variant-row input { width: 70px; padding: 7px; border: 1px solid var(--line-strong); text-align: center; }
 .seller-variant-add { grid-template-columns: 1fr 1fr 90px auto; }
 .seller-variant-add input { width: auto; text-align: left; }
-.admin-org-list { display: grid; gap: 1px; max-width: 820px; background: var(--line-strong); border: 1px solid var(--line-strong); }
+.admin-org-list { display: grid; gap: 1px; background: var(--line-strong); border: 1px solid var(--line-strong); }
 .admin-org-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 18px 20px; background: white; }
 .admin-org-row h3 { margin: 8px 0 4px; }
 .admin-org-row small { color: var(--muted); }
@@ -311,7 +311,7 @@ a { color: inherit; }
 .state.active { color: #ffffff; background: var(--ink); }
 .state.disconnected { color: #ffffff; background: #b91c1c; }
 .danger-button { padding: 10px 16px; border: 1px solid #b91c1c; color: #b91c1c; background: transparent; font-weight: 700; cursor: pointer; }
-.profile-page.console-page { max-width: 1320px; margin: 0 auto; }
+.profile-page.console-page { max-width: 1400px; }
 .console-tabs { display: flex; gap: 2px; margin-bottom: 26px; border-bottom: 1px solid var(--line-strong); }
 .console-tabs button,.console-tabs a { padding: 12px 18px; border: 0; color: var(--muted); background: transparent; font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; }
 .console-tabs button.active,.console-tabs a.active { color: var(--ink); box-shadow: inset 0 -2px var(--ink); }
