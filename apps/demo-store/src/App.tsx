@@ -1390,24 +1390,29 @@ function ProfilePage({
   return (
     <main className="store-section profile-page">
       <SectionTitle eyebrow="MY ACCOUNT" title="마이페이지" />
-      <div className="profile-card">
-        <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
-        {customer.membership_tier && (
-          <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
-        )}
-        <h2>{customer.name}</h2>
-        <p>{customer.email} · {customer.phone}</p>
-        <div className="profile-actions">
-          <button className="link" onClick={() => refreshMe.mutate()} disabled={refreshMe.isPending}>정보 새로고침</button>
-          <button className="link" onClick={onLogout}>로그아웃</button>
+
+      <div className="profile-hero">
+        <div className="profile-card">
+          <span className={`role-badge role-${customer.role.toLowerCase()}`}>{roleLabel[customer.role] ?? customer.role}</span>
+          {customer.membership_tier && (
+            <span className={`tier-badge tier-${customer.membership_tier.toLowerCase()}`}>{customer.membership_tier_label}</span>
+          )}
+          <h2>{customer.name}</h2>
+          <p>{customer.email} · {customer.phone}</p>
+          <div className="profile-actions">
+            <button className="link" onClick={() => refreshMe.mutate()} disabled={refreshMe.isPending}>정보 새로고침</button>
+            <button className="link" onClick={onLogout}>로그아웃</button>
+          </div>
         </div>
+        <PointsCard token={auth.access_token} />
       </div>
 
-      <PointsCard token={auth.access_token} />
-      <ReferralCard customer={customer} />
-      <AddressBookCard token={auth.access_token} onError={onError} />
-      <PaymentMethodsCard token={auth.access_token} onError={onError} />
-      <CouponWalletCard />
+      <div className="profile-grid">
+        <ReferralCard customer={customer} />
+        <AddressBookCard token={auth.access_token} onError={onError} />
+        <PaymentMethodsCard token={auth.access_token} onError={onError} />
+        <CouponWalletCard />
+      </div>
 
       {customer.role === "CONSUMER" && (
         <div className="seller-activate-card">
