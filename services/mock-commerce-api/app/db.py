@@ -96,6 +96,29 @@ CREATE TABLE IF NOT EXISTS payment_methods (
 
 CREATE INDEX IF NOT EXISTS idx_payment_methods_customer ON payment_methods(customer_id);
 
+CREATE TABLE IF NOT EXISTS bank_accounts (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    label TEXT NOT NULL,
+    bank_name TEXT NOT NULL,
+    account_holder TEXT NOT NULL,
+    last4 TEXT NOT NULL,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_customer ON bank_accounts(customer_id);
+
+CREATE TABLE IF NOT EXISTS wishlists (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    product_id TEXT NOT NULL REFERENCES products(id),
+    created_at TEXT NOT NULL,
+    UNIQUE(customer_id, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wishlists_customer ON wishlists(customer_id);
+
 CREATE TABLE IF NOT EXISTS point_transactions (
     id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL REFERENCES customers(id),
@@ -592,6 +615,9 @@ def initialize_database() -> None:
             "discord_linked_at": "TEXT",
         }
         _ensure_columns(connection, "organizations", organization_columns)  # type: ignore[arg-type]
+        # 적립금 사용(결제 시 차감) -- 기존 주문 행엔 없으므로 0으로 백필.
+        order_columns = {"points_used": "INTEGER NOT NULL DEFAULT 0"}
+        _ensure_columns(connection, "orders", order_columns)  # type: ignore[arg-type]
 
         # Structural, not sample data -- product creation needs these to
         # exist regardless of whether demo seeding is on, so this always
@@ -1298,7 +1324,7 @@ def _seed_orders(connection: sqlite3.Connection) -> None:
         ordered_at = (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
         connection.execute(
             """
-            INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 order_id,
@@ -1318,6 +1344,7 @@ def _seed_orders(connection: sqlite3.Connection) -> None:
                 payment_status,
                 ordered_at,
                 ordered_at,
+                0,
             ),
         )
         connection.execute(

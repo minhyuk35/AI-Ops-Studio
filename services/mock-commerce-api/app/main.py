@@ -176,6 +176,7 @@ class CheckoutRequest(BaseModel):
     address2: str = Field(default="", max_length=200)
     delivery_memo: str = Field(default="", max_length=200)
     coupon_code: str | None = Field(default=None, max_length=30)
+    points_used: int = Field(default=0, ge=0)
 
 
 class PaymentConfirm(BaseModel):
@@ -223,6 +224,15 @@ class PaymentMethodInput(BaseModel):
     label: str = Field(min_length=1, max_length=30)
     card_brand: str = Field(min_length=1, max_length=30)
     # 데모용 -- 실제 카드번호는 절대 받지 않는다. 마지막 4자리만 표시용으로 저장.
+    last4: str = Field(min_length=4, max_length=4, pattern=r"^\d{4}$")
+    is_default: bool = False
+
+
+class BankAccountInput(BaseModel):
+    label: str = Field(min_length=1, max_length=30)
+    bank_name: str = Field(min_length=1, max_length=30)
+    account_holder: str = Field(min_length=1, max_length=30)
+    # 데모용 -- 실제 계좌번호는 절대 받지 않는다. 마지막 4자리만 표시용으로 저장.
     last4: str = Field(min_length=4, max_length=4, pattern=r"^\d{4}$")
     is_default: bool = False
 
@@ -1045,6 +1055,149 @@ async def delete_my_payment_method(
         )
 
 
+@app.get("/customers/me/bank-accounts")
+async def list_my_bank_accounts(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        customer = require_customer(connection, authorization)
+        rows = connection.execute(
+            "SELECT * FROM bank_accounts WHERE customer_id = ? "
+            "ORDER BY is_default DESC, created_at DESC",
+            (customer["id"],),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+@app.post("/customers/me/bank-accounts", status_code=201)
+async def create_my_bank_account(
+    payload: BankAccountInput, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        account_id = f"bank_{uuid4().hex[:12]}"
+        now = utc_now()
+        if payload.is_default:
+            connection.execute(
+                "UPDATE bank_accounts SET is_default = 0 WHERE customer_id = ?",
+                (customer["id"],),
+            )
+        connection.execute(
+            """
+            INSERT INTO bank_accounts(
+                id, customer_id, label, bank_name, account_holder, last4, is_default, created_at
+            )
+            VALUES(?,?,?,?,?,?,?,?)
+            """,
+            (
+                account_id, customer["id"], payload.label, payload.bank_name,
+                payload.account_holder, payload.last4, int(payload.is_default), now,
+            ),
+        )
+        row = connection.execute(
+            "SELECT * FROM bank_accounts WHERE id = ?", (account_id,)
+        ).fetchone()
+        return dict(row)
+
+
+@app.post("/customers/me/bank-accounts/{account_id}/default")
+async def set_default_bank_account(
+    account_id: str, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        account = connection.execute(
+            "SELECT * FROM bank_accounts WHERE id = ? AND customer_id = ?",
+            (account_id, customer["id"]),
+        ).fetchone()
+        if account is None:
+            raise HTTPException(status_code=404, detail="환불계좌를 찾을 수 없습니다.")
+        connection.execute(
+            "UPDATE bank_accounts SET is_default = 0 WHERE customer_id = ?", (customer["id"],)
+        )
+        connection.execute("UPDATE bank_accounts SET is_default = 1 WHERE id = ?", (account_id,))
+        row = connection.execute(
+            "SELECT * FROM bank_accounts WHERE id = ?", (account_id,)
+        ).fetchone()
+        return dict(row)
+
+
+@app.delete("/customers/me/bank-accounts/{account_id}", status_code=204)
+async def delete_my_bank_account(
+    account_id: str, authorization: str | None = Header(default=None)
+) -> None:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        connection.execute(
+            "DELETE FROM bank_accounts WHERE id = ? AND customer_id = ?",
+            (account_id, customer["id"]),
+        )
+
+
+def _wishlist_product_rows(connection, customer_id: str) -> list[dict[str, object]]:
+    rows = connection.execute(
+        """
+        SELECT p.*, c.name category_name, c.slug category_slug,
+               COALESCE(SUM(v.stock), 0) total_stock
+        FROM wishlists w
+        JOIN products p ON p.id = w.product_id
+        JOIN categories c ON c.id = p.category_id
+        LEFT JOIN variants v ON v.product_id = p.id
+        WHERE w.customer_id = ?
+        GROUP BY p.id, c.name, c.slug
+        ORDER BY w.created_at DESC
+        """,
+        (customer_id,),
+    ).fetchall()
+    products = []
+    for row in rows:
+        product = dict(row)
+        product["in_stock"] = int(product.pop("total_stock")) > 0
+        product["images"] = _images_list(product)
+        products.append(product)
+    return products
+
+
+@app.get("/customers/me/wishlist")
+async def list_my_wishlist(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        customer = require_customer(connection, authorization)
+        return _wishlist_product_rows(connection, customer["id"])
+
+
+@app.post("/customers/me/wishlist/{product_id}", status_code=201)
+async def add_my_wishlist_item(
+    product_id: str, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        product = connection.execute(
+            "SELECT id FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        if product is None:
+            raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+        connection.execute(
+            "INSERT OR IGNORE INTO wishlists(id, customer_id, product_id, created_at) "
+            "VALUES(?,?,?,?)",
+            (f"wl_{uuid4().hex[:12]}", customer["id"], product_id, utc_now()),
+        )
+        return {"product_id": product_id, "wishlisted": True}
+
+
+@app.delete("/customers/me/wishlist/{product_id}", status_code=204)
+async def remove_my_wishlist_item(
+    product_id: str, authorization: str | None = Header(default=None)
+) -> None:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        connection.execute(
+            "DELETE FROM wishlists WHERE customer_id = ? AND product_id = ?",
+            (customer["id"], product_id),
+        )
+
+
 @app.post("/sellers/activate", status_code=201)
 async def activate_seller(
     payload: SellerActivateRequest, authorization: str | None = Header(default=None)
@@ -1620,6 +1773,21 @@ async def create_order(
             raise HTTPException(
                 status_code=409, detail=cart["coupon_message"] or "장바구니를 확인해주세요."
             )
+        points_used = payload.points_used
+        if points_used > 0:
+            if customer is None:
+                raise HTTPException(
+                    status_code=401, detail="적립금 사용은 로그인 후 가능합니다."
+                )
+            if points_used > _points_balance(connection, customer["id"]):
+                raise HTTPException(
+                    status_code=409, detail="보유한 적립금보다 많이 사용할 수 없습니다."
+                )
+            if points_used > int(cart["total"]):
+                raise HTTPException(
+                    status_code=409, detail="주문 금액보다 많은 적립금을 사용할 수 없습니다."
+                )
+        order_total = int(cart["total"]) - points_used
         order_id = f"ord_{datetime.now(UTC).strftime('%y%m%d')}_{uuid4().hex[:8]}"
         for item in cart["items"]:
             updated = connection.execute(
@@ -1636,8 +1804,8 @@ async def create_order(
             INSERT INTO orders(
                 id, customer_id, email, recipient, phone, postal_code, address1, address2,
                 delivery_memo, status, subtotal, discount, shipping_fee, total,
-                payment_status, ordered_at, updated_at
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                payment_status, ordered_at, updated_at, points_used
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 order_id,
@@ -1653,12 +1821,22 @@ async def create_order(
                 cart["subtotal"],
                 cart["discount"],
                 cart["shipping_fee"],
-                cart["total"],
+                order_total,
                 "READY",
                 now,
                 now,
+                points_used,
             ),
         )
+        if points_used > 0 and customer is not None:
+            connection.execute(
+                "INSERT INTO point_transactions(id, customer_id, amount, reason, order_id, "
+                "created_at) VALUES(?,?,?,?,?,?)",
+                (
+                    f"pt_{uuid4().hex[:12]}", customer["id"], -points_used,
+                    "포인트 사용", order_id, now,
+                ),
+            )
         for item in cart["items"]:
             connection.execute(
                 "INSERT INTO order_items VALUES(?,?,?,?,?,?,?,?,?,?)",
@@ -1688,7 +1866,7 @@ async def create_order(
             external_event_id=f"{order_id}:ORDER_CREATED",
             order_id=order_id,
             quantity=sum(int(item["quantity"]) for item in cart["items"]),
-            amount=int(cart["total"]),
+            amount=order_total,
             discount=int(cart["discount"]),
             shipping_fee=int(cart["shipping_fee"]),
             occurred_at=now,
@@ -1851,6 +2029,15 @@ async def cancel_order(order_id: str, payload: OrderAction) -> dict[str, object]
         connection.execute(
             "UPDATE payments SET status = 'REFUNDED' WHERE order_id = ?", (order_id,)
         )
+        if int(order["points_used"] or 0) > 0 and order["customer_id"]:
+            connection.execute(
+                "INSERT INTO point_transactions(id, customer_id, amount, reason, order_id, "
+                "created_at) VALUES(?,?,?,?,?,?)",
+                (
+                    f"pt_{uuid4().hex[:12]}", order["customer_id"], int(order["points_used"]),
+                    "주문 취소로 포인트 반환", order_id, now,
+                ),
+            )
         claim = {
             "id": f"clm_{uuid4().hex[:12]}",
             "order_id": order_id,

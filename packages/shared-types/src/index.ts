@@ -132,6 +132,7 @@ export interface Order {
   discount: number;
   shipping_fee: number;
   total: number;
+  points_used: number;
   payment_status: string;
   ordered_at: string;
   updated_at: string;

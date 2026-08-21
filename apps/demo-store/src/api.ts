@@ -138,6 +138,25 @@ export interface PaymentMethodInput {
   is_default?: boolean;
 }
 
+export interface BankAccount {
+  id: string;
+  customer_id: string;
+  label: string;
+  bank_name: string;
+  account_holder: string;
+  last4: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface BankAccountInput {
+  label: string;
+  bank_name: string;
+  account_holder: string;
+  last4: string;
+  is_default?: boolean;
+}
+
 export const signup = (input: SignupInput) =>
   request<AuthResponse>(`${commerceBaseUrl}/auth/signup`, json("POST", input));
 
@@ -184,6 +203,31 @@ export const setDefaultPaymentMethod = (token: string, methodId: string) =>
   request<PaymentMethod>(`${commerceBaseUrl}/customers/me/payment-methods/${methodId}/default`, json("POST", undefined, token));
 export const deleteMyPaymentMethod = (token: string, methodId: string) =>
   fetch(`${commerceBaseUrl}/customers/me/payment-methods/${methodId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+export const getMyBankAccounts = (token: string) =>
+  request<BankAccount[]>(`${commerceBaseUrl}/customers/me/bank-accounts`, authGet(token));
+export const createMyBankAccount = (token: string, input: BankAccountInput) =>
+  request<BankAccount>(`${commerceBaseUrl}/customers/me/bank-accounts`, json("POST", input, token));
+export const setDefaultBankAccount = (token: string, accountId: string) =>
+  request<BankAccount>(`${commerceBaseUrl}/customers/me/bank-accounts/${accountId}/default`, json("POST", undefined, token));
+export const deleteMyBankAccount = (token: string, accountId: string) =>
+  fetch(`${commerceBaseUrl}/customers/me/bank-accounts/${accountId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+export const getMyWishlist = (token: string) =>
+  request<Product[]>(`${commerceBaseUrl}/customers/me/wishlist`, authGet(token));
+export const addToWishlist = (token: string, productId: string) =>
+  request<{ product_id: string; wishlisted: boolean }>(
+    `${commerceBaseUrl}/customers/me/wishlist/${productId}`,
+    json("POST", undefined, token),
+  );
+export const removeFromWishlist = (token: string, productId: string) =>
+  fetch(`${commerceBaseUrl}/customers/me/wishlist/${productId}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -285,6 +329,7 @@ export interface CheckoutInput {
   address2: string;
   delivery_memo: string;
   coupon_code?: string;
+  points_used?: number;
 }
 
 // customer_id is never sent by the client — the server derives it from the

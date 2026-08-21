@@ -14,15 +14,20 @@ import {
   Address,
   AddressInput,
   addCartItem,
+  addToWishlist,
   askSupport,
   AuthResponse,
+  BankAccount,
+  BankAccountInput,
   cancelOrder,
   confirmPayment,
   createMyAddress,
+  createMyBankAccount,
   createMyPaymentMethod,
   createOrder,
   deleteCartItem,
   deleteMyAddress,
+  deleteMyBankAccount,
   deleteMyPaymentMethod,
   getActiveCoupons,
   getCart,
@@ -31,8 +36,10 @@ import {
   getInquiry,
   getMe,
   getMyAddresses,
+  getMyBankAccounts,
   getMyPaymentMethods,
   getMyPoints,
+  getMyWishlist,
   getOrder,
   getOrders,
   getMyReviews,
@@ -48,8 +55,10 @@ import {
   PointTransaction,
   RecommendedProduct,
   recordProductView,
+  removeFromWishlist,
   returnOrder,
   setDefaultAddress,
+  setDefaultBankAccount,
   setDefaultPaymentMethod,
   signup,
   SignupInput,
@@ -89,6 +98,39 @@ const supportSessionId = persistentId("everyday-support-session", "session");
 // Anonymous browsers still get their own (unauthenticated) inquiry history
 // instead of everyone sharing one identity.
 const guestId = persistentId("everyday-guest-id", "guest");
+
+// 최근 본 상품: 로그인 여부와 무관하게 이 브라우저에서만 의미가 있는 기록이라
+// 서버 대신 localStorage에 저장 -- 비로그인 방문자도 바로 쓸 수 있다.
+const RECENTLY_VIEWED_KEY = "everyday-recently-viewed";
+const RECENTLY_VIEWED_LIMIT = 12;
+
+interface RecentlyViewedItem {
+  id: string;
+  slug: string;
+  brand: string;
+  name: string;
+  image: string;
+  price: number;
+  compare_at_price: number | null;
+}
+
+function loadRecentlyViewed(): RecentlyViewedItem[] {
+  try {
+    const raw = localStorage.getItem(RECENTLY_VIEWED_KEY);
+    return raw ? (JSON.parse(raw) as RecentlyViewedItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentlyViewed(item: RecentlyViewedItem): RecentlyViewedItem[] {
+  const next = [item, ...loadRecentlyViewed().filter((existing) => existing.id !== item.id)].slice(
+    0,
+    RECENTLY_VIEWED_LIMIT,
+  );
+  localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next));
+  return next;
+}
 
 const roleLabel: Record<string, string> = { CONSUMER: "소비자", SELLER: "판매자", ADMIN: "총관리자" };
 
@@ -243,6 +285,7 @@ export function App() {
   const [notice, setNotice] = useState("");
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
   const [auth, setAuth] = useState<AuthResponse | null>(loadStoredAuth);
+  const [recentlyViewed, setRecentlyViewed] = useState<RecentlyViewedItem[]>(loadRecentlyViewed);
 
   const identityId = auth?.customer.id ?? guestId;
   const persistAuth = (next: AuthResponse | null) => {
@@ -316,6 +359,32 @@ export function App() {
     // customer having to manually refresh the page.
     refetchInterval: 5000,
   });
+  const wishlist = useQuery({
+    queryKey: ["wishlist", auth?.access_token],
+    queryFn: () => getMyWishlist(auth!.access_token),
+    enabled: Boolean(auth),
+  });
+  const wishlistIds = useMemo(
+    () => new Set((wishlist.data ?? []).map((item) => item.id)),
+    [wishlist.data],
+  );
+  const toggleWishlistMutation = useMutation({
+    mutationFn: async (productId: string) => {
+      if (wishlistIds.has(productId)) await removeFromWishlist(auth!.access_token, productId);
+      else await addToWishlist(auth!.access_token, productId);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wishlist", auth?.access_token] }),
+    onError: (error: Error) => setNotice(error.message),
+  });
+  const toggleWishlist = (productId: string) => {
+    if (!auth) {
+      setNotice("로그인이 필요합니다.");
+      navigate("/login");
+      return;
+    }
+    toggleWishlistMutation.mutate(productId);
+  };
+  const trackViewed = (item: RecentlyViewedItem) => setRecentlyViewed(pushRecentlyViewed(item));
 
   const setCart = (next: Cart) => queryClient.setQueryData(["cart", cartId, couponCode], next);
   const addToCart = useMutation({
@@ -437,6 +506,8 @@ export function App() {
             onSort={setSort}
             onInStock={setInStock}
             onProduct={openProduct}
+            wishlistIds={wishlistIds}
+            onToggleWishlist={toggleWishlist}
           />
         </>
       } />
@@ -448,6 +519,11 @@ export function App() {
               product={product.data}
               variantId={variantId}
               customerId={auth?.customer.id}
+              wishlisted={wishlistIds.has(product.data.id)}
+              onToggleWishlist={() => toggleWishlist(product.data.id)}
+              recentlyViewed={recentlyViewed}
+              onProduct={openProduct}
+              onViewed={trackViewed}
               onVariant={setVariantId}
               onAdd={() => {
                 if (!variantId) return setNotice("옵션을 선택해주세요.");
@@ -572,7 +648,14 @@ export function App() {
             <Route path="referral" element={<ReferralSection customer={auth.customer} />} />
             <Route path="addresses" element={<AddressBookSection token={auth.access_token} onError={setNotice} />} />
             <Route path="payment-methods" element={<PaymentMethodsSection token={auth.access_token} onError={setNotice} />} />
+            <Route path="bank-accounts" element={<BankAccountsSection token={auth.access_token} onError={setNotice} />} />
             <Route path="coupons" element={<CouponsSection />} />
+            <Route path="wishlist" element={
+              <WishlistSection products={wishlist.data ?? []} onProduct={openProduct} onToggleWishlist={toggleWishlist} />
+            } />
+            <Route path="recently-viewed" element={
+              <RecentlyViewedSection items={recentlyViewed} onProduct={openProduct} />
+            } />
           </>
         )}
       </Route>
@@ -891,7 +974,7 @@ function AiRecommendationsPage({ onProduct, token }: { onProduct: (p: { slug: st
   );
 }
 
-function Catalog(props: { products: Product[]; loading: boolean; categories: Category[]; selectedCategory: string; sort: string; inStock: boolean; search: string; onCategory: (v: string) => void; onSort: (v: string) => void; onInStock: (v: boolean) => void; onProduct: (p: Product) => void }) {
+function Catalog(props: { products: Product[]; loading: boolean; categories: Category[]; selectedCategory: string; sort: string; inStock: boolean; search: string; onCategory: (v: string) => void; onSort: (v: string) => void; onInStock: (v: boolean) => void; onProduct: (p: Product) => void; wishlistIds?: Set<string>; onToggleWishlist?: (id: string) => void }) {
   // 2단 카테고리: 대분류(부모) 탭 + 선택한 대분류에 속한 소분류 탭.
   // selectedCategory는 대분류 slug(그 대분류 전체) 또는 소분류 slug(단일 소분류) 둘 다 될 수 있음.
   const parents = props.categories.filter((c) => !c.parent_id);
@@ -915,11 +998,21 @@ function Catalog(props: { products: Product[]; loading: boolean; categories: Cat
         {children.map((item) => <button className={props.selectedCategory === item.slug ? "active" : ""} key={item.slug} onClick={() => props.onCategory(item.slug)}>{item.name}</button>)}
       </div>
     )}
-    {props.loading ? <div className="empty"><p>상품을 불러오는 중…</p></div> : props.products.length ? <ProductGrid products={props.products} onProduct={props.onProduct} /> : <div className="empty"><h2>조건에 맞는 상품이 없습니다.</h2><button onClick={() => props.onCategory("")}>필터 초기화</button></div>}
+    {props.loading ? <div className="empty"><p>상품을 불러오는 중…</p></div> : props.products.length ? <ProductGrid products={props.products} onProduct={props.onProduct} wishlistIds={props.wishlistIds} onToggleWishlist={props.onToggleWishlist} /> : <div className="empty"><h2>조건에 맞는 상품이 없습니다.</h2><button onClick={() => props.onCategory("")}>필터 초기화</button></div>}
   </main>;
 }
 
-function ProductGrid({ products, onProduct }: { products: Product[]; onProduct: (p: Product) => void }) {
+function ProductGrid({
+  products,
+  onProduct,
+  wishlistIds,
+  onToggleWishlist,
+}: {
+  products: Product[];
+  onProduct: (p: Product) => void;
+  wishlistIds?: Set<string>;
+  onToggleWishlist?: (id: string) => void;
+}) {
   const gridRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!products.length) return;
@@ -939,7 +1032,39 @@ function ProductGrid({ products, onProduct }: { products: Product[]; onProduct: 
     }, gridRef);
     return () => ctx.revert();
   }, [products]);
-  return <div className="product-grid" ref={gridRef}>{products.map((item) => <button className="product-card" key={item.id} onClick={() => onProduct(item)}><div className="product-image"><img src={item.image} alt={item.name} loading="lazy" />{!item.in_stock && <span>품절</span>}</div><small>{item.brand}</small><h3>{item.name}</h3><div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div><p>★ {item.rating.toFixed(1)} <span>({item.review_count})</span></p></button>)}</div>;
+  return (
+    <div className="product-grid" ref={gridRef}>
+      {products.map((item) => (
+        <div
+          className="product-card"
+          role="button"
+          tabIndex={0}
+          key={item.id}
+          onClick={() => onProduct(item)}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onProduct(item); }}
+        >
+          <div className="product-image">
+            <img src={item.image} alt={item.name} loading="lazy" />
+            {!item.in_stock && <span>품절</span>}
+            {onToggleWishlist && (
+              <button
+                type="button"
+                className={`wishlist-heart ${wishlistIds?.has(item.id) ? "active" : ""}`}
+                aria-label="찜하기"
+                onClick={(event) => { event.stopPropagation(); onToggleWishlist(item.id); }}
+              >
+                {wishlistIds?.has(item.id) ? "♥" : "♡"}
+              </button>
+            )}
+          </div>
+          <small>{item.brand}</small>
+          <h3>{item.name}</h3>
+          <div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div>
+          <p>★ {item.rating.toFixed(1)} <span>({item.review_count})</span></p>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function ProductReviews({ productId }: { productId: string }) {
@@ -967,14 +1092,70 @@ function ProductReviews({ productId }: { productId: string }) {
   );
 }
 
-function ProductPage({ product, variantId, customerId, onVariant, onAdd, onBuy }: { product: ProductDetail; variantId: string; customerId?: string; onVariant: (id: string) => void; onAdd: () => void; onBuy: () => void }) {
+function ProductPage({
+  product,
+  variantId,
+  customerId,
+  wishlisted,
+  onVariant,
+  onAdd,
+  onBuy,
+  onToggleWishlist,
+  recentlyViewed,
+  onProduct,
+  onViewed,
+}: {
+  product: ProductDetail;
+  variantId: string;
+  customerId?: string;
+  wishlisted?: boolean;
+  onVariant: (id: string) => void;
+  onAdd: () => void;
+  onBuy: () => void;
+  onToggleWishlist?: () => void;
+  recentlyViewed?: RecentlyViewedItem[];
+  onProduct?: (p: { slug: string }) => void;
+  onViewed?: (item: RecentlyViewedItem) => void;
+}) {
   const [fitting, setFitting] = useState(false);
   useEffect(() => {
     recordProductView(product.id, customerId).catch(() => {});
+    onViewed?.({
+      id: product.id,
+      slug: product.slug,
+      brand: product.brand,
+      name: product.name,
+      image: product.image,
+      price: product.price,
+      compare_at_price: product.compare_at_price,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id, customerId]);
+  const otherRecentlyViewed = (recentlyViewed ?? []).filter((item) => item.id !== product.id);
   return <>
-    <main className="product-page"><div className="product-gallery"><img src={product.image} alt={product.name} /></div><div className="product-info"><small>{product.brand} · {product.category_name}</small><h1>{product.name}</h1><p className="rating">★ {product.rating} · 리뷰 {product.review_count}개</p><div className="product-price">{product.compare_at_price && <del>{won.format(product.compare_at_price)}</del>}<strong>{won.format(product.price)}</strong></div><p className="description">{product.description}</p><fieldset><legend>옵션 선택</legend>{product.variants.map((variant) => <button type="button" disabled={!variant.stock} className={variantId === variant.id ? "selected" : ""} key={variant.id} onClick={() => onVariant(variant.id)}>{variant.color} / {variant.size}{!variant.stock && " · 품절"}</button>)}</fieldset><div className="purchase-actions"><button onClick={onAdd}>장바구니</button><button className="dark" onClick={onBuy}>바로 구매</button></div>{(product.category_slug.startsWith("top") || product.category_slug.startsWith("outer")) && <button type="button" className="fit-button" onClick={() => setFitting(true)}>📷 가상 피팅으로 입어보기</button>}<dl className="policy-list"><div><dt>배송</dt><dd>{product.shipping.estimated_days} · {won.format(product.shipping.fee)} · {won.format(product.shipping.free_threshold)} 이상 무료</dd></div><div><dt>반품</dt><dd>수령 후 {product.return_policy.window_days}일 이내 · 단순 변심 {won.format(product.return_policy.return_fee)}</dd></div><div><dt>소재</dt><dd>{product.material}</dd></div><div><dt>관리</dt><dd>{product.care}</dd></div></dl></div></main>
+    <main className="product-page"><div className="product-gallery"><img src={product.image} alt={product.name} /></div><div className="product-info"><small>{product.brand} · {product.category_name}</small><h1>{product.name}</h1><p className="rating">★ {product.rating} · 리뷰 {product.review_count}개</p><div className="product-price">{product.compare_at_price && <del>{won.format(product.compare_at_price)}</del>}<strong>{won.format(product.price)}</strong></div><p className="description">{product.description}</p><fieldset><legend>옵션 선택</legend>{product.variants.map((variant) => <button type="button" disabled={!variant.stock} className={variantId === variant.id ? "selected" : ""} key={variant.id} onClick={() => onVariant(variant.id)}>{variant.color} / {variant.size}{!variant.stock && " · 품절"}</button>)}</fieldset><div className="purchase-actions"><button onClick={onAdd}>장바구니</button><button className="dark" onClick={onBuy}>바로 구매</button></div>{onToggleWishlist && <button type="button" className={`wishlist-toggle ${wishlisted ? "active" : ""}`} onClick={onToggleWishlist}>{wishlisted ? "♥ 찜 완료" : "♡ 찜하기"}</button>}{(product.category_slug.startsWith("top") || product.category_slug.startsWith("outer")) && <button type="button" className="fit-button" onClick={() => setFitting(true)}>📷 가상 피팅으로 입어보기</button>}<dl className="policy-list"><div><dt>배송</dt><dd>{product.shipping.estimated_days} · {won.format(product.shipping.fee)} · {won.format(product.shipping.free_threshold)} 이상 무료</dd></div><div><dt>반품</dt><dd>수령 후 {product.return_policy.window_days}일 이내 · 단순 변심 {won.format(product.return_policy.return_fee)}</dd></div><div><dt>소재</dt><dd>{product.material}</dd></div><div><dt>관리</dt><dd>{product.care}</dd></div></dl></div></main>
     <ProductReviews productId={product.id} />
+    {onProduct && otherRecentlyViewed.length > 0 && (
+      <section className="store-section recently-viewed-section">
+        <SectionTitle eyebrow="RECENTLY VIEWED" title="최근 본 상품" />
+        <AiRecRow
+          items={otherRecentlyViewed.map((item) => ({
+            id: item.id,
+            slug: item.slug,
+            name: item.name,
+            brand: item.brand,
+            image: item.image,
+            price: item.price,
+            compare_at_price: item.compare_at_price,
+            category_name: "",
+            category_slug: "",
+            in_stock: true,
+            match_score: null,
+          }))}
+          onProduct={onProduct}
+        />
+      </section>
+    )}
     {fitting && (
       <Suspense fallback={<div className="vf-overlay"><div className="vf-modal"><div className="vf-state">가상 피팅 불러오는 중…</div></div></div>}>
         <VirtualFitting product={product} onClose={() => setFitting(false)} />
@@ -991,9 +1172,14 @@ function CartPage({ cart, couponInput, onCouponInput, onApplyCoupon, onQuantity,
 function CheckoutPage({ cart, couponCode, token, defaultEmail, onBack, onComplete, onError }: { cart: Cart; couponCode?: string; token?: string; defaultEmail?: string; onBack: () => void; onComplete: (order: Order) => void; onError: (message: string) => void }) {
   const [form, setForm] = useState({ email: defaultEmail ?? "demo@example.com", recipient: "김민지", phone: "010-0000-0000", postal_code: "04524", address1: "서울특별시 중구 세종대로 110", address2: "101호", delivery_memo: "문 앞에 놓아주세요." });
   const [method, setMethod] = useState<"CARD" | "EASY_PAY">("CARD");
-  const mutation = useMutation({ mutationFn: async () => { const pending = await createOrder({ ...form, cart_id: cart.id, coupon_code: couponCode }, token); const paid = await confirmPayment(pending.id, pending.total, method); return paid.order; }, onSuccess: onComplete, onError: (error: Error) => onError(error.message) });
+  const [pointsToUse, setPointsToUse] = useState(0);
+  const points = useQuery({ queryKey: ["my-points", token], queryFn: () => getMyPoints(token!), enabled: Boolean(token) });
+  const maxPoints = Math.min(points.data?.balance ?? 0, cart.total);
+  const effectivePoints = Math.min(pointsToUse, maxPoints);
+  const displayTotal = Math.max(cart.total - effectivePoints, 0);
+  const mutation = useMutation({ mutationFn: async () => { const pending = await createOrder({ ...form, cart_id: cart.id, coupon_code: couponCode, points_used: effectivePoints }, token); const paid = await confirmPayment(pending.id, pending.total, method); return paid.order; }, onSuccess: onComplete, onError: (error: Error) => onError(error.message) });
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
-  return <main className="store-section checkout-page"><SectionTitle eyebrow="CHECKOUT" title="주문서" /><form onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}><section><h2>배송 정보</h2><div className="form-grid"><label>이메일<input type="email" required value={form.email} onChange={(e) => update("email", e.target.value)} /></label><label>받는 분<input required value={form.recipient} onChange={(e) => update("recipient", e.target.value)} /></label><label>연락처<input required value={form.phone} onChange={(e) => update("phone", e.target.value)} /></label><label>우편번호<input required value={form.postal_code} onChange={(e) => update("postal_code", e.target.value)} /></label><label className="wide">기본주소<input required value={form.address1} onChange={(e) => update("address1", e.target.value)} /></label><label className="wide">상세주소<input value={form.address2} onChange={(e) => update("address2", e.target.value)} /></label><label className="wide">배송 메모<input value={form.delivery_memo} onChange={(e) => update("delivery_memo", e.target.value)} /></label></div></section><section><h2>결제수단</h2><div className="payment-methods"><label><input type="radio" checked={method === "CARD"} onChange={() => setMethod("CARD")} /> 신용·체크카드</label><label><input type="radio" checked={method === "EASY_PAY"} onChange={() => setMethod("EASY_PAY")} /> 간편결제</label></div><p className="demo-note">포트폴리오 데모 결제로 실제 금액은 청구되지 않습니다.</p></section><section className="checkout-total"><p>최종 결제금액 <strong>{won.format(cart.total)}</strong></p><label><input type="checkbox" required /> 주문 내용과 배송·취소·반품 정책을 확인했으며 결제에 동의합니다.</label></section><div className="checkout-actions"><button type="button" onClick={onBack}>장바구니로</button><button className="primary dark" disabled={mutation.isPending}>{mutation.isPending ? "결제 처리 중…" : `${won.format(cart.total)} 결제하기`}</button></div></form></main>;
+  return <main className="store-section checkout-page"><SectionTitle eyebrow="CHECKOUT" title="주문서" /><form onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}><section><h2>배송 정보</h2><div className="form-grid"><label>이메일<input type="email" required value={form.email} onChange={(e) => update("email", e.target.value)} /></label><label>받는 분<input required value={form.recipient} onChange={(e) => update("recipient", e.target.value)} /></label><label>연락처<input required value={form.phone} onChange={(e) => update("phone", e.target.value)} /></label><label>우편번호<input required value={form.postal_code} onChange={(e) => update("postal_code", e.target.value)} /></label><label className="wide">기본주소<input required value={form.address1} onChange={(e) => update("address1", e.target.value)} /></label><label className="wide">상세주소<input value={form.address2} onChange={(e) => update("address2", e.target.value)} /></label><label className="wide">배송 메모<input value={form.delivery_memo} onChange={(e) => update("delivery_memo", e.target.value)} /></label></div></section>{token && <section><h2>적립금 사용</h2><p className="compare-note">보유 적립금 {won.format(points.data?.balance ?? 0)}</p><div className="points-apply"><input type="number" min={0} max={maxPoints} value={pointsToUse || ""} placeholder="0" onChange={(e) => setPointsToUse(Math.max(0, Number(e.target.value) || 0))} /><button type="button" onClick={() => setPointsToUse(maxPoints)}>전액사용</button>{pointsToUse > 0 && <button type="button" className="link" onClick={() => setPointsToUse(0)}>사용 안 함</button>}</div></section>}<section><h2>결제수단</h2><div className="payment-methods"><label><input type="radio" checked={method === "CARD"} onChange={() => setMethod("CARD")} /> 신용·체크카드</label><label><input type="radio" checked={method === "EASY_PAY"} onChange={() => setMethod("EASY_PAY")} /> 간편결제</label></div><p className="demo-note">포트폴리오 데모 결제로 실제 금액은 청구되지 않습니다.</p></section><section className="checkout-total">{effectivePoints > 0 && <p><span>적립금 사용</span><b>−{won.format(effectivePoints)}</b></p>}<p>최종 결제금액 <strong>{won.format(displayTotal)}</strong></p><label><input type="checkbox" required /> 주문 내용과 배송·취소·반품 정책을 확인했으며 결제에 동의합니다.</label></section><div className="checkout-actions"><button type="button" onClick={onBack}>장바구니로</button><button className="primary dark" disabled={mutation.isPending}>{mutation.isPending ? "결제 처리 중…" : `${won.format(displayTotal)} 결제하기`}</button></div></form></main>;
 }
 
 function OrdersPage({ orders, onOrder }: { orders: Order[]; onOrder: (id: string) => void }) { return <main className="store-section"><SectionTitle eyebrow="MY ACCOUNT" title="주문·배송" />{orders.length ? <div className="order-list">{orders.map((item) => <button key={item.id} onClick={() => onOrder(item.id)}><div><small>{new Date(item.ordered_at).toLocaleDateString("ko-KR")} · {item.id}</small><h3>{item.items[0]?.product_name}{item.items.length > 1 && ` 외 ${item.items.length - 1}건`}</h3><span>{statusLabel[item.status] ?? item.status}</span></div><strong>{won.format(item.total)}</strong></button>)}</div> : <div className="empty">주문 내역이 없습니다.</div>}</main>; }
@@ -1103,6 +1289,7 @@ function OrderPage({
           <p><span>상품금액</span><b>{won.format(order.subtotal)}</b></p>
           <p><span>할인</span><b>−{won.format(order.discount)}</b></p>
           <p><span>배송비</span><b>{won.format(order.shipping_fee)}</b></p>
+          {order.points_used > 0 && <p><span>적립금 사용</span><b>−{won.format(order.points_used)}</b></p>}
           <p className="total"><span>결제금액</span><strong>{won.format(order.total)}</strong></p>
         </aside>
       </div>
@@ -1407,8 +1594,11 @@ function MyPageLayout({
             <NavLink to="/mypage" end>대시보드</NavLink>
             <NavLink to="/mypage/points">적립금 내역<span>{won.format(points.data?.balance ?? 0)}</span></NavLink>
             <NavLink to="/mypage/coupons">내 쿠폰함</NavLink>
+            <NavLink to="/mypage/wishlist">찜한 상품</NavLink>
+            <NavLink to="/mypage/recently-viewed">최근 본 상품</NavLink>
             <NavLink to="/mypage/addresses">배송지 관리</NavLink>
             <NavLink to="/mypage/payment-methods">결제 수단</NavLink>
+            <NavLink to="/mypage/bank-accounts">환불계좌</NavLink>
             <NavLink to="/mypage/referral">추천인 코드</NavLink>
           </nav>
         </aside>
@@ -1657,6 +1847,66 @@ function PaymentMethodsSection({ token, onError }: { token: string; onError: (me
   );
 }
 
+function BankAccountsSection({ token, onError }: { token: string; onError: (message: string) => void }) {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ label: "", bank_name: "국민은행", account_holder: "", last4: "" });
+  const accounts = useQuery({ queryKey: ["my-bank-accounts", token], queryFn: () => getMyBankAccounts(token) });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["my-bank-accounts", token] });
+  const create = useMutation({
+    mutationFn: () => createMyBankAccount(token, { ...form, is_default: !accounts.data?.length } satisfies BankAccountInput),
+    onSuccess: () => { invalidate(); setShowForm(false); setForm({ label: "", bank_name: "국민은행", account_holder: "", last4: "" }); },
+    onError: (error: Error) => onError(error.message),
+  });
+  const setDefault = useMutation({ mutationFn: (id: string) => setDefaultBankAccount(token, id), onSuccess: invalidate });
+  const remove = useMutation({ mutationFn: (id: string) => deleteMyBankAccount(token, id), onSuccess: invalidate });
+
+  return (
+    <>
+      <div className="profile-section-head">
+        <h2>환불계좌</h2>
+        <button className="primary dark" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 환불계좌 추가"}</button>
+      </div>
+      <p className="compare-note">취소·반품 시 환불받을 계좌입니다. 데모 프로젝트이므로 실제 계좌번호는 저장하지 않습니다 — 마지막 4자리만 표시용으로 입력해주세요.</p>
+      {showForm && (
+        <form className="form-grid" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+          <label>이름(별칭)<input required value={form.label} onChange={(e) => setForm((c) => ({ ...c, label: e.target.value }))} placeholder="주계좌 등" /></label>
+          <label>은행
+            <select value={form.bank_name} onChange={(e) => setForm((c) => ({ ...c, bank_name: e.target.value }))}>
+              <option value="국민은행">국민은행</option>
+              <option value="신한은행">신한은행</option>
+              <option value="우리은행">우리은행</option>
+              <option value="하나은행">하나은행</option>
+              <option value="카카오뱅크">카카오뱅크</option>
+              <option value="토스뱅크">토스뱅크</option>
+            </select>
+          </label>
+          <label>예금주<input required value={form.account_holder} onChange={(e) => setForm((c) => ({ ...c, account_holder: e.target.value }))} /></label>
+          <label>계좌번호 마지막 4자리<input required maxLength={4} pattern="\d{4}" value={form.last4} onChange={(e) => setForm((c) => ({ ...c, last4: e.target.value.replace(/\D/g, "") }))} /></label>
+          <div className="form-actions wide">
+            <button className="primary dark" disabled={create.isPending}>{create.isPending ? "저장 중…" : "저장"}</button>
+          </div>
+        </form>
+      )}
+      {!accounts.isLoading && !accounts.data?.length && <p className="empty">등록된 환불계좌가 없습니다.</p>}
+      <div className="address-list">
+        {accounts.data?.map((account: BankAccount) => (
+          <div className="address-row" key={account.id}>
+            <div>
+              <h4>{account.label}{account.is_default && <span className="tag-inactive">기본</span>}</h4>
+              <small>{account.bank_name} {account.account_holder} •••• {account.last4}</small>
+            </div>
+            <div className="seller-order-actions">
+              {!account.is_default && <button className="ghost" onClick={() => setDefault.mutate(account.id)}>기본으로</button>}
+              <button className="ghost" onClick={() => remove.mutate(account.id)}>삭제</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function CouponsSection() {
   const coupons = useQuery({ queryKey: ["active-coupons"], queryFn: getActiveCoupons });
   return (
@@ -1677,6 +1927,48 @@ function CouponsSection() {
           </div>
         ))}
       </div>
+    </>
+  );
+}
+
+function WishlistSection({
+  products,
+  onProduct,
+  onToggleWishlist,
+}: {
+  products: Product[];
+  onProduct: (p: Product) => void;
+  onToggleWishlist: (id: string) => void;
+}) {
+  const wishlistIds = useMemo(() => new Set(products.map((p) => p.id)), [products]);
+  return (
+    <>
+      <h2>찜한 상품</h2>
+      {!products.length && <p className="empty">찜한 상품이 없습니다.</p>}
+      {!!products.length && (
+        <ProductGrid products={products} onProduct={onProduct} wishlistIds={wishlistIds} onToggleWishlist={onToggleWishlist} />
+      )}
+    </>
+  );
+}
+
+function RecentlyViewedSection({ items, onProduct }: { items: RecentlyViewedItem[]; onProduct: (p: { slug: string }) => void }) {
+  return (
+    <>
+      <h2>최근 본 상품</h2>
+      {!items.length && <p className="empty">최근 본 상품이 없습니다.</p>}
+      {!!items.length && (
+        <div className="ai-rec-page-grid">
+          {items.map((item) => (
+            <button className="ai-rec-chip" key={item.id} onClick={() => onProduct(item)}>
+              <div className="ai-rec-chip-image"><img src={item.image} alt={item.name} loading="lazy" /></div>
+              <small>{item.brand}</small>
+              <h4>{item.name}</h4>
+              <div className="price">{item.compare_at_price && <del>{won.format(item.compare_at_price)}</del>}<b>{won.format(item.price)}</b></div>
+            </button>
+          ))}
+        </div>
+      )}
     </>
   );
 }
