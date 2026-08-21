@@ -1406,7 +1406,7 @@ function MyPageLayout({
             </div>
           </div>
           <nav className="profile-sidebar-nav">
-            {customer.role !== "CONSUMER" && <NavLink to="/mypage" end>대시보드</NavLink>}
+            <NavLink to="/mypage" end>대시보드</NavLink>
             <NavLink to="/mypage/points">적립금 내역<span>{won.format(points.data?.balance ?? 0)}</span></NavLink>
             <NavLink to="/mypage/coupons">내 쿠폰함</NavLink>
             <NavLink to="/mypage/addresses">배송지 관리</NavLink>
