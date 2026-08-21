@@ -216,7 +216,7 @@ a { color: inherit; }
 .google-signin-button { display: flex; justify-content: center; min-height: 44px; }
 .google-signin-disabled { padding: 12px; color: var(--muted); background: var(--surface); font-size: 12px; text-align: center; }
 .auth-switch { margin-top: 22px; font-size: 13px; }
-.profile-page { max-width: 1100px; margin: 0 auto; }
+.profile-page { max-width: 1400px; }
 .profile-layout { display: grid; grid-template-columns: 280px 1fr; gap: 32px; align-items: start; }
 .profile-sidebar { display: grid; gap: 20px; position: sticky; top: 90px; }
 .profile-sidebar-nav { display: grid; background: var(--line-strong); gap: 1px; border: 1px solid var(--line-strong); }
