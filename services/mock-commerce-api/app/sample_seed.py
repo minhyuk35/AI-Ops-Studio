@@ -1,44 +1,35 @@
-"""SIGN 매장 샘플 활동 데이터 시드 -- 최근 60일치(이번 달 + 지난달) 일별 조회·주문·환불.
+"""Keeps SIGN's sample activity data covering "today" going forward.
 
-일일 리포트의 전날 대비 비교, 월간 리포트의 이번 달 vs 지난달 비교, 판매자
-콘솔의 일별 매출 추이 차트가 전부 commerce_events 원장에서 계산되므로, 이
-스크립트 없이는 그 화면들이 전부 빈 상태로 보인다.
+scripts/seed_sign_activity.py (repo root, not deployed -- outside
+services/mock-commerce-api/** so Vercel's includeFiles never bundles it)
+seeds a fixed 60-day window *as of whenever someone runs it by hand*. That
+window silently falls behind as real time passes: every day that goes by
+without a manual re-run is a day with no sample data, which is exactly the
+"오늘 데이터가 없다" gap reported repeatedly. This module is the deployed,
+cron-callable equivalent -- see app/main.py's /internal/cron/extend-sign-seed
+and vercel.json's cron entry (runs daily). It only seeds a small recent
+window (not the full 60 days) so a single invocation comfortably finishes
+within Vercel's 30s function budget; idempotent inserts mean days already
+covered are nearly free to re-touch.
 
-배포(Neon/Postgres)와 로컬(SQLite) 양쪽에서 돌아간다(app.db 호환 레이어 사용).
-멱등: 날짜+인덱스로 결정되는 external_event_id라 여러 번 돌려도 중복이 안 생긴다.
-지난달 대비 이번 달 판매량이 더 많도록 완만한 성장 추세를 넣어서 "이번 달 vs
-지난달" 비교 서술이 실제로 의미 있는 숫자를 갖게 한다.
-
-이 스크립트가 채우는 60일 창은 "누군가 수동으로 실행한 시점 기준"으로 고정된다
--- 그래서 재실행 없이 시간이 지나면 매일 하루씩 뒤처져 "오늘 데이터가 없음" 갭이
-반복적으로 생겼다. 그 문제는 이제 services/mock-commerce-api/app/sample_seed.py +
-GET /internal/cron/extend-sign-seed 가 Vercel Cron으로 매일 자동 실행되며 해결한다
-(최근 며칠만 가볍게 갱신 -- 함수 실행시간 예산 안에 들도록). 이 스크립트는 처음
-배포하거나 과거 60일 이력을 통째로 되채워야 할 때만 수동으로 돌리면 된다.
-
-실행:
-  # 배포 DB(Neon)에 넣기
-  $env:PYTHONPATH="services/mock-commerce-api"
-  $env:DATABASE_URL="postgresql://.../neondb?sslmode=require"
-  python scripts/seed_sign_activity.py
-  # 로컬 SQLite에 넣기(개발): DATABASE_URL 을 비우고 실행
+Because RECENT_DAYS is a *rolling* window, the same date gets re-seeded on
+several consecutive days' cron runs (e.g. "yesterday" is touched by both
+today's and tomorrow's run). Each day's random event count/choices must
+therefore be a deterministic function of the date, not of global RNG state
+-- otherwise a re-run for an already-seeded date would roll a *different*
+view/order count than last time, and every count above the smaller of the
+two runs would insert as new (non-conflicting) rows instead of being a true
+no-op, so daily totals would silently keep growing for as long as a date
+stays inside the rolling window.
 """
-# ruff: noqa: E501  (SQL·안내 문자열이 많아 한 줄에 두는 게 읽기 쉬움 -- seed_sign_catalog.py와 동일 정책)
 
-import os
 import random
-import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
-_SVC = Path(__file__).resolve().parents[1] / "services" / "mock-commerce-api"
-if str(_SVC) not in sys.path:
-    sys.path.insert(0, str(_SVC))
+from app.auth import hash_password
+from app.db import record_event, utc_now
 
-from app.auth import hash_password  # noqa: E402
-from app.db import record_event, transaction, utc_now  # noqa: E402
-
-DAYS = 60
+RECENT_DAYS = 5
 BUYER_ID = "cus_demo_buyer"
 BUYER_EMAIL = "demo-buyer@codilab.local"
 BUYER_NAME = "김코디"
@@ -47,7 +38,7 @@ BUYER_NAME = "김코디"
 WEEKDAY_WEIGHT = {0: 0.85, 1: 0.85, 2: 0.9, 3: 0.95, 4: 1.05, 5: 1.3, 6: 1.2}
 
 
-def _ensure_buyer(connection) -> str:
+def _ensure_buyer(connection) -> None:
     connection.execute(
         """
         INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
@@ -56,14 +47,11 @@ def _ensure_buyer(connection) -> str:
         """,
         (BUYER_ID, BUYER_EMAIL, BUYER_NAME, "010-0000-0002", hash_password("demo1234"), utc_now()),
     )
-    return BUYER_ID
 
 
-def _sign_org(connection) -> str:
+def _sign_org(connection) -> str | None:
     row = connection.execute("SELECT id FROM organizations WHERE name = ?", ("SIGN",)).fetchone()
-    if row is None:
-        raise SystemExit("SIGN 조직을 찾을 수 없습니다 -- scripts/seed_sign_catalog.py 를 먼저 실행하세요.")
-    return str(row["id"])
+    return str(row["id"]) if row is not None else None
 
 
 def _sign_variants(connection, org_id: str) -> list[dict]:
@@ -80,36 +68,40 @@ def _sign_variants(connection, org_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _random_time_on(date: str) -> str:
+def _random_time_on(rng: random.Random, date: str) -> str:
     day = datetime.fromisoformat(date).replace(tzinfo=UTC)
-    offset = timedelta(seconds=random.randint(8 * 3600, 23 * 3600))
+    offset = timedelta(seconds=rng.randint(8 * 3600, 23 * 3600))
     return (day + offset).isoformat()
 
 
-def _seed_day(connection, org_id: str, variants: list[dict], date: str, month_factor: float) -> None:
+def _seed_day(connection, org_id: str, variants: list[dict], date: str) -> None:
+    # Seeded per-date (not the global random module) so re-seeding the same
+    # date on a later cron run reproduces the exact same event count/choices
+    # -- see module docstring.
+    rng = random.Random(date)
     weekday = datetime.fromisoformat(date).weekday()
-    weight = WEEKDAY_WEIGHT[weekday] * month_factor
+    weight = WEEKDAY_WEIGHT[weekday] * rng.uniform(1.0, 1.2)  # current-month growth factor
 
-    view_count = max(3, round(random.randint(18, 42) * weight))
+    view_count = max(3, round(rng.randint(18, 42) * weight))
     for i in range(view_count):
-        variant = random.choice(variants)
+        variant = rng.choice(variants)
         record_event(
             connection,
             event_type="PRODUCT_VIEWED",
             external_event_id=f"seed_sign_act_view_{date}_{i:03d}",
             product_id=variant["product_id"],
-            occurred_at=_random_time_on(date),
+            occurred_at=_random_time_on(rng, date),
             org_id=org_id,
         )
 
-    order_count = max(0, round(random.uniform(1.5, 5.5) * weight))
+    order_count = max(0, round(rng.uniform(1.5, 5.5) * weight))
     for i in range(order_count):
         order_id = f"ord_seed_sign_act_{date}_{i:03d}"
-        variant = random.choice(variants)
-        quantity = random.choice([1, 1, 1, 2])
+        variant = rng.choice(variants)
+        quantity = rng.choice([1, 1, 1, 2])
         unit_price = int(variant["price"])
         line_total = unit_price * quantity
-        occurred_at = _random_time_on(date)
+        occurred_at = _random_time_on(rng, date)
 
         connection.execute(
             """
@@ -161,9 +153,8 @@ def _seed_day(connection, org_id: str, variants: list[dict], date: str, month_fa
             org_id=org_id,
         )
 
-        # ~8%는 환불까지 이어진다 -- 리포트의 환불 관련 서술에 실제 데이터가 있도록.
-        if random.random() < 0.08:
-            refund_at = _random_time_on(date)
+        if rng.random() < 0.08:
+            refund_at = _random_time_on(rng, date)
             connection.execute(
                 """
                 INSERT INTO claims(id, order_id, type, reason, status, refund_amount, return_fee, created_at, updated_at)
@@ -185,28 +176,22 @@ def _seed_day(connection, org_id: str, variants: list[dict], date: str, month_fa
             )
 
 
-def seed() -> None:
-    with transaction() as connection:
-        _ensure_buyer(connection)
-        org_id = _sign_org(connection)
-        variants = _sign_variants(connection, org_id)
-        if not variants:
-            raise SystemExit("SIGN 상품/옵션이 없습니다 -- scripts/seed_sign_catalog.py 를 먼저 실행하세요.")
+def extend_sign_seed(connection, days: int = RECENT_DAYS) -> dict[str, object]:
+    """Idempotently (re-)seeds the last `days` days for SIGN. Safe to call
+    on a schedule -- days already covered by a previous run just re-hit
+    ON CONFLICT DO NOTHING and cost one cheap query each."""
+    org_id = _sign_org(connection)
+    if org_id is None:
+        return {"seeded": False, "reason": "org 'SIGN' not found"}
+    variants = _sign_variants(connection, org_id)
+    if not variants:
+        return {"seeded": False, "reason": "SIGN has no products/variants yet"}
 
-        today = datetime.now(UTC).date()
-        current_month = today.strftime("%Y-%m")
-        for offset in range(DAYS - 1, -1, -1):
-            date = (today - timedelta(days=offset)).isoformat()
-            is_current_month = date.startswith(current_month)
-            # 완만한 성장 추세: 지난달은 기준선의 약 65~85%, 이번 달은 100~120%.
-            month_factor = random.uniform(1.0, 1.2) if is_current_month else random.uniform(0.65, 0.85)
-            _seed_day(connection, org_id, variants, date, month_factor)
-        print(f"완료 · org={org_id} · {DAYS}일치 조회/주문/환불 시드 (오늘={today.isoformat()})")
-        print("(멱등: 이미 있는 날짜는 external_event_id/PK 충돌로 건너뜀)")
-
-
-if __name__ == "__main__":
-    random.seed(20260817)  # 재실행해도 같은 날짜엔 같은 분포가 나오도록 고정
-    backend = "Postgres" if os.getenv("DATABASE_URL", "").startswith(("postgres://", "postgresql://")) else "SQLite"
-    print(f"SIGN 활동 데이터 시드 시작 (backend={backend})")
-    seed()
+    _ensure_buyer(connection)
+    today = datetime.now(UTC).date()
+    dates = []
+    for offset in range(days - 1, -1, -1):
+        date = (today - timedelta(days=offset)).isoformat()
+        _seed_day(connection, org_id, variants, date)
+        dates.append(date)
+    return {"seeded": True, "org_id": org_id, "dates": dates}

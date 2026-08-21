@@ -45,6 +45,7 @@ from app.db import (
     utc_now,
 )
 from app.recommendation import combo_score, pair_key
+from app.sample_seed import extend_sign_seed
 
 DEFAULT_COMMISSION_RATE = 0.08
 
@@ -499,6 +500,30 @@ def require_internal_token(x_internal_token: str | None) -> None:
         x_internal_token, expected
     ):
         raise HTTPException(status_code=401, detail="내부 인증에 실패했습니다.")
+
+
+def _verify_cron_request(authorization: str | None) -> None:
+    """Same posture as core-api's cron routes: Vercel Cron sends
+    `Authorization: Bearer $CRON_SECRET` automatically once CRON_SECRET is
+    set as a project env var. Unset secret fails closed."""
+    expected = os.getenv("CRON_SECRET", "")
+    if not expected or authorization != f"Bearer {expected}":
+        raise HTTPException(status_code=401, detail="내부 인증에 실패했습니다.")
+
+
+@app.get("/internal/cron/extend-sign-seed")
+async def cron_extend_sign_seed(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Runs daily (see vercel.json) so SIGN's sample activity data always
+    covers "today" -- without this, the fixed-window manual seed script
+    silently falls behind by exactly one day every day it isn't re-run by
+    hand, which is why the dashboard/charts kept showing gaps for "today"
+    each time this was checked. See app/sample_seed.py for why this exists
+    as a small deployed module instead of importing scripts/seed_sign_activity.py."""
+    _verify_cron_request(authorization)
+    with transaction() as connection:
+        return extend_sign_seed(connection)
 
 
 @app.get("/")

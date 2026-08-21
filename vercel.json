@@ -24,6 +24,7 @@
     { "source": "/((?!api/|qa/|guide/).*)", "destination": "/index.html" }
   ],
   "crons": [
+    { "path": "/api/commerce/internal/cron/extend-sign-seed", "schedule": "0 0 * * *" },
     { "path": "/api/core/internal/cron/daily-seller-reports", "schedule": "0 0 * * *" },
     { "path": "/api/core/internal/cron/platform-traffic", "schedule": "0 1 * * *" },
     { "path": "/api/core/internal/cron/monthly-market-share", "schedule": "0 1 1 * *" }
