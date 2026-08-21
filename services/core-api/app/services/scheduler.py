@@ -10,7 +10,7 @@ from app.services.commerce_ai import (
     SellerMarketShareService,
 )
 from app.services.commerce_client import CommerceClient
-from app.services.discord import DiscordNotifier
+from app.services.discord import DiscordNotifier, build_daily_revenue_chart_url
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,11 @@ class DailySellerReportScheduler:
                     notifier = DiscordNotifier(webhook_url, self.settings.discord_timeout_seconds)
                     header = f"**{report.org_name} · {report.date} 일일 리포트**"
                     message = f"{header}\n\n{report.report}"
-                    sent = await asyncio.to_thread(notifier.send, message)
+                    series = await self.commerce.get_seller_daily_series(org["id"], days=14)
+                    chart_url = build_daily_revenue_chart_url(
+                        series, title=f"{report.org_name} 최근 14일 매출 추이"
+                    )
+                    sent = await asyncio.to_thread(notifier.send_with_chart, message, chart_url)
                 results.append({"org_id": org["id"], "discord_sent": sent})
             except Exception:
                 logger.exception("daily seller report failed for org %s", org["id"])

@@ -31,6 +31,11 @@ class CommerceClient:
             params["date"] = date
         return await self._get("/analytics/seller-daily", params)
 
+    async def get_seller_daily_series(self, org_id: str, days: int = 14) -> list[dict[str, object]]:
+        return await self._get(
+            "/analytics/seller-daily-series", {"org_id": org_id, "days": str(days)}
+        )
+
     async def list_active_organizations(self) -> list[dict[str, object]]:
         return await self._get("/internal/organizations", None)
 

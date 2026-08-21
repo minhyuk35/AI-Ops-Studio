@@ -2073,6 +2073,26 @@ async def analytics_seller_daily(
         return seller_daily_snapshot_with_comparison(connection, org_id, date)
 
 
+@app.get("/analytics/seller-daily-series")
+async def analytics_seller_daily_series(
+    org_id: str = Query(min_length=1, max_length=64),
+    days: int = Query(default=14, ge=1, le=120),
+) -> list[dict[str, object]]:
+    """org_id로 직접 조회하는, 인증이 필요 없는 /sellers/me/daily-series 버전 --
+    core-api가 (판매자 본인이 아니라) 리포트를 대신 생성하는 크론/봇 흐름에서
+    쓴다. /analytics/seller-daily와 같은 이유로 인증을 요구하지 않는다."""
+    with closing(connect()) as connection:
+        org = connection.execute("SELECT id FROM organizations WHERE id = ?", (org_id,)).fetchone()
+        if org is None:
+            raise HTTPException(status_code=404, detail="조직을 찾을 수 없습니다.")
+        end_date = datetime.now(UTC).date()
+        start_date = end_date - timedelta(days=days - 1)
+        series_end = end_date + timedelta(days=1)
+        return seller_daily_series(
+            connection, org_id, start_date.isoformat(), series_end.isoformat()
+        )
+
+
 @app.get("/sellers/me/revenue-summary")
 async def get_seller_revenue_summary(
     period: str = Query(default_factory=current_period, pattern=PERIOD_PATTERN.pattern),

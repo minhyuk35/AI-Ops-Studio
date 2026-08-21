@@ -31,7 +31,7 @@ from app.services.commerce_ai import (
     SellerMarketShareService,
 )
 from app.services.commerce_client import CommerceClient
-from app.services.discord import DiscordNotifier
+from app.services.discord import DiscordNotifier, build_daily_revenue_chart_url
 from app.services.identity import extract_token, require_admin, require_org_access
 from app.services.inquiry_store import inquiry_store
 from app.services.openrouter import OpenRouterSupportService
@@ -400,8 +400,12 @@ async def seller_daily_report(
         )
         if webhook_url:
             message = f"**{report.org_name} · {report.date} 일일 리포트**\n\n{report.report}"
+            series = await commerce.get_seller_daily_series(payload.org_id, days=14)
+            chart_url = build_daily_revenue_chart_url(series, title=f"{report.org_name} 최근 14일 매출 추이")
             seller_notifier = DiscordNotifier(webhook_url, get_settings().discord_timeout_seconds)
-            discord_sent = await run_in_threadpool(seller_notifier.send, message)
+            discord_sent = await run_in_threadpool(
+                seller_notifier.send_with_chart, message, chart_url
+            )
     return report.model_copy(update={"discord_sent": discord_sent})
 
 
