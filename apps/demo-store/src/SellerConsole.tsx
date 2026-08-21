@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 
 import SellerReportCharts, { DailyRevenueTrendChart } from "./SellerCharts";
@@ -46,14 +47,15 @@ export default function SellerConsolePage({
   onBack: () => void;
   onError: (message: string) => void;
 }) {
-  const [tab, setTab] = useState<"dashboard" | "orders" | "inquiries" | "products" | "discord">("dashboard");
   const [showForm, setShowForm] = useState(false);
   const orgId = auth.customer.organization?.id;
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const onProductsTab = location.pathname.endsWith("/products");
 
-  // Warm the orders/inquiries caches as soon as the console opens, regardless
-  // of which tab is active -- so clicking those tabs renders from cache
-  // instantly instead of showing "불러오는 중…" every time.
+  // Warm every tab's cache as soon as the console opens, regardless of which
+  // tab is active -- switching tabs should just render already-fetched data,
+  // not kick off a fresh "불러오는 중…" every time.
   useEffect(() => {
     if (!orgId) return;
     queryClient.prefetchQuery({
@@ -64,7 +66,15 @@ export default function SellerConsolePage({
       queryKey: ["seller-inquiries", orgId],
       queryFn: () => getOrgInquiries(auth.access_token, orgId),
     });
-  }, [orgId, auth.access_token, queryClient]);
+    queryClient.prefetchQuery({
+      queryKey: ["seller-products", auth.customer.id],
+      queryFn: () => getMyProducts(auth.access_token),
+    });
+    queryClient.prefetchQuery({
+      queryKey: ["discord-status"],
+      queryFn: () => getDiscordStatus(auth.access_token),
+    });
+  }, [orgId, auth.access_token, auth.customer.id, queryClient]);
 
   // Same query key as SellerInquiriesPanel's own useQuery -- this just
   // subscribes to the already-shared cache entry (no extra request) so the
@@ -83,36 +93,36 @@ export default function SellerConsolePage({
         eyebrow="SELLER CONSOLE"
         title={auth.customer.organization?.name ?? "판매자 콘솔"}
         onBack={onBack}
-        action={tab === "products" ? <button className="primary dark" onClick={() => setShowForm((value) => !value)}>{showForm ? "취소" : "상품 등록"}</button> : undefined}
+        action={onProductsTab ? <button className="primary dark" onClick={() => setShowForm((value) => !value)}>{showForm ? "취소" : "상품 등록"}</button> : undefined}
       />
       <div className="console-tabs">
-        <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>오늘의 대시보드</button>
-        <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}>주문 관리</button>
-        <button className={tab === "inquiries" ? "active" : ""} onClick={() => setTab("inquiries")}>
+        <NavLink to="/seller/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>오늘의 대시보드</NavLink>
+        <NavLink to="/seller/orders" className={({ isActive }) => (isActive ? "active" : "")}>주문 관리</NavLink>
+        <NavLink to="/seller/inquiries" className={({ isActive }) => (isActive ? "active" : "")}>
           문의{unresolvedCount > 0 && <span className="tab-badge">{unresolvedCount}</span>}
-        </button>
-        <button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}>상품 관리</button>
-        <button className={tab === "discord" ? "active" : ""} onClick={() => setTab("discord")}>디스코드 연동</button>
+        </NavLink>
+        <NavLink to="/seller/products" className={({ isActive }) => (isActive ? "active" : "")}>상품 관리</NavLink>
+        <NavLink to="/seller/discord" className={({ isActive }) => (isActive ? "active" : "")}>디스코드 연동</NavLink>
       </div>
 
-      {tab === "discord" && <SellerDiscordPanel token={auth.access_token} />}
-
-      {tab === "dashboard" && orgId && <SellerDailyDashboard token={auth.access_token} orgId={orgId} />}
-
-      {tab === "orders" && orgId && <SellerOrdersPanel token={auth.access_token} orgId={orgId} />}
-
-      {tab === "inquiries" && orgId && <SellerInquiriesPanel token={auth.access_token} orgId={orgId} />}
-
-      {tab === "products" && (
-        <SellerProductsPanel
-          token={auth.access_token}
-          customerId={auth.customer.id}
-          categories={categories}
-          showForm={showForm}
-          onCloseForm={() => setShowForm(false)}
-          onError={onError}
-        />
-      )}
+      <Routes>
+        <Route index element={<Navigate to="/seller/dashboard" replace />} />
+        <Route path="discord" element={<SellerDiscordPanel token={auth.access_token} />} />
+        <Route path="dashboard" element={orgId ? <SellerDailyDashboard token={auth.access_token} orgId={orgId} /> : null} />
+        <Route path="orders" element={orgId ? <SellerOrdersPanel token={auth.access_token} orgId={orgId} /> : null} />
+        <Route path="inquiries" element={orgId ? <SellerInquiriesPanel token={auth.access_token} orgId={orgId} /> : null} />
+        <Route path="products" element={
+          <SellerProductsPanel
+            token={auth.access_token}
+            customerId={auth.customer.id}
+            categories={categories}
+            showForm={showForm}
+            onCloseForm={() => setShowForm(false)}
+            onError={onError}
+          />
+        } />
+        <Route path="*" element={<Navigate to="/seller/dashboard" replace />} />
+      </Routes>
     </main>
   );
 }

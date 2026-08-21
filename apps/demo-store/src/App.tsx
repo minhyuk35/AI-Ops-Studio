@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { inquiryStatusLabel, SectionTitle, statusLabel, won } from "./console-shared";
 import ReactMarkdown from "react-markdown";
 
@@ -49,21 +50,6 @@ const SellerConsolePage = lazy(() => import("./SellerConsole"));
 // 웹캠·포즈 모델을 쓰는 무거운 컴포넌트라, 버튼을 누를 때만 로드한다.
 const VirtualFitting = lazy(() => import("./VirtualFitting"));
 
-type View =
-  | "home"
-  | "catalog"
-  | "product"
-  | "cart"
-  | "checkout"
-  | "orders"
-  | "order"
-  | "inquiries"
-  | "login"
-  | "signup"
-  | "profile"
-  | "seller"
-  | "admin"
-  | "recommendations";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const AUTH_STORAGE_KEY = "everyday-auth";
@@ -204,9 +190,34 @@ function CouponAnnouncement() {
   );
 }
 
+// App() owns all page-level useQuery calls up front (product/order/inquiry
+// included) rather than each route fetching its own data, so a route with a
+// dynamic segment can't call useParams() directly where that data is
+// fetched. These tiny sync components are the route's element (so they
+// *do* sit under the matching <Route>'s param scope) and just push the
+// param into App's existing state on mount/change -- one extra render tick
+// on navigation, but no change to how data is fetched.
+function ProductSlugSync({ onSlug }: { onSlug: (slug: string | null) => void }) {
+  const { slug } = useParams<{ slug: string }>();
+  useEffect(() => { onSlug(slug ?? null); }, [slug, onSlug]);
+  return null;
+}
+
+function OrderIdSync({ onOrderId }: { onOrderId: (id: string | null) => void }) {
+  const { orderId } = useParams<{ orderId: string }>();
+  useEffect(() => { onOrderId(orderId ?? null); }, [orderId, onOrderId]);
+  return null;
+}
+
+function InquiryIdSync({ onInquiryId }: { onInquiryId: (id: string | null) => void }) {
+  const { inquiryId } = useParams<{ inquiryId: string }>();
+  useEffect(() => { onInquiryId(inquiryId ?? null); }, [inquiryId, onInquiryId]);
+  return null;
+}
+
 export function App() {
   const queryClient = useQueryClient();
-  const [view, setView] = useState<View>("home");
+  const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -236,7 +247,7 @@ export function App() {
   };
   const logout = () => {
     persistAuth(null);
-    setView("home");
+    navigate("/");
     queryClient.invalidateQueries({ queryKey: ["orders"] });
     queryClient.invalidateQueries({ queryKey: ["inquiries"] });
   };
@@ -300,26 +311,24 @@ export function App() {
   });
 
   const openProduct = (item: { slug: string }) => {
-    setProductSlug(item.slug);
     setVariantId("");
-    setView("product");
+    navigate(`/shop/${item.slug}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const openOrder = (id: string) => {
-    setOrderId(id);
-    setView("order");
+    navigate(`/orders/${id}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const [mobileNav, setMobileNav] = useState(false);
   const runSearch = (event: FormEvent) => {
     event.preventDefault();
     setSearch(searchInput.trim());
-    setView("catalog");
+    navigate("/shop");
     setMobileNav(false);
   };
   // 모바일 햄버거 메뉴에서 항목을 고르면 해당 화면으로 이동하고 메뉴를 닫는다.
-  const goMobile = (target: View) => {
-    setView(target);
+  const goMobile = (target: string) => {
+    navigate(target);
     setMobileNav(false);
   };
 
@@ -327,12 +336,12 @@ export function App() {
     <div className="store-shell">
       <CouponAnnouncement />
       <header className="store-header">
-        <button className="wordmark" onClick={() => setView("home")}>코디랩</button>
+        <Link className="wordmark" to="/">코디랩</Link>
         <nav aria-label="주요 메뉴">
-          <button onClick={() => setView("catalog")}>SHOP</button>
-          <button onClick={() => setView("recommendations")}>AI 추천</button>
-          <button onClick={() => setView("orders")}>주문·배송</button>
-          <button onClick={() => setView("inquiries")}>문의 내역</button>
+          <Link to="/shop">SHOP</Link>
+          <Link to="/recommendations">AI 추천</Link>
+          <Link to="/orders">주문·배송</Link>
+          <Link to="/inquiries">문의 내역</Link>
         </nav>
         <form className="header-search" onSubmit={runSearch} role="search">
           <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="상품 검색" aria-label="상품 검색" />
@@ -348,22 +357,22 @@ export function App() {
             <span /><span /><span />
           </button>
           {auth ? (
-            <button className="account-button" onClick={() => setView("profile")}>{auth.customer.name}</button>
+            <button className="account-button" onClick={() => navigate("/mypage")}>{auth.customer.name}</button>
           ) : (
-            <button className="account-button" onClick={() => setView("login")}>로그인</button>
+            <button className="account-button" onClick={() => navigate("/login")}>로그인</button>
           )}
-          <button className="cart-button" onClick={() => setView("cart")}>BAG <b>{cart.data?.item_count ?? 0}</b></button>
+          <button className="cart-button" onClick={() => navigate("/cart")}>BAG <b>{cart.data?.item_count ?? 0}</b></button>
         </div>
         {mobileNav && (
           <nav className="mobile-nav" aria-label="모바일 메뉴">
-            <button onClick={() => goMobile("catalog")}>SHOP</button>
-            <button onClick={() => goMobile("recommendations")}>AI 추천</button>
-            <button onClick={() => goMobile("orders")}>주문·배송</button>
-            <button onClick={() => goMobile("inquiries")}>문의 내역</button>
+            <button onClick={() => goMobile("/shop")}>SHOP</button>
+            <button onClick={() => goMobile("/recommendations")}>AI 추천</button>
+            <button onClick={() => goMobile("/orders")}>주문·배송</button>
+            <button onClick={() => goMobile("/inquiries")}>문의 내역</button>
             {auth ? (
-              <button onClick={() => goMobile("profile")}>내 정보 · {auth.customer.name}</button>
+              <button onClick={() => goMobile("/mypage")}>내 정보 · {auth.customer.name}</button>
             ) : (
-              <button onClick={() => goMobile("login")}>로그인 · 회원가입</button>
+              <button onClick={() => goMobile("/login")}>로그인 · 회원가입</button>
             )}
           </nav>
         )}
@@ -373,50 +382,59 @@ export function App() {
 
       {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice("")}>닫기</button></div>}
 
-      {view === "home" && (
+      <Routes>
+      <Route path="/" element={
         <Home
           products={products.data ?? []}
-          onShop={() => setView("catalog")}
+          onShop={() => navigate("/shop")}
           onProduct={openProduct}
-          onMore={() => setView("recommendations")}
+          onMore={() => navigate("/recommendations")}
           token={auth?.access_token}
         />
-      )}
-      {view === "recommendations" && (
+      } />
+      <Route path="/recommendations" element={
         <AiRecommendationsPage onProduct={openProduct} token={auth?.access_token} />
-      )}
-      {view === "catalog" && (
-        <Catalog
-          products={products.data ?? []}
-          loading={products.isLoading}
-          categories={categories.data ?? []}
-          selectedCategory={category}
-          sort={sort}
-          inStock={inStock}
-          search={search}
-          onCategory={setCategory}
-          onSort={setSort}
-          onInStock={setInStock}
-          onProduct={openProduct}
-        />
-      )}
-      {view === "product" && product.data && (
-        <ProductPage
-          product={product.data}
-          variantId={variantId}
-          customerId={auth?.customer.id}
-          onVariant={setVariantId}
-          onAdd={() => {
-            if (!variantId) return setNotice("옵션을 선택해주세요.");
-            addToCart.mutate(variantId);
-          }}
-          onBuy={() => {
-            if (!variantId) return setNotice("옵션을 선택해주세요.");
-            addToCart.mutate(variantId, { onSuccess: () => setView("cart") });
-          }}
-        />
-      )}
-      {view === "cart" && (
+      } />
+      <Route path="/shop" element={
+        <>
+          <ProductSlugSync onSlug={setProductSlug} />
+          <Catalog
+            products={products.data ?? []}
+            loading={products.isLoading}
+            categories={categories.data ?? []}
+            selectedCategory={category}
+            sort={sort}
+            inStock={inStock}
+            search={search}
+            onCategory={setCategory}
+            onSort={setSort}
+            onInStock={setInStock}
+            onProduct={openProduct}
+          />
+        </>
+      } />
+      <Route path="/shop/:slug" element={
+        <>
+          <ProductSlugSync onSlug={setProductSlug} />
+          {product.data && (
+            <ProductPage
+              product={product.data}
+              variantId={variantId}
+              customerId={auth?.customer.id}
+              onVariant={setVariantId}
+              onAdd={() => {
+                if (!variantId) return setNotice("옵션을 선택해주세요.");
+                addToCart.mutate(variantId);
+              }}
+              onBuy={() => {
+                if (!variantId) return setNotice("옵션을 선택해주세요.");
+                addToCart.mutate(variantId, { onSuccess: () => navigate("/cart") });
+              }}
+            />
+          )}
+        </>
+      } />
+      <Route path="/cart" element={
         <CartPage
           cart={cart.data}
           couponInput={couponInput}
@@ -424,93 +442,123 @@ export function App() {
           onApplyCoupon={() => setCouponCode(couponInput.trim() || undefined)}
           onQuantity={(itemId, quantity) => updateCart.mutate({ itemId, quantity })}
           onRemove={(itemId) => removeCart.mutate(itemId)}
-          onContinue={() => setView("catalog")}
-          onCheckout={() => setView("checkout")}
+          onContinue={() => navigate("/shop")}
+          onCheckout={() => navigate("/checkout")}
         />
-      )}
-      {view === "checkout" && cart.data && (
+      } />
+      <Route path="/checkout" element={cart.data && (
         <CheckoutPage
           cart={cart.data}
           couponCode={couponCode}
           token={auth?.access_token}
           defaultEmail={auth?.customer.email}
-          onBack={() => setView("cart")}
+          onBack={() => navigate("/cart")}
           onComplete={(completedOrder) => {
-            setOrderId(completedOrder.id);
             queryClient.invalidateQueries({ queryKey: ["orders"] });
             queryClient.invalidateQueries({ queryKey: ["cart"] });
-            setView("order");
+            navigate(`/orders/${completedOrder.id}`);
           }}
           onError={setNotice}
         />
-      )}
-      {view === "orders" && <OrdersPage orders={orders.data ?? []} onOrder={openOrder} />}
-      {view === "order" && order.data && (
-        <OrderPage
-          order={order.data}
-          token={auth?.access_token}
-          onCancel={async () => {
-            try {
-              await cancelOrder(order.data.id, "고객 요청");
-              await queryClient.invalidateQueries({ queryKey: ["order", order.data.id] });
-              await queryClient.invalidateQueries({ queryKey: ["orders"] });
-            } catch (error) { setNotice((error as Error).message); }
-          }}
-          onReturn={async () => {
-            try {
-              await returnOrder(order.data.id, "단순 변심");
-              await queryClient.invalidateQueries({ queryKey: ["order", order.data.id] });
-              await queryClient.invalidateQueries({ queryKey: ["orders"] });
-            } catch (error) { setNotice((error as Error).message); }
-          }}
-        />
-      )}
-      {view === "inquiries" && (
-        <InquiryPage
-          inquiries={inquiries.data ?? []}
-          selected={inquiry.data}
-          onSelect={setSelectedInquiryId}
-        />
-      )}
-      {view === "login" && (
-        <LoginPage
-          onLoggedIn={(response) => { persistAuth(response); setView("profile"); }}
-          onGoToSignup={() => setView("signup")}
-          onError={setNotice}
-        />
-      )}
-      {view === "signup" && (
-        <SignupPage
-          onSignedUp={(response) => { persistAuth(response); setView("profile"); }}
-          onGoToLogin={() => setView("login")}
-          onError={setNotice}
-        />
-      )}
-      {view === "profile" && auth && (
-        <ProfilePage
-          auth={auth}
-          onUpdated={persistAuth}
-          onLogout={logout}
-          onError={setNotice}
-          onOpenSellerConsole={() => setView("seller")}
-          onOpenAdminConsole={() => setView("admin")}
-        />
-      )}
-      {view === "seller" && auth && (
-        <Suspense fallback={<main className="store-section profile-page console-page"><p className="empty">불러오는 중…</p></main>}>
-          <SellerConsolePage
-            auth={auth}
-            categories={categories.data ?? []}
-            onBack={() => setView("profile")}
-            onError={setNotice}
+      )} />
+      <Route path="/orders" element={
+        <>
+          <OrderIdSync onOrderId={setOrderId} />
+          <OrdersPage orders={orders.data ?? []} onOrder={openOrder} />
+        </>
+      } />
+      <Route path="/orders/:orderId" element={
+        <>
+          <OrderIdSync onOrderId={setOrderId} />
+          {order.data && (
+            <OrderPage
+              order={order.data}
+              token={auth?.access_token}
+              onCancel={async () => {
+                try {
+                  await cancelOrder(order.data.id, "고객 요청");
+                  await queryClient.invalidateQueries({ queryKey: ["order", order.data.id] });
+                  await queryClient.invalidateQueries({ queryKey: ["orders"] });
+                } catch (error) { setNotice((error as Error).message); }
+              }}
+              onReturn={async () => {
+                try {
+                  await returnOrder(order.data.id, "단순 변심");
+                  await queryClient.invalidateQueries({ queryKey: ["order", order.data.id] });
+                  await queryClient.invalidateQueries({ queryKey: ["orders"] });
+                } catch (error) { setNotice((error as Error).message); }
+              }}
+            />
+          )}
+        </>
+      } />
+      <Route path="/inquiries" element={
+        <>
+          <InquiryIdSync onInquiryId={setSelectedInquiryId} />
+          <InquiryPage
+            inquiries={inquiries.data ?? []}
+            selected={inquiry.data}
+            onSelect={(id) => navigate(id ? `/inquiries/${id}` : "/inquiries")}
           />
-        </Suspense>
-      )}
-      {view === "admin" && auth && (
-        <Suspense fallback={<main className="store-section profile-page console-page"><p className="empty">불러오는 중…</p></main>}>
-          <AdminConsolePage auth={auth} onBack={() => setView("profile")} onError={setNotice} />
-        </Suspense>
-      )}
+        </>
+      } />
+      <Route path="/inquiries/:inquiryId" element={
+        <>
+          <InquiryIdSync onInquiryId={setSelectedInquiryId} />
+          <InquiryPage
+            inquiries={inquiries.data ?? []}
+            selected={inquiry.data}
+            onSelect={(id) => navigate(id ? `/inquiries/${id}` : "/inquiries")}
+          />
+        </>
+      } />
+      <Route path="/login" element={
+        <LoginPage
+          onLoggedIn={(response) => { persistAuth(response); navigate("/mypage"); }}
+          onGoToSignup={() => navigate("/signup")}
+          onError={setNotice}
+        />
+      } />
+      <Route path="/signup" element={
+        <SignupPage
+          onSignedUp={(response) => { persistAuth(response); navigate("/mypage"); }}
+          onGoToLogin={() => navigate("/login")}
+          onError={setNotice}
+        />
+      } />
+      <Route path="/mypage" element={
+        auth ? (
+          <ProfilePage
+            auth={auth}
+            onUpdated={persistAuth}
+            onLogout={logout}
+            onError={setNotice}
+            onOpenSellerConsole={() => navigate("/seller")}
+            onOpenAdminConsole={() => navigate("/admin")}
+          />
+        ) : <Navigate to="/login" replace />
+      } />
+      <Route path="/seller/*" element={
+        auth ? (
+          <Suspense fallback={<main className="store-section profile-page console-page"><p className="empty">불러오는 중…</p></main>}>
+            <SellerConsolePage
+              auth={auth}
+              categories={categories.data ?? []}
+              onBack={() => navigate("/mypage")}
+              onError={setNotice}
+            />
+          </Suspense>
+        ) : <Navigate to="/login" replace />
+      } />
+      <Route path="/admin/*" element={
+        auth ? (
+          <Suspense fallback={<main className="store-section profile-page console-page"><p className="empty">불러오는 중…</p></main>}>
+            <AdminConsolePage auth={auth} onBack={() => navigate("/mypage")} onError={setNotice} />
+          </Suspense>
+        ) : <Navigate to="/login" replace />
+      } />
+      <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
 
       <SupportChat order={order.data ?? null} product={product.data ?? null} customerId={identityId} onSaved={() => {
         queryClient.invalidateQueries({ queryKey: ["inquiries"] });

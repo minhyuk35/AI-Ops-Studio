@@ -19,10 +19,10 @@ button { color: inherit; }
 a { color: inherit; }
 .store-shell { min-height: 100vh; }
 .store-header { position: sticky; top: 0; z-index: 20; min-height: 74px; display: grid; grid-template-columns: auto auto minmax(180px, 360px) auto; gap: 28px; align-items: center; padding: 14px 4vw; border-bottom: 1px solid var(--line-strong); background: rgba(255,255,255,.92); backdrop-filter: blur(14px); }
-.wordmark,.store-header nav button,.cart-button { border: 0; background: transparent; cursor: pointer; }
-.wordmark { padding: 0; font-weight: 900; letter-spacing: .04em; white-space: nowrap; font-size: 18px; }
+.wordmark,.store-header nav button,.store-header nav a,.cart-button { border: 0; background: transparent; cursor: pointer; }
+.wordmark { padding: 0; font-weight: 900; letter-spacing: .04em; white-space: nowrap; font-size: 18px; text-decoration: none; color: inherit; }
 .store-header nav { display: flex; gap: 18px; }
-.store-header nav button { font-size: 13px; font-weight: 600; }
+.store-header nav button,.store-header nav a { font-size: 13px; font-weight: 600; text-decoration: none; color: inherit; }
 .header-search { display: flex; border-bottom: 1px solid var(--ink); }
 .header-search input { width: 100%; min-width: 0; padding: 8px 3px; border: 0; outline: 0; background: transparent; }
 .header-search button { flex: 0 0 auto; border: 0; padding: 8px 4px 8px 12px; background: transparent; white-space: nowrap; cursor: pointer; }
@@ -283,8 +283,8 @@ a { color: inherit; }
 .danger-button { padding: 10px 16px; border: 1px solid #b91c1c; color: #b91c1c; background: transparent; font-weight: 700; cursor: pointer; }
 .profile-page.console-page { max-width: 1320px; margin: 0 auto; }
 .console-tabs { display: flex; gap: 2px; margin-bottom: 26px; border-bottom: 1px solid var(--line-strong); }
-.console-tabs button { padding: 12px 18px; border: 0; color: var(--muted); background: transparent; font-weight: 700; font-size: 13px; cursor: pointer; }
-.console-tabs button.active { color: var(--ink); box-shadow: inset 0 -2px var(--ink); }
+.console-tabs button,.console-tabs a { padding: 12px 18px; border: 0; color: var(--muted); background: transparent; font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; }
+.console-tabs button.active,.console-tabs a.active { color: var(--ink); box-shadow: inset 0 -2px var(--ink); }
 .console-panel { display: grid; gap: 24px; }
 .console-panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .console-panel-heading p { flex: 1; margin: 0; max-width: 720px; color: var(--muted); font-size: 13px; }
