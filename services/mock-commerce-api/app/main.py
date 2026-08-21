@@ -36,6 +36,7 @@ from app.auth import (
 from app.db import (
     DEFAULT_ORG_ID,
     connect,
+    generate_referral_code,
     infer_order_org_id,
     initialize_database,
     record_combo_signal,
@@ -140,11 +141,30 @@ class SignupRequest(BaseModel):
     as_seller: bool = False
     shop_name: str | None = Field(default=None, max_length=80)
     shop_category: str | None = Field(default=None, max_length=40)
+    referral_code: str | None = Field(default=None, max_length=8)
 
 
 class SellerActivateRequest(BaseModel):
     shop_name: str = Field(min_length=2, max_length=80)
     shop_category: str = Field(min_length=2, max_length=40)
+
+
+class AddressInput(BaseModel):
+    label: str = Field(min_length=1, max_length=30)
+    recipient: str = Field(min_length=1, max_length=50)
+    phone: str = Field(min_length=9, max_length=20)
+    postal_code: str = Field(min_length=1, max_length=10)
+    address1: str = Field(min_length=1, max_length=200)
+    address2: str = Field(default="", max_length=200)
+    is_default: bool = False
+
+
+class PaymentMethodInput(BaseModel):
+    label: str = Field(min_length=1, max_length=30)
+    card_brand: str = Field(min_length=1, max_length=30)
+    # 데모용 -- 실제 카드번호는 절대 받지 않는다. 마지막 4자리만 표시용으로 저장.
+    last4: str = Field(min_length=4, max_length=4, pattern=r"^\d{4}$")
+    is_default: bool = False
 
 
 class SellerVariantInput(BaseModel):
@@ -636,10 +656,24 @@ async def signup(payload: SignupRequest) -> dict[str, object]:
             raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
         customer_id = f"cus_{uuid4().hex[:12]}"
         now = utc_now()
+        referral_code = generate_referral_code()
+        while connection.execute(
+            "SELECT 1 FROM customers WHERE referral_code = ?", (referral_code,)
+        ).fetchone():
+            referral_code = generate_referral_code()
+        # A referred_by code just needs to exist -- an invalid/typo'd code is
+        # silently dropped rather than failing the whole signup over it.
+        referred_by = None
+        if payload.referral_code:
+            candidate = payload.referral_code.strip().upper()
+            if connection.execute(
+                "SELECT 1 FROM customers WHERE referral_code = ?", (candidate,)
+            ).fetchone():
+                referred_by = candidate
         connection.execute(
             """
-            INSERT INTO customers(id, email, name, phone, password_hash, is_admin, created_at)
-            VALUES(?,?,?,?,?,0,?)
+            INSERT INTO customers(id, email, name, phone, password_hash, is_admin, referral_code, referred_by, created_at)
+            VALUES(?,?,?,?,?,0,?,?,?)
             """,
             (
                 customer_id,
@@ -647,6 +681,8 @@ async def signup(payload: SignupRequest) -> dict[str, object]:
                 payload.name,
                 payload.phone,
                 hash_password(payload.password),
+                referral_code,
+                referred_by,
                 now,
             ),
         )
@@ -751,6 +787,136 @@ async def current_customer(authorization: str | None = Header(default=None)) -> 
     with closing(connect()) as connection:
         customer = require_customer(connection, authorization)
         return customer_profile(connection, customer)
+
+
+@app.get("/customers/me/addresses")
+async def list_my_addresses(authorization: str | None = Header(default=None)) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        customer = require_customer(connection, authorization)
+        rows = connection.execute(
+            "SELECT * FROM addresses WHERE customer_id = ? ORDER BY is_default DESC, created_at DESC",
+            (customer["id"],),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+@app.post("/customers/me/addresses", status_code=201)
+async def create_my_address(
+    payload: AddressInput, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        address_id = f"addr_{uuid4().hex[:12]}"
+        now = utc_now()
+        if payload.is_default:
+            connection.execute(
+                "UPDATE addresses SET is_default = 0 WHERE customer_id = ?", (customer["id"],)
+            )
+        connection.execute(
+            """
+            INSERT INTO addresses(
+                id, customer_id, label, recipient, phone, postal_code, address1, address2, is_default, created_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                address_id, customer["id"], payload.label, payload.recipient, payload.phone,
+                payload.postal_code, payload.address1, payload.address2, int(payload.is_default), now,
+            ),
+        )
+        return dict(connection.execute("SELECT * FROM addresses WHERE id = ?", (address_id,)).fetchone())
+
+
+@app.post("/customers/me/addresses/{address_id}/default")
+async def set_default_address(
+    address_id: str, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        address = connection.execute(
+            "SELECT * FROM addresses WHERE id = ? AND customer_id = ?", (address_id, customer["id"])
+        ).fetchone()
+        if address is None:
+            raise HTTPException(status_code=404, detail="배송지를 찾을 수 없습니다.")
+        connection.execute(
+            "UPDATE addresses SET is_default = 0 WHERE customer_id = ?", (customer["id"],)
+        )
+        connection.execute("UPDATE addresses SET is_default = 1 WHERE id = ?", (address_id,))
+        return dict(connection.execute("SELECT * FROM addresses WHERE id = ?", (address_id,)).fetchone())
+
+
+@app.delete("/customers/me/addresses/{address_id}", status_code=204)
+async def delete_my_address(
+    address_id: str, authorization: str | None = Header(default=None)
+) -> None:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        connection.execute(
+            "DELETE FROM addresses WHERE id = ? AND customer_id = ?", (address_id, customer["id"])
+        )
+
+
+@app.get("/customers/me/payment-methods")
+async def list_my_payment_methods(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, object]]:
+    with closing(connect()) as connection:
+        customer = require_customer(connection, authorization)
+        rows = connection.execute(
+            "SELECT * FROM payment_methods WHERE customer_id = ? ORDER BY is_default DESC, created_at DESC",
+            (customer["id"],),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+@app.post("/customers/me/payment-methods", status_code=201)
+async def create_my_payment_method(
+    payload: PaymentMethodInput, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        method_id = f"pm_{uuid4().hex[:12]}"
+        now = utc_now()
+        if payload.is_default:
+            connection.execute(
+                "UPDATE payment_methods SET is_default = 0 WHERE customer_id = ?", (customer["id"],)
+            )
+        connection.execute(
+            """
+            INSERT INTO payment_methods(id, customer_id, label, card_brand, last4, is_default, created_at)
+            VALUES(?,?,?,?,?,?,?)
+            """,
+            (method_id, customer["id"], payload.label, payload.card_brand, payload.last4, int(payload.is_default), now),
+        )
+        return dict(connection.execute("SELECT * FROM payment_methods WHERE id = ?", (method_id,)).fetchone())
+
+
+@app.post("/customers/me/payment-methods/{method_id}/default")
+async def set_default_payment_method(
+    method_id: str, authorization: str | None = Header(default=None)
+) -> dict[str, object]:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        method = connection.execute(
+            "SELECT * FROM payment_methods WHERE id = ? AND customer_id = ?", (method_id, customer["id"])
+        ).fetchone()
+        if method is None:
+            raise HTTPException(status_code=404, detail="결제 수단을 찾을 수 없습니다.")
+        connection.execute(
+            "UPDATE payment_methods SET is_default = 0 WHERE customer_id = ?", (customer["id"],)
+        )
+        connection.execute("UPDATE payment_methods SET is_default = 1 WHERE id = ?", (method_id,))
+        return dict(connection.execute("SELECT * FROM payment_methods WHERE id = ?", (method_id,)).fetchone())
+
+
+@app.delete("/customers/me/payment-methods/{method_id}", status_code=204)
+async def delete_my_payment_method(
+    method_id: str, authorization: str | None = Header(default=None)
+) -> None:
+    with transaction() as connection:
+        customer = require_customer(connection, authorization)
+        connection.execute(
+            "DELETE FROM payment_methods WHERE id = ? AND customer_id = ?", (method_id, customer["id"])
+        )
 
 
 @app.post("/sellers/activate", status_code=201)

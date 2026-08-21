@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -67,6 +68,33 @@ CREATE TABLE IF NOT EXISTS customers (
     is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS addresses (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    label TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    postal_code TEXT NOT NULL,
+    address1 TEXT NOT NULL,
+    address2 TEXT NOT NULL DEFAULT '',
+    is_default INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_addresses_customer ON addresses(customer_id);
+
+CREATE TABLE IF NOT EXISTS payment_methods (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    label TEXT NOT NULL,
+    card_brand TEXT NOT NULL,
+    last4 TEXT NOT NULL,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_methods_customer ON payment_methods(customer_id);
 
 CREATE TABLE IF NOT EXISTS organizations (
     id TEXT PRIMARY KEY,
@@ -469,6 +497,37 @@ def _ensure_columns(connection: sqlite3.Connection, table: str, columns: dict[st
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl_type}")
 
 
+_REFERRAL_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I -- avoids typos when read aloud/typed in
+
+
+def generate_referral_code() -> str:
+    return "".join(secrets.choice(_REFERRAL_CODE_ALPHABET) for _ in range(8))
+
+
+def _backfill_referral_codes(connection: sqlite3.Connection) -> None:
+    """Every account -- existing sample/admin accounts included, not just new
+    signups -- needs a referral_code once the column exists. Runs on every
+    initialize_database() call but only touches rows that still need one
+    (cheap no-op after the first run)."""
+    rows = connection.execute(
+        "SELECT id FROM customers WHERE referral_code IS NULL OR referral_code = ''"
+    ).fetchall()
+    existing_codes = {
+        row["referral_code"]
+        for row in connection.execute(
+            "SELECT referral_code FROM customers WHERE referral_code IS NOT NULL AND referral_code != ''"
+        ).fetchall()
+    }
+    for row in rows:
+        code = generate_referral_code()
+        while code in existing_codes:
+            code = generate_referral_code()
+        existing_codes.add(code)
+        connection.execute(
+            "UPDATE customers SET referral_code = ? WHERE id = ?", (code, row["id"])
+        )
+
+
 def _seed_demo_data_enabled() -> bool:
     """Local SQLite dev always gets the demo catalog/accounts for convenience.
 
@@ -494,8 +553,13 @@ def initialize_database() -> None:
         customer_columns = {
             "password_hash": "TEXT NOT NULL DEFAULT ''",
             "is_admin": "INTEGER NOT NULL DEFAULT 0",
+            # 추천인 코드: 이 계정 소유의 코드(referral_code)와, 가입 시 입력한
+            # 남의 코드(referred_by) -- 기존 계정엔 없으므로 아래에서 백필한다.
+            "referral_code": "TEXT",
+            "referred_by": "TEXT",
         }
         _ensure_columns(connection, "customers", customer_columns)  # type: ignore[arg-type]
+        _backfill_referral_codes(connection)  # type: ignore[arg-type]
         _ensure_columns(connection, "products", {"org_id": "TEXT"})  # type: ignore[arg-type]
         product_style_columns = {"color_family": "TEXT", "style_tags": "TEXT"}
         _ensure_columns(connection, "products", product_style_columns)  # type: ignore[arg-type]

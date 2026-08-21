@@ -11,19 +11,27 @@ gsap.registerPlugin(ScrollTrigger);
 
 import {
   activateSeller,
+  Address,
+  AddressInput,
   addCartItem,
   askSupport,
   AuthResponse,
   cancelOrder,
   confirmPayment,
+  createMyAddress,
+  createMyPaymentMethod,
   createOrder,
   deleteCartItem,
+  deleteMyAddress,
+  deleteMyPaymentMethod,
   getActiveCoupons,
   getCart,
   getCategories,
   getInquiries,
   getInquiry,
   getMe,
+  getMyAddresses,
+  getMyPaymentMethods,
   getOrder,
   getOrders,
   getMyReviews,
@@ -35,10 +43,14 @@ import {
   googleAuth,
   HomeRecommendations,
   login,
+  PaymentMethod,
+  PaymentMethodInput,
   Recommendations,
   RecommendedProduct,
   recordProductView,
   returnOrder,
+  setDefaultAddress,
+  setDefaultPaymentMethod,
   signup,
   SignupInput,
   submitReview,
@@ -1276,6 +1288,7 @@ function SignupPage({
   const [asSeller, setAsSeller] = useState(false);
   const [shopName, setShopName] = useState("");
   const [shopCategory, setShopCategory] = useState("패션");
+  const [referralCode, setReferralCode] = useState("");
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const mutation = useMutation({
     mutationFn: () =>
@@ -1284,6 +1297,7 @@ function SignupPage({
         as_seller: asSeller,
         shop_name: asSeller ? shopName : undefined,
         shop_category: asSeller ? shopCategory : undefined,
+        referral_code: referralCode.trim() || undefined,
       } satisfies SignupInput),
     onSuccess: onSignedUp,
     onError: (error: Error) => onError(error.message),
@@ -1296,6 +1310,12 @@ function SignupPage({
         <label>비밀번호(8자 이상)<input type="password" required minLength={8} value={form.password} onChange={(e) => update("password", e.target.value)} /></label>
         <label>이름<input required value={form.name} onChange={(e) => update("name", e.target.value)} /></label>
         <label>연락처<input required value={form.phone} onChange={(e) => update("phone", e.target.value)} /></label>
+        <label>추천인 코드(선택)<input
+          value={referralCode}
+          maxLength={8}
+          placeholder="예: AB12CD34"
+          onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+        /></label>
         <label className="seller-toggle">
           <input type="checkbox" checked={asSeller} onChange={(e) => setAsSeller(e.target.checked)} />
           판매자로 시작하기 (본인 상품을 등록하고 판매 수수료를 냅니다)
@@ -1363,6 +1383,11 @@ function ProfilePage({
         </div>
       </div>
 
+      <ReferralCard customer={customer} />
+      <AddressBookCard token={auth.access_token} onError={onError} />
+      <PaymentMethodsCard token={auth.access_token} onError={onError} />
+      <CouponWalletCard />
+
       {customer.role === "CONSUMER" && (
         <div className="seller-activate-card">
           <h3>비즈니스로 가입하기</h3>
@@ -1405,6 +1430,162 @@ function ProfilePage({
         </div>
       )}
     </main>
+  );
+}
+
+function ReferralCard({ customer }: { customer: AuthResponse["customer"] }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(customer.referral_code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => undefined);
+  };
+  return (
+    <div className="profile-section-card">
+      <h3>추천인 코드</h3>
+      <p>친구에게 내 추천인 코드를 공유해보세요.</p>
+      <div className="referral-code-row">
+        <code>{customer.referral_code}</code>
+        <button className="ghost" onClick={copy}>{copied ? "복사됨" : "복사"}</button>
+      </div>
+      {customer.referred_by && <p className="referral-note">가입 시 추천인 코드 <b>{customer.referred_by}</b>를 입력했습니다.</p>}
+    </div>
+  );
+}
+
+function AddressBookCard({ token, onError }: { token: string; onError: (message: string) => void }) {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ label: "", recipient: "", phone: "", postal_code: "", address1: "", address2: "" });
+  const addresses = useQuery({ queryKey: ["my-addresses", token], queryFn: () => getMyAddresses(token) });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["my-addresses", token] });
+  const create = useMutation({
+    mutationFn: () => createMyAddress(token, { ...form, is_default: !addresses.data?.length } satisfies AddressInput),
+    onSuccess: () => { invalidate(); setShowForm(false); setForm({ label: "", recipient: "", phone: "", postal_code: "", address1: "", address2: "" }); },
+    onError: (error: Error) => onError(error.message),
+  });
+  const setDefault = useMutation({ mutationFn: (id: string) => setDefaultAddress(token, id), onSuccess: invalidate });
+  const remove = useMutation({ mutationFn: (id: string) => deleteMyAddress(token, id), onSuccess: invalidate });
+
+  return (
+    <div className="profile-section-card">
+      <div className="profile-section-head">
+        <h3>배송지 관리</h3>
+        <button className="ghost" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 배송지 추가"}</button>
+      </div>
+      {showForm && (
+        <form className="form-grid" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+          <label>이름(별칭)<input required value={form.label} onChange={(e) => setForm((c) => ({ ...c, label: e.target.value }))} placeholder="집, 회사 등" /></label>
+          <label>받는 분<input required value={form.recipient} onChange={(e) => setForm((c) => ({ ...c, recipient: e.target.value }))} /></label>
+          <label>연락처<input required value={form.phone} onChange={(e) => setForm((c) => ({ ...c, phone: e.target.value }))} /></label>
+          <label>우편번호<input required value={form.postal_code} onChange={(e) => setForm((c) => ({ ...c, postal_code: e.target.value }))} /></label>
+          <label className="wide">주소<input required value={form.address1} onChange={(e) => setForm((c) => ({ ...c, address1: e.target.value }))} /></label>
+          <label className="wide">상세주소<input value={form.address2} onChange={(e) => setForm((c) => ({ ...c, address2: e.target.value }))} /></label>
+          <div className="form-actions wide">
+            <button className="primary dark" disabled={create.isPending}>{create.isPending ? "저장 중…" : "저장"}</button>
+          </div>
+        </form>
+      )}
+      {!addresses.isLoading && !addresses.data?.length && <p className="empty">등록된 배송지가 없습니다.</p>}
+      <div className="address-list">
+        {addresses.data?.map((address: Address) => (
+          <div className="address-row" key={address.id}>
+            <div>
+              <h4>{address.label}{address.is_default && <span className="tag-inactive">기본</span>}</h4>
+              <small>{address.recipient} · {address.phone}</small>
+              <small>({address.postal_code}) {address.address1} {address.address2}</small>
+            </div>
+            <div className="seller-order-actions">
+              {!address.is_default && <button className="ghost" onClick={() => setDefault.mutate(address.id)}>기본으로</button>}
+              <button className="ghost" onClick={() => remove.mutate(address.id)}>삭제</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PaymentMethodsCard({ token, onError }: { token: string; onError: (message: string) => void }) {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ label: "", card_brand: "VISA", last4: "" });
+  const methods = useQuery({ queryKey: ["my-payment-methods", token], queryFn: () => getMyPaymentMethods(token) });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["my-payment-methods", token] });
+  const create = useMutation({
+    mutationFn: () => createMyPaymentMethod(token, { ...form, is_default: !methods.data?.length } satisfies PaymentMethodInput),
+    onSuccess: () => { invalidate(); setShowForm(false); setForm({ label: "", card_brand: "VISA", last4: "" }); },
+    onError: (error: Error) => onError(error.message),
+  });
+  const setDefault = useMutation({ mutationFn: (id: string) => setDefaultPaymentMethod(token, id), onSuccess: invalidate });
+  const remove = useMutation({ mutationFn: (id: string) => deleteMyPaymentMethod(token, id), onSuccess: invalidate });
+
+  return (
+    <div className="profile-section-card">
+      <div className="profile-section-head">
+        <h3>결제 수단</h3>
+        <button className="ghost" onClick={() => setShowForm((v) => !v)}>{showForm ? "취소" : "+ 결제 수단 추가"}</button>
+      </div>
+      <p className="compare-note">데모 프로젝트이므로 실제 카드 정보는 저장하지 않습니다 — 마지막 4자리만 표시용으로 입력해주세요.</p>
+      {showForm && (
+        <form className="form-grid" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+          <label>이름(별칭)<input required value={form.label} onChange={(e) => setForm((c) => ({ ...c, label: e.target.value }))} placeholder="주카드 등" /></label>
+          <label>카드사
+            <select value={form.card_brand} onChange={(e) => setForm((c) => ({ ...c, card_brand: e.target.value }))}>
+              <option value="VISA">VISA</option>
+              <option value="Mastercard">Mastercard</option>
+              <option value="삼성카드">삼성카드</option>
+              <option value="현대카드">현대카드</option>
+              <option value="국민카드">국민카드</option>
+            </select>
+          </label>
+          <label>카드번호 마지막 4자리<input required maxLength={4} pattern="\d{4}" value={form.last4} onChange={(e) => setForm((c) => ({ ...c, last4: e.target.value.replace(/\D/g, "") }))} /></label>
+          <div className="form-actions wide">
+            <button className="primary dark" disabled={create.isPending}>{create.isPending ? "저장 중…" : "저장"}</button>
+          </div>
+        </form>
+      )}
+      {!methods.isLoading && !methods.data?.length && <p className="empty">등록된 결제 수단이 없습니다.</p>}
+      <div className="address-list">
+        {methods.data?.map((method: PaymentMethod) => (
+          <div className="address-row" key={method.id}>
+            <div>
+              <h4>{method.label}{method.is_default && <span className="tag-inactive">기본</span>}</h4>
+              <small>{method.card_brand} •••• {method.last4}</small>
+            </div>
+            <div className="seller-order-actions">
+              {!method.is_default && <button className="ghost" onClick={() => setDefault.mutate(method.id)}>기본으로</button>}
+              <button className="ghost" onClick={() => remove.mutate(method.id)}>삭제</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CouponWalletCard() {
+  const coupons = useQuery({ queryKey: ["active-coupons"], queryFn: getActiveCoupons });
+  return (
+    <div className="profile-section-card">
+      <h3>내 쿠폰함</h3>
+      {!coupons.isLoading && !coupons.data?.length && <p className="empty">현재 사용 가능한 쿠폰이 없습니다.</p>}
+      <div className="address-list">
+        {coupons.data?.map((coupon) => (
+          <div className="address-row" key={coupon.code}>
+            <div>
+              <h4>{coupon.code}</h4>
+              <small>
+                {coupon.discount_type === "PERCENT" ? `${coupon.discount_value}% 할인` : `${won.format(coupon.discount_value)} 할인`}
+                {coupon.min_purchase_amount > 0 && ` · ${won.format(coupon.min_purchase_amount)} 이상 구매 시`}
+              </small>
+              {coupon.expires_at && <small>{new Date(coupon.expires_at).toLocaleDateString("ko-KR")}까지</small>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

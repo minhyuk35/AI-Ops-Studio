@@ -217,11 +217,21 @@ a { color: inherit; }
 .google-signin-disabled { padding: 12px; color: var(--muted); background: var(--surface); font-size: 12px; text-align: center; }
 .auth-switch { margin-top: 22px; font-size: 13px; }
 .profile-page { max-width: 640px; margin: 0 auto; }
-.profile-card,.seller-activate-card { padding: 26px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--line); }
+.profile-card,.seller-activate-card,.profile-section-card { padding: 26px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--line); }
 .profile-card h2 { margin: 12px 0 4px; }
 .profile-actions { display: flex; gap: 16px; margin-top: 16px; }
-.seller-activate-card h3 { margin-top: 0; }
+.seller-activate-card h3,.profile-section-card h3 { margin-top: 0; }
 .seller-activate-card .form-grid { margin: 18px 0; }
+.profile-section-card .form-grid { margin: 18px 0 0; }
+.profile-section-head { display: flex; justify-content: space-between; align-items: center; }
+.profile-section-head h3 { margin: 0; }
+.referral-code-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.referral-code-row code { padding: 8px 14px; background: var(--surface-2); border: 1px dashed var(--line-strong); font-size: 15px; font-weight: 700; letter-spacing: .05em; }
+.referral-note { margin-top: 10px; color: var(--muted); font-size: 13px; }
+.address-list { display: grid; gap: 1px; margin-top: 16px; background: var(--line-strong); border: 1px solid var(--line-strong); }
+.address-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px; background: white; }
+.address-row h4 { margin: 0 0 4px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.address-row small { display: block; color: var(--muted); }
 .role-badge { display: inline-block; padding: 5px 10px; color: white; background: #8a8a8a; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .role-badge.role-seller { background: var(--ink); }
 .role-badge.role-admin { background: #b91c1c; }

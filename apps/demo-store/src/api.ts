@@ -51,6 +51,8 @@ export interface AuthCustomer {
   is_admin: boolean;
   role: MarketplaceRole;
   organization: Organization | null;
+  referral_code: string;
+  referred_by: string | null;
 }
 
 export interface AuthResponse {
@@ -67,6 +69,47 @@ export interface SignupInput {
   as_seller?: boolean;
   shop_name?: string;
   shop_category?: string;
+  referral_code?: string;
+}
+
+export interface Address {
+  id: string;
+  customer_id: string;
+  label: string;
+  recipient: string;
+  phone: string;
+  postal_code: string;
+  address1: string;
+  address2: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface AddressInput {
+  label: string;
+  recipient: string;
+  phone: string;
+  postal_code: string;
+  address1: string;
+  address2?: string;
+  is_default?: boolean;
+}
+
+export interface PaymentMethod {
+  id: string;
+  customer_id: string;
+  label: string;
+  card_brand: string;
+  last4: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface PaymentMethodInput {
+  label: string;
+  card_brand: string;
+  last4: string;
+  is_default?: boolean;
 }
 
 export const signup = (input: SignupInput) =>
@@ -91,6 +134,30 @@ export const activateSeller = (
   token: string,
   input: { shop_name: string; shop_category: string },
 ) => request<AuthCustomer>(`${commerceBaseUrl}/sellers/activate`, json("POST", input, token));
+
+export const getMyAddresses = (token: string) =>
+  request<Address[]>(`${commerceBaseUrl}/customers/me/addresses`, authGet(token));
+export const createMyAddress = (token: string, input: AddressInput) =>
+  request<Address>(`${commerceBaseUrl}/customers/me/addresses`, json("POST", input, token));
+export const setDefaultAddress = (token: string, addressId: string) =>
+  request<Address>(`${commerceBaseUrl}/customers/me/addresses/${addressId}/default`, json("POST", undefined, token));
+export const deleteMyAddress = (token: string, addressId: string) =>
+  fetch(`${commerceBaseUrl}/customers/me/addresses/${addressId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+export const getMyPaymentMethods = (token: string) =>
+  request<PaymentMethod[]>(`${commerceBaseUrl}/customers/me/payment-methods`, authGet(token));
+export const createMyPaymentMethod = (token: string, input: PaymentMethodInput) =>
+  request<PaymentMethod>(`${commerceBaseUrl}/customers/me/payment-methods`, json("POST", input, token));
+export const setDefaultPaymentMethod = (token: string, methodId: string) =>
+  request<PaymentMethod>(`${commerceBaseUrl}/customers/me/payment-methods/${methodId}/default`, json("POST", undefined, token));
+export const deleteMyPaymentMethod = (token: string, methodId: string) =>
+  fetch(`${commerceBaseUrl}/customers/me/payment-methods/${methodId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
 export const getCategories = () => request<Category[]>(`${commerceBaseUrl}/categories`);
 
