@@ -1145,7 +1145,7 @@ def _wishlist_product_rows(connection, customer_id: str) -> list[dict[str, objec
         LEFT JOIN variants v ON v.product_id = p.id
         WHERE w.customer_id = ?
         GROUP BY p.id, c.name, c.slug
-        ORDER BY w.created_at DESC
+        ORDER BY MAX(w.created_at) DESC
         """,
         (customer_id,),
     ).fetchall()
